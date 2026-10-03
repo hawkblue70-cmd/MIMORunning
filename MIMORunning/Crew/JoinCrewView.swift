@@ -24,11 +24,11 @@ struct JoinCrewView: View {
                     formView
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("크루 참여", "Join Crew"))
+            .navigationTitle(AppLanguage.shared.s("크루 참여", "Join Crew", ja: "クルーに参加"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(.secondary)
                 }
             }
@@ -46,7 +46,7 @@ struct JoinCrewView: View {
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(AppLanguage.shared.s("초대 코드", "Invite code"))
+                        Text(AppLanguage.shared.s("초대 코드", "Invite code", ja: "招待コード"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -70,7 +70,7 @@ struct JoinCrewView: View {
 
                         Text(AppLanguage.shared.s(
                             "방장에게 받은 6자리 코드를 입력하세요",
-                            "Enter the 6-character code from the crew owner"
+                            "Enter the 6-character code from the crew owner", ja: "オーナーから受け取った6桁のコードを入力してください"
                         ))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -99,7 +99,7 @@ struct JoinCrewView: View {
                         if isLoading {
                             ProgressView().tint(.white)
                         } else {
-                            Text(AppLanguage.shared.s("참여하기", "Join"))
+                            Text(AppLanguage.shared.s("참여하기", "Join", ja: "参加する"))
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }
@@ -137,7 +137,7 @@ struct JoinCrewView: View {
             VStack(spacing: 8) {
                 Text(AppLanguage.shared.s(
                     "\(crewName) 크루에 합류했습니다!",
-                    "You joined \(crewName)!"
+                    "You joined \(crewName)!", ja: "\(crewName)に参加しました!"
                 ))
                 .font(.title2.bold())
                 .foregroundStyle(.white)
@@ -145,7 +145,7 @@ struct JoinCrewView: View {
 
                 Text(AppLanguage.shared.s(
                     "크루 탭에서 멤버들의 기록을 확인할 수 있습니다",
-                    "Check your crew's records in the Crew tab"
+                    "Check your crew's records in the Crew tab", ja: "クルータブでメンバーの記録を確認できます"
                 ))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -155,7 +155,7 @@ struct JoinCrewView: View {
 
             Spacer()
 
-            Button(AppLanguage.shared.s("확인", "Done")) { dismiss() }
+            Button(AppLanguage.shared.s("확인", "Done", ja: "OK")) { dismiss() }
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -176,12 +176,12 @@ struct JoinCrewView: View {
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.violet)
             VStack(alignment: .leading, spacing: 3) {
-                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required"))
+                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required", ja: "ニックネームが必要です"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(AppLanguage.shared.s(
                     "나 탭에서 크루 닉네임을 먼저 설정해 주세요",
-                    "Set your crew nickname in the Me tab first"
+                    "Set your crew nickname in the Me tab first", ja: "マイタブで先にクルーのニックネームを設定してください"
                 ))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -216,12 +216,12 @@ struct JoinCrewView: View {
             case .notAuthenticated:
                 errorMessage = AppLanguage.shared.s(
                     "iCloud 로그인이 필요합니다.",
-                    "iCloud sign-in required."
+                    "iCloud sign-in required.", ja: "iCloudへのサインインが必要です。"
                 )
             case .networkUnavailable, .networkFailure:
                 errorMessage = AppLanguage.shared.s(
                     "네트워크 연결을 확인해 주세요.",
-                    "Check your network connection."
+                    "Check your network connection.", ja: "ネットワーク接続を確認してください。"
                 )
             default:
                 errorMessage = ckError.localizedDescription

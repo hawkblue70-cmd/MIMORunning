@@ -51,29 +51,29 @@ struct CrewMembersView: View {
                 content
             }
         }
-        .navigationTitle(AppLanguage.shared.s("멤버 관리", "Manage Members"))
+        .navigationTitle(AppLanguage.shared.s("멤버 관리", "Manage Members", ja: "メンバー管理"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.load(crew: crew) }
         .alert(
-            AppLanguage.shared.s("멤버 내보내기", "Remove Member"),
+            AppLanguage.shared.s("멤버 내보내기", "Remove Member", ja: "メンバーを外す"),
             isPresented: Binding(
                 get: { memberToKick != nil },
                 set: { if !$0 { memberToKick = nil } }
             )
         ) {
-            Button(AppLanguage.shared.s("내보내기", "Remove"), role: .destructive) {
+            Button(AppLanguage.shared.s("내보내기", "Remove", ja: "外す"), role: .destructive) {
                 if let m = memberToKick { Task { await kickAndReload(member: m) } }
             }
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) { memberToKick = nil }
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) { memberToKick = nil }
         } message: {
             if let m = memberToKick {
                 Text(AppLanguage.shared.s(
                     "\(m.nickname)님을 크루에서 내보낼까요?",
-                    "Remove \(m.nickname) from the crew?"
+                    "Remove \(m.nickname) from the crew?", ja: "\(m.nickname)さんをクルーから外しますか?"
                 ))
             }
         }
-        .alert(AppLanguage.shared.s("오류", "Error"), isPresented: Binding(
+        .alert(AppLanguage.shared.s("오류", "Error", ja: "エラー"), isPresented: Binding(
             get: { kickError != nil },
             set: { if !$0 { kickError = nil } }
         )) {
@@ -118,7 +118,7 @@ struct CrewMembersView: View {
                         .font(.system(size: 15, weight: isMe ? .bold : .regular))
                         .foregroundStyle(isMe ? Theme.violet : .white)
                     if isOwner {
-                        Text(AppLanguage.shared.s("방장", "Owner"))
+                        Text(AppLanguage.shared.s("방장", "Owner", ja: "オーナー"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Theme.violet)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -137,7 +137,7 @@ struct CrewMembersView: View {
                         .foregroundStyle(Color(white: 0.3))
                     Text(AppLanguage.shared.s(
                         "가입 \(Self.dateFmt.string(from: member.joinedAt))",
-                        "Joined \(Self.dateFmt.string(from: member.joinedAt))"
+                        "Joined \(Self.dateFmt.string(from: member.joinedAt))", ja: "参加 \(Self.dateFmt.string(from: member.joinedAt))"
                     ))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -151,7 +151,7 @@ struct CrewMembersView: View {
                 Button {
                     memberToKick = member
                 } label: {
-                    Text(AppLanguage.shared.s("내보내기", "Remove"))
+                    Text(AppLanguage.shared.s("내보내기", "Remove", ja: "外す"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -192,7 +192,7 @@ struct CrewMembersView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button(AppLanguage.shared.s("다시 시도", "Retry")) {
+            Button(AppLanguage.shared.s("다시 시도", "Retry", ja: "再試行")) {
                 Task { await store.load(crew: crew) }
             }
             .font(.system(size: 14, weight: .semibold))

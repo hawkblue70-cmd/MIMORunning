@@ -21,9 +21,9 @@ import CloudKit
             if !hasCache {
                 switch ckError.code {
                 case .notAuthenticated:
-                    errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.")
+                    errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.", ja: "iCloudへのサインインが必要です。")
                 case .networkUnavailable, .networkFailure:
-                    errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
+                    errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.", ja: "ネットワーク接続を確認してください。")
                 default:
                     errorMessage = ckError.localizedDescription
                 }
@@ -52,7 +52,7 @@ struct CrewTabView: View {
                 Theme.background.ignoresSafeArea()
                 content
             }
-            .navigationTitle(AppLanguage.shared.s("크루", "Crew"))
+            .navigationTitle(AppLanguage.shared.s("크루", "Crew", ja: "クルー"))
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: Crew.self) { crew in
                 CrewRankingView(crew: crew, activities: manager.activities) {
@@ -100,17 +100,17 @@ struct CrewTabView: View {
                     .foregroundStyle(Theme.violet)
             }
             VStack(spacing: 8) {
-                Text(AppLanguage.shared.s("아직 크루가 없습니다", "No crews yet"))
+                Text(AppLanguage.shared.s("아직 크루가 없습니다", "No crews yet", ja: "まだクルーがありません"))
                     .font(.title3.bold())
                     .foregroundStyle(.white)
-                Text(AppLanguage.shared.s("친구와 함께 달려보세요", "Run together with friends"))
+                Text(AppLanguage.shared.s("친구와 함께 달려보세요", "Run together with friends", ja: "友だちと一緒に走ってみましょう"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             VStack(spacing: 12) {
                 Button { showCreate = true } label: {
                     Label(
-                        AppLanguage.shared.s("크루 만들기", "Create Crew"),
+                        AppLanguage.shared.s("크루 만들기", "Create Crew", ja: "クルーを作る"),
                         systemImage: "plus.circle.fill"
                     )
                     .font(.system(size: 16, weight: .bold))
@@ -124,7 +124,7 @@ struct CrewTabView: View {
 
                 Button { showJoin = true } label: {
                     Label(
-                        AppLanguage.shared.s("코드로 참여", "Join with Code"),
+                        AppLanguage.shared.s("코드로 참여", "Join with Code", ja: "コードで参加"),
                         systemImage: "person.badge.plus"
                     )
                     .font(.system(size: 16, weight: .semibold))
@@ -174,7 +174,7 @@ struct CrewTabView: View {
                     Image(systemName: "person.2.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text(AppLanguage.shared.s("\(entry.memberCount)명", "\(entry.memberCount) members"))
+                    Text(AppLanguage.shared.s("\(entry.memberCount)명", "\(entry.memberCount) members", ja: "\(entry.memberCount)人"))
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -189,7 +189,7 @@ struct CrewTabView: View {
 
     private func cycleBadge(cycle: String) -> some View {
         let days = Int(cycle) ?? 30
-        let label = AppLanguage.shared.s("\(days)일 주기", "\(days)d cycle")
+        let label = AppLanguage.shared.s("\(days)일 주기", "\(days)d cycle", ja: "\(days)日周期")
         return Text(label)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Theme.violet)
@@ -206,14 +206,14 @@ struct CrewTabView: View {
             if atMax {
                 Text(AppLanguage.shared.s(
                     "크루는 최대 3개까지 참여할 수 있습니다",
-                    "You can join up to 3 crews"
+                    "You can join up to 3 crews", ja: "クルーは最大3つまで参加できます"
                 ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
                 Button { showCreate = true } label: {
-                    Label(AppLanguage.shared.s("만들기", "Create"), systemImage: "plus.circle.fill")
+                    Label(AppLanguage.shared.s("만들기", "Create", ja: "作る"), systemImage: "plus.circle.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(atMax ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.white))
                         .frame(maxWidth: .infinity)
@@ -225,7 +225,7 @@ struct CrewTabView: View {
                 .buttonStyle(.plain)
 
                 Button { showJoin = true } label: {
-                    Label(AppLanguage.shared.s("코드 참여", "Join Code"), systemImage: "person.badge.plus")
+                    Label(AppLanguage.shared.s("코드 참여", "Join Code", ja: "コードで参加"), systemImage: "person.badge.plus")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(atMax ? .secondary : Theme.violet)
                         .frame(maxWidth: .infinity)
@@ -255,7 +255,7 @@ struct CrewTabView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button(AppLanguage.shared.s("다시 시도", "Retry")) {
+            Button(AppLanguage.shared.s("다시 시도", "Retry", ja: "再試行")) {
                 Task { await store.load() }
             }
             .font(.system(size: 14, weight: .semibold))

@@ -59,9 +59,9 @@ import CloudKit
         } catch let ckError as CKError {
             switch ckError.code {
             case .notAuthenticated:
-                errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.")
+                errorMessage = AppLanguage.shared.s("iCloud 로그인이 필요합니다.", "iCloud sign-in required.", ja: "iCloudへのサインインが必要です。")
             case .networkUnavailable, .networkFailure:
-                errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.")
+                errorMessage = AppLanguage.shared.s("네트워크 연결을 확인해 주세요.", "Check your network connection.", ja: "ネットワーク接続を確認してください。")
             default:
                 errorMessage = ckError.localizedDescription
             }
@@ -166,72 +166,72 @@ struct CrewRankingView: View {
         .task { await store.load(crew: crew, activities: activities) }
         // 방장 관리 액션시트
         .confirmationDialog(
-            AppLanguage.shared.s("관리", "Manage"),
+            AppLanguage.shared.s("관리", "Manage", ja: "管理"),
             isPresented: $showManageSheet,
             titleVisibility: .visible
         ) {
-            Button(AppLanguage.shared.s("멤버 관리", "Manage Members")) {
+            Button(AppLanguage.shared.s("멤버 관리", "Manage Members", ja: "メンバー管理")) {
                 showMembersView = true
             }
-            Button(AppLanguage.shared.s("방 이름 변경", "Rename Crew")) {
+            Button(AppLanguage.shared.s("방 이름 변경", "Rename Crew", ja: "クルー名を変更")) {
                 renameText = crew.name
                 showRenameAlert = true
             }
-            Button(AppLanguage.shared.s("크루 나가기", "Leave Crew"), role: .destructive) {
+            Button(AppLanguage.shared.s("크루 나가기", "Leave Crew", ja: "クルーを抜ける"), role: .destructive) {
                 showLeaveConfirm = true
             }
-            Button(AppLanguage.shared.s("크루 해체", "Disband Crew"), role: .destructive) {
+            Button(AppLanguage.shared.s("크루 해체", "Disband Crew", ja: "クルーを解散"), role: .destructive) {
                 showDisbandConfirm = true
             }
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
         }
         // 이름 변경 알럿
-        .alert(AppLanguage.shared.s("방 이름 변경", "Rename Crew"), isPresented: $showRenameAlert) {
-            TextField(AppLanguage.shared.s("크루 이름", "Crew name"), text: $renameText)
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
-            Button(AppLanguage.shared.s("변경", "Rename")) {
+        .alert(AppLanguage.shared.s("방 이름 변경", "Rename Crew", ja: "クルー名を変更"), isPresented: $showRenameAlert) {
+            TextField(AppLanguage.shared.s("크루 이름", "Crew name", ja: "クルー名"), text: $renameText)
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
+            Button(AppLanguage.shared.s("변경", "Rename", ja: "変更")) {
                 let trimmed = renameText.trimmingCharacters(in: .whitespaces)
                 guard (2...20).contains(trimmed.count) else { return }
                 Task { await doRename(newName: trimmed) }
             }
         } message: {
-            Text(AppLanguage.shared.s("2~20자로 입력해 주세요", "Enter 2–20 characters"))
+            Text(AppLanguage.shared.s("2~20자로 입력해 주세요", "Enter 2–20 characters", ja: "2~20文字で入力してください"))
         }
         // 크루 해체 확인
         .confirmationDialog(
-            AppLanguage.shared.s("크루 해체", "Disband Crew"),
+            AppLanguage.shared.s("크루 해체", "Disband Crew", ja: "クルーを解散"),
             isPresented: $showDisbandConfirm,
             titleVisibility: .visible
         ) {
-            Button(AppLanguage.shared.s("해체", "Disband"), role: .destructive) {
+            Button(AppLanguage.shared.s("해체", "Disband", ja: "解散"), role: .destructive) {
                 Task { await doDisband() }
             }
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
         } message: {
             Text(AppLanguage.shared.s(
                 "정말 해체할까요? 모든 기록이 사라지고 되돌릴 수 없습니다.",
-                "Are you sure? All data will be lost and cannot be undone."
+                "Are you sure? All data will be lost and cannot be undone.", ja: "本当に解散しますか?すべての記録が消え、元に戻せません。"
             ))
         }
         // 크루 나가기 확인
         .confirmationDialog(
-            AppLanguage.shared.s("크루 나가기", "Leave Crew"),
+            AppLanguage.shared.s("크루 나가기", "Leave Crew", ja: "クルーを抜ける"),
             isPresented: $showLeaveConfirm,
             titleVisibility: .visible
         ) {
-            Button(AppLanguage.shared.s("나가기", "Leave"), role: .destructive) {
+            Button(AppLanguage.shared.s("나가기", "Leave", ja: "抜ける"), role: .destructive) {
                 Task { await doLeave() }
             }
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
         } message: {
             Text(leaveConfirmMessage)
         }
         // 작업 오류 알럿
-        .alert(AppLanguage.shared.s("오류", "Error"), isPresented: Binding(
+        .alert(AppLanguage.shared.s("오류", "Error", ja: "エラー"), isPresented: Binding(
             get: { opError != nil },
             set: { if !$0 { opError = nil } }
         )) {
-            Button(AppLanguage.shared.s("확인", "OK"), role: .cancel) { opError = nil }
+            Button(AppLanguage.shared.s("확인", "OK", ja: "OK"), role: .cancel) { opError = nil }
         } message: {
             if let e = opError { Text(e) }
         }
@@ -260,7 +260,7 @@ struct CrewRankingView: View {
                     Button {
                         showLeaveConfirm = true
                     } label: {
-                        Text(AppLanguage.shared.s("나가기", "Leave"))
+                        Text(AppLanguage.shared.s("나가기", "Leave", ja: "抜ける"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -291,7 +291,7 @@ struct CrewRankingView: View {
         HStack(spacing: 10) {
             Text(AppLanguage.shared.s(
                 "\(Int(crew.resetCycle) ?? 30)일 주기",
-                "\(Int(crew.resetCycle) ?? 30)d cycle"
+                "\(Int(crew.resetCycle) ?? 30)d cycle", ja: "\(Int(crew.resetCycle) ?? 30)日周期"
             ))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.violet)
@@ -322,7 +322,7 @@ struct CrewRankingView: View {
 
     private var inviteCodeRow: some View {
         HStack(spacing: 12) {
-            Text(AppLanguage.shared.s("초대 코드", "Invite code"))
+            Text(AppLanguage.shared.s("초대 코드", "Invite code", ja: "招待コード"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -385,7 +385,7 @@ struct CrewRankingView: View {
             Image(systemName: "figure.run.circle")
                 .font(.system(size: 18))
                 .foregroundStyle(Theme.violet.opacity(0.4))
-            Text(AppLanguage.shared.s("아직 아무도 안 뛰었습니다", "No one has run yet"))
+            Text(AppLanguage.shared.s("아직 아무도 안 뛰었습니다", "No one has run yet", ja: "まだ誰も走っていません"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -416,7 +416,7 @@ struct CrewRankingView: View {
                         .font(.system(size: 15, weight: isMe ? .bold : .regular))
                         .foregroundStyle(isMe ? Theme.violet : .white)
                     if isMe {
-                        Text(AppLanguage.shared.s("나", "me"))
+                        Text(AppLanguage.shared.s("나", "me", ja: "自分"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Theme.violet)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -433,11 +433,11 @@ struct CrewRankingView: View {
                     .font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .foregroundStyle(isMe ? Theme.violet : .white)
                 if member.lastPeriodDistance > 0 {
-                    Text(String(format: AppLanguage.shared.s("지난 %.1f", "prev %.1f"), member.lastPeriodDistance))
+                    Text(String(format: AppLanguage.shared.s("지난 %.1f", "prev %.1f", ja: "前回 %.1f"), member.lastPeriodDistance))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Color(white: 0.40))
                 } else {
-                    Text(AppLanguage.shared.s("지난 —", "prev —"))
+                    Text(AppLanguage.shared.s("지난 —", "prev —", ja: "前回 —"))
                         .font(.system(size: 11))
                         .foregroundStyle(Color(white: 0.28))
                 }
@@ -463,7 +463,7 @@ struct CrewRankingView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(isMe ? Theme.violet.opacity(0.55) : Color(white: 0.42))
                 if isMe {
-                    Text(AppLanguage.shared.s("나", "me"))
+                    Text(AppLanguage.shared.s("나", "me", ja: "自分"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Theme.violet.opacity(0.45))
                         .padding(.horizontal, 5).padding(.vertical, 2)
@@ -472,7 +472,7 @@ struct CrewRankingView: View {
                 }
             }
             Spacer()
-            Text(AppLanguage.shared.s("아직", "—"))
+            Text(AppLanguage.shared.s("아직", "—", ja: "—"))
                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Color(white: 0.32))
         }
@@ -501,7 +501,7 @@ struct CrewRankingView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button(AppLanguage.shared.s("다시 시도", "Retry")) {
+            Button(AppLanguage.shared.s("다시 시도", "Retry", ja: "再試行")) {
                 Task { await store.load(crew: crew, activities: activities) }
             }
             .font(.system(size: 14, weight: .semibold))
@@ -536,18 +536,18 @@ struct CrewRankingView: View {
 
     private var leaveConfirmMessage: String {
         guard store.isOwner else {
-            return AppLanguage.shared.s("크루에서 나가시겠습니까?", "Leave this crew?")
+            return AppLanguage.shared.s("크루에서 나가시겠습니까?", "Leave this crew?", ja: "クルーを抜けますか?")
         }
         let hasOthers = store.members.contains { $0.icloudID != store.myID }
         if hasOthers {
             return AppLanguage.shared.s(
                 "나가면 다음 분에게 방장이 넘어갑니다.",
-                "Ownership will transfer to the next member."
+                "Ownership will transfer to the next member.", ja: "抜けると次のメンバーにオーナーが移ります。"
             )
         } else {
             return AppLanguage.shared.s(
                 "나가면 크루가 사라집니다.",
-                "Leaving will disband the crew."
+                "Leaving will disband the crew.", ja: "抜けるとクルーがなくなります。"
             )
         }
     }

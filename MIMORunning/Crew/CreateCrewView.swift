@@ -27,11 +27,11 @@ struct CreateCrewView: View {
                     formView
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("크루 만들기", "Create Crew"))
+            .navigationTitle(AppLanguage.shared.s("크루 만들기", "Create Crew", ja: "クルーを作る"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(.secondary)
                 }
             }
@@ -50,11 +50,11 @@ struct CreateCrewView: View {
                 VStack(spacing: 0) {
                     // 방 이름
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLanguage.shared.s("방 이름", "Crew name"))
+                        Text(AppLanguage.shared.s("방 이름", "Crew name", ja: "クルー名"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         TextField(
-                            AppLanguage.shared.s("우리 크루 이름 (2~20자)", "Name (2–20 chars)"),
+                            AppLanguage.shared.s("우리 크루 이름 (2~20자)", "Name (2–20 chars)", ja: "クルーの名前(2~20文字)"),
                             text: $crewName
                         )
                         .font(.system(size: 16))
@@ -70,19 +70,19 @@ struct CreateCrewView: View {
                     // 리셋 주기
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(AppLanguage.shared.s("리셋 주기", "Reset cycle"))
+                            Text(AppLanguage.shared.s("리셋 주기", "Reset cycle", ja: "リセット周期"))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.white)
-                            Text(AppLanguage.shared.s("생성 후 변경할 수 없습니다", "Cannot be changed after creation"))
+                            Text(AppLanguage.shared.s("생성 후 변경할 수 없습니다", "Cannot be changed after creation", ja: "作成後は変更できません"))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Picker("", selection: $resetCycle) {
-                            Text("5일").tag("5")
-                            Text("10일").tag("10")
-                            Text("20일").tag("20")
-                            Text("30일").tag("30")
+                            Text(AppLanguage.shared.s("5일", "5d", ja: "5日")).tag("5")
+                            Text(AppLanguage.shared.s("10일", "10d", ja: "10日")).tag("10")
+                            Text(AppLanguage.shared.s("20일", "20d", ja: "20日")).tag("20")
+                            Text(AppLanguage.shared.s("30일", "30d", ja: "30日")).tag("30")
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 170)
@@ -111,7 +111,7 @@ struct CreateCrewView: View {
                         if isLoading {
                             ProgressView().tint(.white)
                         } else {
-                            Text(AppLanguage.shared.s("만들기", "Create"))
+                            Text(AppLanguage.shared.s("만들기", "Create", ja: "作る"))
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }
@@ -151,7 +151,7 @@ struct CreateCrewView: View {
             }
 
             VStack(spacing: 8) {
-                Text(AppLanguage.shared.s("크루가 만들어졌습니다!", "Crew created!"))
+                Text(AppLanguage.shared.s("크루가 만들어졌습니다!", "Crew created!", ja: "クルーができました!"))
                     .font(.title2.bold())
                     .foregroundStyle(.white)
                 Text(crew.name)
@@ -161,7 +161,7 @@ struct CreateCrewView: View {
 
             // 코드 카드
             VStack(spacing: 10) {
-                Text(AppLanguage.shared.s("초대 코드", "Invite code"))
+                Text(AppLanguage.shared.s("초대 코드", "Invite code", ja: "招待コード"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(crew.code)
@@ -179,8 +179,8 @@ struct CreateCrewView: View {
                 } label: {
                     Label(
                         codeCopied
-                            ? AppLanguage.shared.s("복사됨 ✓", "Copied ✓")
-                            : AppLanguage.shared.s("코드 복사", "Copy code"),
+                            ? AppLanguage.shared.s("복사됨 ✓", "Copied ✓", ja: "コピーしました ✓")
+                            : AppLanguage.shared.s("코드 복사", "Copy code", ja: "コードをコピー"),
                         systemImage: codeCopied ? "checkmark" : "doc.on.doc"
                     )
                     .font(.system(size: 13, weight: .medium))
@@ -197,7 +197,7 @@ struct CreateCrewView: View {
 
             Text(AppLanguage.shared.s(
                 "친구에게 코드를 공유하면\n크루에 합류할 수 있습니다",
-                "Share this code with friends\nso they can join the crew"
+                "Share this code with friends\nso they can join the crew", ja: "友だちにコードを共有すると\nクルーに参加できます"
             ))
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -205,7 +205,7 @@ struct CreateCrewView: View {
 
             Spacer()
 
-            Button(AppLanguage.shared.s("확인", "Done")) { dismiss() }
+            Button(AppLanguage.shared.s("확인", "Done", ja: "OK")) { dismiss() }
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -226,12 +226,12 @@ struct CreateCrewView: View {
                 .font(.system(size: 22))
                 .foregroundStyle(Theme.violet)
             VStack(alignment: .leading, spacing: 3) {
-                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required"))
+                Text(AppLanguage.shared.s("닉네임이 필요합니다", "Nickname required", ja: "ニックネームが必要です"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(AppLanguage.shared.s(
                     "나 탭에서 크루 닉네임을 먼저 설정해 주세요",
-                    "Set your crew nickname in the Me tab first"
+                    "Set your crew nickname in the Me tab first", ja: "マイタブで先にクルーのニックネームを設定してください"
                 ))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -275,17 +275,17 @@ struct CreateCrewView: View {
             case .notAuthenticated:
                 errorMessage = AppLanguage.shared.s(
                     "iCloud 로그인이 필요합니다. 설정 → Apple 계정을 확인해 주세요.",
-                    "iCloud sign-in required. Check Settings → Apple Account."
+                    "iCloud sign-in required. Check Settings → Apple Account.", ja: "iCloudへのサインインが必要です。設定 → Appleアカウントを確認してください。"
                 )
             case .networkUnavailable, .networkFailure:
                 errorMessage = AppLanguage.shared.s(
                     "네트워크 연결을 확인해 주세요.",
-                    "Check your network connection."
+                    "Check your network connection.", ja: "ネットワーク接続を確認してください。"
                 )
             case .permissionFailure:
                 errorMessage = AppLanguage.shared.s(
                     "iCloud 접근 권한이 필요합니다.",
-                    "iCloud access permission required."
+                    "iCloud access permission required.", ja: "iCloudへのアクセス許可が必要です。"
                 )
             default:
                 errorMessage = ckError.localizedDescription

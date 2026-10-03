@@ -32,10 +32,10 @@ enum CrewError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .crewNotFound:  return AppLanguage.shared.s("코드를 찾을 수 없습니다", "Crew not found")
-        case .alreadyMember: return AppLanguage.shared.s("이미 참여 중인 크루입니다", "Already a member")
-        case .tooManyCrews:  return AppLanguage.shared.s("크루는 최대 3개까지 참여할 수 있습니다", "You can join up to 3 crews")
-        case .kicked:        return AppLanguage.shared.s("이 크루에서 내보내진 상태입니다", "You've been removed from this crew")
+        case .crewNotFound:  return AppLanguage.shared.s("코드를 찾을 수 없습니다", "Crew not found", ja: "コードが見つかりません")
+        case .alreadyMember: return AppLanguage.shared.s("이미 참여 중인 크루입니다", "Already a member", ja: "すでに参加しているクルーです")
+        case .tooManyCrews:  return AppLanguage.shared.s("크루는 최대 3개까지 참여할 수 있습니다", "You can join up to 3 crews", ja: "クルーは最大3つまで参加できます")
+        case .kicked:        return AppLanguage.shared.s("이 크루에서 내보내진 상태입니다", "You've been removed from this crew", ja: "このクルーから外されています")
         }
     }
 }

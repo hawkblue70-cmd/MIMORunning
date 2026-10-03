@@ -41,14 +41,17 @@ struct MRAdvice: Identifiable {
 // ⚠ 2026-10-02 성장 탭에서 보급량 조언(fueling)을 뺐다 — 나 탭 대회 카드의 젤 보급 제안(MRGelPlan)이
 //   같은 내용을 시간·km별로 보여 준다. 위 근거는 MRGelPlan·MRRaceDay가 그대로 쓴다.
 
+/// 조언 문구 — 한국어·영어·일본어.
+private func adv(_ ko: String, _ en: String, ja: String) -> String { AppLanguage.shared.s(ko, en, ja: ja) }
+
 func mrGutTrainingAdvice(raceDate: Date, distanceM: Double,
                          projectedMin: Double, today: Date) -> MRAdvice? {
     let d = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: today),
                                             to: Calendar.current.startOfDay(for: raceDate)).day ?? -1
     guard d >= 14, d <= 90, distanceM >= 20000, projectedMin >= 150 else { return nil }
     return MRAdvice(key: "gut",
-        text: "목표 보급량은 레이스 당일 처음 시도하지 마세요. 지금 무리 없는 양에서 시작해 롱런에서 주 1회씩, 시간당 10g 정도로만 올리고 연습에서 도달한 만큼만 쓰세요. 메스꺼움이 오면 시간당 30g으로 낮추고 묽은 음료로 바꾸면 됩니다.",
-        rationale: "Jeukendrup 2017(지구성 선수 30~50%가 위장 문제) · Pugh 2018 n=96(레이스 중 중등도 증상 27%) · D-\(d)",
+        text: adv("목표 보급량은 레이스 당일 처음 시도하지 마세요. 지금 무리 없는 양에서 시작해 롱런에서 주 1회씩, 시간당 10g 정도로만 올리고 연습에서 도달한 만큼만 쓰세요. 메스꺼움이 오면 시간당 30g으로 낮추고 묽은 음료로 바꾸면 됩니다.", "Don't try your target fueling for the first time on race day. Start from an amount you handle easily, raise it about 10 g per hour once a week on long runs, and only use what you've reached in practice. If you feel nauseous, drop to 30 g per hour and switch to a more diluted drink.", ja: "目標の補給量をレース当日に初めて試さないでください。今無理なく摂れる量から始め、ロング走で週1回ずつ1時間あたり10gほどだけ増やし、練習で到達した量だけを使ってください。吐き気が出たら1時間あたり30gに下げ、薄めの飲み物に替えれば大丈夫です。"),
+        rationale: adv("Jeukendrup 2017(지구성 선수 30~50%가 위장 문제) · Pugh 2018 n=96(레이스 중 중등도 증상 27%) · D-\(d)", "Jeukendrup 2017 (30–50% of endurance athletes have GI issues) · Pugh 2018 n=96 (27% moderate symptoms during races) · D-\(d)", ja: "Jeukendrup 2017(持久系選手の30~50%に胃腸の問題) · Pugh 2018 n=96(レース中に中等度の症状27%) · D-\(d)"),
         grade: "B", gainMin: 8, timeliness: 0.75, slot: "raceCountdown")
 }
 
@@ -58,8 +61,8 @@ func mrHydrationAdvice(raceDate: Date, distanceM: Double,
                                             to: Calendar.current.startOfDay(for: raceDate)).day ?? -1
     guard d >= 0, d <= 30, distanceM >= 20000, projectedMin >= 210 else { return nil }
     return MRAdvice(key: "hydration",
-        text: "수분은 정해진 스케줄이 아니라 갈증에 따라 드세요. 4~5시간대 완주자는 과다 음수로 인한 운동관련 저나트륨혈증 위험군입니다. 2시간 넘는 레이스에서는 나트륨이 든 음료를 함께 쓰고, 젤은 반드시 물과 같이 삼키세요.",
-        rationale: "Hew-Butler 2015 EAH 3차 국제합의(Clin J Sport Med 25(4):303–320) · D-\(d)",
+        text: adv("수분은 정해진 스케줄이 아니라 갈증에 따라 드세요. 4~5시간대 완주자는 과다 음수로 인한 운동관련 저나트륨혈증 위험군입니다. 2시간 넘는 레이스에서는 나트륨이 든 음료를 함께 쓰고, 젤은 반드시 물과 같이 삼키세요.", "Drink to thirst, not to a fixed schedule. 4–5 hour finishers are the risk group for exercise-associated hyponatremia from overdrinking. In races over 2 hours, use a sodium drink as well, and always take gels with water.", ja: "水分は決まったスケジュールではなく、のどの渇きに合わせて摂ってください。4~5時間台の完走者は、飲みすぎによる運動関連低ナトリウム血症のリスク群です。2時間を超えるレースではナトリウム入りの飲み物も使い、ジェルは必ず水と一緒に飲んでください。"),
+        rationale: adv("Hew-Butler 2015 EAH 3차 국제합의(Clin J Sport Med 25(4):303–320) · D-\(d)", "Hew-Butler 2015, 3rd International EAH Consensus (Clin J Sport Med 25(4):303–320) · D-\(d)", ja: "Hew-Butler 2015 EAH第3回国際コンセンサス(Clin J Sport Med 25(4):303–320) · D-\(d)"),
         grade: "A", gainMin: 10, timeliness: 0.9, slot: "raceCountdown")
 }
 
@@ -71,6 +74,15 @@ func mrHydrationAdvice(raceDate: Date, distanceM: Double,
 //   · 복귀: 공백 종료 21일 이내
 
 /// 억제 사유. nil이면 억제 없음.
+/// 공백 원인(내부 값은 한국어) — 표시용.
+func mrGapCauseLabel(_ cause: String) -> String {
+    switch cause {
+    case "부상 의심":      return adv(cause, "possible injury", ja: "けがの疑い")
+    case "질병·여행 의심": return adv(cause, "possible illness or travel", ja: "病気・旅行の疑い")
+    default:               return adv(cause, "unknown", ja: "不明")
+    }
+}
+
 func mrStrengthAdviceSuppression(races: [MRTargetRace], runs: [MRWorkout],
                                  gaps: [MRGap], asOf: Date) -> String? {
     let cal = Calendar.current
@@ -126,8 +138,8 @@ func mrBuildAdvice(runs: [MRWorkout],
         let over = (cur / longest - 1) * 100
         let hrr = over <= 30 ? "1.64" : (over <= 100 ? "1.52" : "2.28")
         out.append(MRAdvice(key: "spike",
-            text: String(format: "지난 30일 최장 거리보다 %.0f%% 길었습니다. 다음 롱런은 %.0fkm 정도가 무난합니다.", over, longest * 1.1),
-            rationale: String(format: "최근 30일 최장 %.1fkm → 이번 %.1fkm · Frandsen 2025 해당 밴드 HRR %@", longest, cur, hrr),
+            text: String(format: adv("지난 30일 최장 거리보다 %.0f%% 길었습니다. 다음 롱런은 %.0fkm 정도가 무난합니다.", "%.0f%% longer than your longest run in the last 30 days. About %.0f km is a safe next long run.", ja: "直近30日の最長距離より%.0f%%長く走りました。次のロング走は%.0fkmほどが無難です。"), over, longest * 1.1),
+            rationale: String(format: adv("최근 30일 최장 %.1fkm → 이번 %.1fkm · Frandsen 2025 해당 밴드 HRR %@", "Longest in 30 days %.1f km → this run %.1f km · Frandsen 2025 band HRR %@", ja: "直近30日の最長 %.1fkm → 今回 %.1fkm · Frandsen 2025 該当帯のHRR %@"), longest, cur, hrr),
             grade: "B", gainMin: 8, timeliness: 0.9, slot: "todayRun"))
     }
 
@@ -146,21 +158,28 @@ func mrBuildAdvice(runs: [MRWorkout],
         if pre > 0 {
             let decay = g.days < 28 ? 0.8 : (g.days < 56 ? 0.6 : 0.4)
             let text: String
+            let wk = Int(pre*decay)
             switch g.cause {
             case "부상 의심":
                 // 이 공백 직전에 단일 세션 급증이 있었다.
                 // 같은 실수를 반복하지 않게 하는 게 핵심이다.
-                text = "\(g.days)일 쉬고 돌아오셨습니다. 당분간 주 \(Int(pre*decay))km 정도로 시작하시고, "
-                     + "롱런은 한 번에 10% 넘게 올리지 않는 게 좋습니다."
+                text = adv("\(g.days)일 쉬고 돌아오셨습니다. 당분간 주 \(wk)km 정도로 시작하시고, 롱런은 한 번에 10% 넘게 올리지 않는 게 좋습니다.",
+                           "Back after \(g.days) days off. Start at about \(wk) km a week for now, and don't raise the long run more than 10% at a time.",
+                           ja: "\(g.days)日休んで戻ってきました。しばらくは週\(wk)kmほどから始め、ロング走は一度に10%を超えて伸ばさないのがよいです。")
             case "질병·여행 의심":
-                text = "\(g.days)일 만입니다. 몸이 아직 돌아오는 중일 수 있으니 "
-                     + "주 \(Int(pre*decay))km 정도로 가볍게 시작하시면 됩니다."
+                text = adv("\(g.days)일 만입니다. 몸이 아직 돌아오는 중일 수 있으니 주 \(wk)km 정도로 가볍게 시작하시면 됩니다.",
+                           "First run in \(g.days) days. Your body may still be coming back, so start easy at about \(wk) km a week.",
+                           ja: "\(g.days)日ぶりです。体がまだ戻りきっていないかもしれないので、週\(wk)kmほどで軽く始めれば大丈夫です。")
             default:
-                text = "\(g.days)일 만에 다시 나오셨습니다. 반갑습니다. "
-                     + "주 \(Int(pre*decay))km 정도로 시작하면 무리가 없습니다."
+                text = adv("\(g.days)일 만에 다시 나오셨습니다. 반갑습니다. 주 \(wk)km 정도로 시작하면 무리가 없습니다.",
+                           "Back out after \(g.days) days — good to see you. Starting at about \(wk) km a week is comfortable.",
+                           ja: "\(g.days)日ぶりに走り出しました。おかえりなさい。週\(wk)kmほどから始めれば無理がありません。")
             }
             out.append(MRAdvice(key: "return", text: text,
-                rationale: String(format: "공백 전 주 평균 %.0fkm × %.1f · 원인 추정: %@ (걸음 수 기준)", pre, decay, g.cause),
+                rationale: String(format: adv("공백 전 주 평균 %.0fkm × %.1f · 원인 추정: %@ (걸음 수 기준)",
+                                             "Pre-break weekly avg %.0f km × %.1f · likely cause: %@ (from step count)",
+                                             ja: "ブランク前の週平均 %.0fkm × %.1f · 推定原因: %@(歩数基準)"),
+                                         pre, decay, mrGapCauseLabel(g.cause)),
                 grade: "B", gainMin: 9, timeliness: 0.95, slot: "todayRun"))
         }
     }
@@ -177,8 +196,8 @@ func mrBuildAdvice(runs: [MRWorkout],
                                      extraHardStarts: hardRunStarts)
         if c.hard <= 1 && c.total >= 4 && (c.lastHardDaysAgo ?? Int.max) >= 2 {
             out.append(MRAdvice(key: "hrvReady",
-                text: "지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적입니다. 이번 주 강도 세션 하나 넣기 좋은 때입니다.",
-                rationale: String(format: "HRV 7일 %.0fms · 4주 기준선 %.0fms · 14일 고강도 %d회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님",
+                text: adv("지난 2주는 이지런 위주였고 수면 HRV 7일 평균이 4주 기준선 위로 안정적입니다. 이번 주 강도 세션 하나 넣기 좋은 때입니다.", "The last two weeks were mostly easy runs, and your 7-day sleep HRV average is steadily above its 4-week baseline. A good week to add one quality session.", ja: "直近2週間はイージーラン中心で、睡眠中HRVの7日平均が4週の基準線より上で安定しています。今週は強度練習を1回入れるのに適した時期です。"),
+                rationale: String(format: adv("HRV 7일 %.0fms · 4주 기준선 %.0fms · 14일 고강도 %d회 · Vesterinen 2016(HRV 기반 강도 조절) · 회복 지표이지 체력 지표는 아님", "HRV 7-day %.0f ms · 4-wk baseline %.0f ms · %d hard runs in 14 days · Vesterinen 2016 (HRV-guided training) · a recovery marker, not a fitness marker", ja: "HRV 7日 %.0fms · 4週基準線 %.0fms · 14日間の高強度%d回 · Vesterinen 2016(HRVに基づく強度調整) · 回復の指標であり体力の指標ではない"),
                                   t.sevenDayMean, t.baseline, c.hard),
                 grade: "B", gainMin: 3, timeliness: 0.6, slot: "todayRun"))
         }
@@ -208,16 +227,16 @@ func mrBuildAdvice(runs: [MRWorkout],
                 //   인과 근거가 약해 등급 B로 내려간 항목이다.
                 //   근거가 약한 걸 제일 아프게 말하면 안 된다.
                 let phrase = easy == 0
-                    ? "최근 4주는 대부분 템포에 가까운 날이었습니다"
-                    : "최근 4주 \(hrRuns.count)회 중 \(easy)회가 유산소 구간이었습니다"
+                    ? adv("최근 4주는 대부분 템포에 가까운 날이었습니다", "Most of the last 4 weeks were close to tempo effort", ja: "直近4週はほとんどがテンポに近い日でした")
+                    : adv("최근 4주 \(hrRuns.count)회 중 \(easy)회가 유산소 구간이었습니다", "\(easy) of \(hrRuns.count) runs in the last 4 weeks were in the aerobic zone", ja: "直近4週の\(hrRuns.count)回のうち\(easy)回が有酸素域でした")
                 let intervalNote = intervals > 0
-                    ? "(인터벌 \(intervals)회는 따로 세었습니다) "
+                    ? adv("(인터벌 \(intervals)회는 따로 세었습니다) ", "(\(intervals) interval sessions counted separately) ", ja: "(インターバル\(intervals)回は別に数えました)")
                     : ""
                 out.append(MRAdvice(key: "easyRatio",
-                    text: "\(phrase). \(intervalNote)주에 한 번만 더 느리게 잡아두면 다리가 오래 갑니다. "
-                        + "강도 분포를 바꾸면 기록이 좋아진다는 직접 근거는 아직 없지만, "
-                        + "낮은 강도가 몸에 부담을 덜 주는 것은 분명합니다.",
-                    rationale: String(format: "LT1 추정 %.0f±%.0fbpm 기준(15°C 기준 심박으로 비교) · 인터벌 %d회 제외 · 인과관계 미확인(Rosenblat 2025)",
+                    text: adv("\(phrase). \(intervalNote)주에 한 번만 더 느리게 잡아두면 다리가 오래 갑니다. 강도 분포를 바꾸면 기록이 좋아진다는 직접 근거는 아직 없지만, 낮은 강도가 몸에 부담을 덜 주는 것은 분명합니다.",
+                              "\(phrase). \(intervalNote)Making just one more run a week slower keeps your legs going longer. There's no direct evidence yet that changing your intensity mix improves race times, but lower intensity clearly puts less strain on the body.",
+                              ja: "\(phrase)。\(intervalNote)週に1回だけでもゆっくり走る日を増やすと、脚が長持ちします。強度の配分を変えると記録が良くなるという直接の根拠はまだありませんが、低い強度が体への負担を減らすのは確かです。"),
+                    rationale: String(format: adv("LT1 추정 %.0f±%.0fbpm 기준(15°C 기준 심박으로 비교) · 인터벌 %d회 제외 · 인과관계 미확인(Rosenblat 2025)", "Estimated LT1 %.0f±%.0f bpm (compared at 15°C-adjusted HR) · %d intervals excluded · causality unconfirmed (Rosenblat 2025)", ja: "推定LT1 %.0f±%.0fbpm基準(15°C換算心拍で比較) · インターバル%d回を除外 · 因果関係は未確認(Rosenblat 2025)"),
                                       lt1.value, phys.lt1SD, intervals),
                     grade: "B", gainMin: 3, timeliness: 0.15, slot: "weekly"))
             }
@@ -251,16 +270,16 @@ func mrBuildAdvice(runs: [MRWorkout],
     if suppression == nil, !verdict.triggered, late.dominant == .legs {
         out.append(MRAdvice(key: "durability",
             text: late.latestIsTodayAndDominant
-                ? "오늘 롱런도 후반에 다리가 먼저 지쳤습니다. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요."
-                : "최근 롱런 후반에 심박은 버티는데 폼이 먼저 무거워지는 패턴이 반복됐습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.",
-            rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 폼이 평소 범위 밖으로 무거워짐(심박 효율은 유지) · Blagrove 2018 메타분석(근력·플라이오 → 경제성)",
+                ? adv("오늘 롱런도 후반에 다리가 먼저 지쳤습니다. 최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번이 그랬습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.", "Your legs tired first late in today's long run too — \(late.dominantCount) of your last \(late.evaluated) long runs went that way. Rather than forcing more distance, keep stacking easy long runs and add heavy strength work and jumps.", ja: "今日のロング走も後半に脚が先に疲れました。直近のロング走\(late.evaluated)回のうち\(late.dominantCount)回がそうでした。距離を無理に伸ばすより、楽なロング走を継続して積み、重めの筋力トレーニングとジャンプ系の運動を加えてみてください。")
+                : adv("최근 롱런 후반에 심박은 버티는데 폼이 먼저 무거워지는 패턴이 반복됐습니다. 거리를 무리하게 늘리기보다 편한 롱런을 꾸준히 쌓고, 무거운 근력운동과 점프 운동을 더해 보세요.", "Late in recent long runs, your heart rate held but your form got heavier first, again and again. Rather than forcing more distance, keep stacking easy long runs and add heavy strength work and jumps.", ja: "最近のロング走の後半で、心拍は持ちこたえるのにフォームが先に重くなるパターンが繰り返されました。距離を無理に伸ばすより、楽なロング走を継続して積み、重めの筋力トレーニングとジャンプ系の運動を加えてみてください。"),
+            rationale: adv("최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 폼이 평소 범위 밖으로 무거워짐(심박 효율은 유지) · Blagrove 2018 메타분석(근력·플라이오 → 경제성)", "\(late.dominantCount) of \(late.evaluated) long runs in 8 weeks: late form heavier than usual range (HR efficiency held) · Blagrove 2018 meta-analysis (strength/plyometrics → economy)", ja: "直近8週のロング走\(late.evaluated)回のうち\(late.dominantCount)回で後半のフォームが普段の範囲外に重くなった(心拍効率は維持) · Blagrove 2018メタ分析(筋力・プライオ → ランニングエコノミー)"),
             grade: "B", gainMin: 6, timeliness: late.latestIsTodayAndDominant ? 0.8 : 0.4,
             slot: late.latestIsTodayAndDominant ? "todayRun" : "weekly",
             exercises: [
-                "근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개",
-                "무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회",
-                "점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내",
-                "롱런 다음날은 피하고, 이지런 날에",
+                adv("근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개", "Strength 2×/week, 20–30 min — 2–3 of squats, deadlifts, single-leg work, calf raises", ja: "筋力トレーニング週2回20~30分 — スクワット・デッドリフト・片脚種目・カーフレイズから2~3種目"),
+                adv("무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회", "Heavy = a weight that's hard by 8 reps or fewer; 3–5 reps per set", ja: "重い重量 = 8回以下できつくなる重さ、1セット3~5回"),
+                adv("점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내", "Jumps — one of hops in place, bounding, or hill sprints, under 10 min", ja: "ジャンプ — その場ホップ・バウンディング・坂ダッシュのどれか1つ、10分以内"),
+                adv("롱런 다음날은 피하고, 이지런 날에", "Avoid the day after a long run; do it on an easy-run day", ja: "ロング走の翌日は避け、イージーランの日に"),
             ]))
     }
     if suppression == nil, verdict.triggered {
@@ -270,21 +289,21 @@ func mrBuildAdvice(runs: [MRWorkout],
         var timeliness: Double
         if verdict.latestPositiveIsToday {
             slot = "todayRun"; timeliness = 0.8
-            text = "오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌습니다. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴입니다. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있습니다."
+            text = adv("오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌습니다. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴입니다. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있습니다.", "Your cadence dropped \(dropStr)% late in today's long run — \(verdict.positive) of your last \(verdict.evaluated) long runs did the same. It's the pattern of steps slowing as legs tire. Heavy strength work and jumps can help delay it.", ja: "今日のロング走の後半にケイデンスが\(dropStr)%落ちました。直近のロング走\(verdict.evaluated)回のうち\(verdict.positive)回がそうでした。脚が疲れるとピッチが落ちるパターンです。重い重量の筋力トレーニングとジャンプ系の運動が、これを遅らせるのに役立つことがあります。")
         } else {
             slot = "weekly"; timeliness = 0.4
-            text = "최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐습니다. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다."
+            text = adv("최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐습니다. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다.", "Your steps have repeatedly slowed late in recent long runs. Heavy strength work and jumps help hold your late pace.", ja: "最近のロング走の後半でピッチが落ちるパターンが繰り返されました。重い重量の筋力トレーニングとジャンプ系の運動が、後半のペースを保つのに役立ちます。")
         }
         if strengthPerWeek < 1.0 { timeliness += 0.1 }
         out.append(MRAdvice(key: "durability", text: text,
-            rationale: String(format: "최근 8주 롱런 %d회 중 %d회 후반 케이던스 ≥3%%↓ · Blagrove 2018 메타분석(근력·플라이오 → 경제성) · 3%% 임계는 임의",
+            rationale: String(format: adv("최근 8주 롱런 %d회 중 %d회 후반 케이던스 ≥3%%↓ · Blagrove 2018 메타분석(근력·플라이오 → 경제성) · 3%% 임계는 임의", "%d long runs in 8 weeks, %d with late cadence down ≥3%% · Blagrove 2018 meta-analysis (strength/plyometrics → economy) · the 3%% threshold is arbitrary", ja: "直近8週のロング走%d回のうち%d回で後半ケイデンス3%%以上低下 · Blagrove 2018メタ分析(筋力・プライオ → ランニングエコノミー) · 3%%の閾値は任意"),
                               verdict.evaluated, verdict.positive),
             grade: "B", gainMin: 6, timeliness: timeliness, slot: slot,
             exercises: [
-                "근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개",
-                "무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회",
-                "점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내",
-                "롱런 다음날은 피하고, 이지런 날에",
+                adv("근력 주 2회 20~30분 — 스쿼트·데드리프트·한발 운동·카프 레이즈 중 2~3개", "Strength 2×/week, 20–30 min — 2–3 of squats, deadlifts, single-leg work, calf raises", ja: "筋力トレーニング週2回20~30分 — スクワット・デッドリフト・片脚種目・カーフレイズから2~3種目"),
+                adv("무거운 무게 = 8회 이하로 힘든 무게, 세트당 3~5회", "Heavy = a weight that's hard by 8 reps or fewer; 3–5 reps per set", ja: "重い重量 = 8回以下できつくなる重さ、1セット3~5回"),
+                adv("점프 — 제자리 홉·바운딩·언덕 스프린트 중 하나, 10분 이내", "Jumps — one of hops in place, bounding, or hill sprints, under 10 min", ja: "ジャンプ — その場ホップ・バウンディング・坂ダッシュのどれか1つ、10分以内"),
+                adv("롱런 다음날은 피하고, 이지런 날에", "Avoid the day after a long run; do it on an easy-run day", ja: "ロング走の翌日は避け、イージーランの日に"),
             ]))
     }
 
@@ -300,12 +319,12 @@ func mrBuildAdvice(runs: [MRWorkout],
     if suppression == nil, verdict.positive == 0,
        let s = cadenceShift, s.metric.key == "cadence", s.isReal, s.delta < 0 {
         out.append(MRAdvice(key: "cadenceCue",
-            text: String(format: "같은 페이스에서 케이던스가 3개월 새 %.0f spm 내려갔습니다. 이지런 한 번에 10분만 평소보다 5%% 빠른 발걸음으로 달려보세요.", abs(s.delta)),
-            rationale: String(format: "MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011 (+5~10%% 케이던스)", s.delta, s.mdc),
+            text: String(format: adv("같은 페이스에서 케이던스가 3개월 새 %.0f spm 내려갔습니다. 이지런 한 번에 10분만 평소보다 5%% 빠른 발걸음으로 달려보세요.", "At the same pace, your cadence has dropped %.0f spm over 3 months. On one easy run, try 10 minutes at a step rate 5%% quicker than usual.", ja: "同じペースでケイデンスが3か月で%.0f spm下がりました。イージーランの中で10分だけ、普段より5%%速いピッチで走ってみてください。"), abs(s.delta)),
+            rationale: String(format: adv("MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011 (+5~10%% 케이던스)", "MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011 (+5–10%% cadence)", ja: "MRFormShift cadence Δ=%.1f spm (MDC %.1f) · Van Hooren 2024 r=−0.20 · Heiderscheit 2011(ケイデンス+5~10%%)"), s.delta, s.mdc),
             grade: "B", gainMin: 2, timeliness: 0.3, slot: "weekly",
             exercises: [
-                "이지런 중 10분, 메트로놈 앱을 평소 케이던스 +5%로",
-                "보폭을 줄인다는 느낌으로. 속도는 올리지 않는다",
+                adv("이지런 중 10분, 메트로놈 앱을 평소 케이던스 +5%로", "10 min during an easy run, metronome app at your usual cadence +5%", ja: "イージーラン中の10分間、メトロノームアプリを普段のケイデンス+5%に"),
+                adv("보폭을 줄인다는 느낌으로. 속도는 올리지 않는다", "Think shorter steps — don't speed up", ja: "歩幅を狭める感覚で。スピードは上げない"),
             ]))
     }
 
@@ -321,27 +340,27 @@ func mrBuildAdvice(runs: [MRWorkout],
         switch late.dominant {
         case .cardio?:
             out.append(MRAdvice(key: "lateCardio",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 같은 속도를 내는 데 심박이 더 들었습니다. 다리보다 심박이 먼저 한계에 닿는 패턴입니다. 롱런 중반 페이스를 10초/km 늦추고, 주 1회 템포 20분으로 같은 페이스의 심박을 낮춰 보세요. 더운 날엔 수분·나트륨도 챙기세요.",
-                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 중반 대비 후반 심박 효율 5%↑ 하락 · Friel 유산소 디커플링 5% 관례 · Maunder 2021(내구성)",
+                text: adv("최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 같은 속도를 내는 데 심박이 더 들었습니다. 다리보다 심박이 먼저 한계에 닿는 패턴입니다. 롱런 중반 페이스를 10초/km 늦추고, 주 1회 템포 20분으로 같은 페이스의 심박을 낮춰 보세요. 더운 날엔 수분·나트륨도 챙기세요.", "In \(late.dominantCount) of your last \(late.evaluated) long runs, holding the same speed late cost more heart rate — your heart rate tends to hit its limit before your legs. Slow the middle of your long runs by 10 s/km, and add a weekly 20-minute tempo to lower your heart rate at the same pace. On hot days, keep up fluids and sodium too.", ja: "直近のロング走\(late.evaluated)回のうち\(late.dominantCount)回で、後半に同じ速度を出すのにより多くの心拍が必要でした。脚より心拍が先に限界に達するパターンです。ロング走の中盤ペースを10秒/km落とし、週1回20分のテンポ走で同じペースの心拍を下げてみてください。暑い日は水分・ナトリウムも補給してください。"),
+                rationale: adv("최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 중반 대비 후반 심박 효율 5%↑ 하락 · Friel 유산소 디커플링 5% 관례 · Maunder 2021(내구성)", "\(late.dominantCount) of \(late.evaluated) long runs in 8 weeks: late HR efficiency down 5%+ vs mid · Friel 5% aerobic decoupling convention · Maunder 2021 (durability)", ja: "直近8週のロング走\(late.evaluated)回のうち\(late.dominantCount)回で中盤比の後半心拍効率が5%以上低下 · Friel 有酸素デカップリング5%の慣例 · Maunder 2021(耐久力)"),
                 grade: "B", gainMin: 5, timeliness: slotToday ? 0.75 : 0.35, slot: slotToday ? "todayRun" : "weekly",
                 exercises: [
-                    "롱런 — 중반 페이스를 평소보다 10초/km 늦게, 후반 심박을 비교",
-                    "템포 주 1회 — 편하게 힘든 강도 20분(대화는 짧은 문장만)",
-                    "더운 날 — 출발 전 수분, 60분 넘으면 나트륨 음료",
+                    adv("롱런 — 중반 페이스를 평소보다 10초/km 늦게, 후반 심박을 비교", "Long run — middle section 10 s/km slower than usual, then compare late HR", ja: "ロング走 — 中盤のペースを普段より10秒/km遅くし、後半の心拍を比較"),
+                    adv("템포 주 1회 — 편하게 힘든 강도 20분(대화는 짧은 문장만)", "Tempo once a week — 20 min at comfortably hard (short sentences only)", ja: "テンポ走週1回 — 「楽にきつい」強度で20分(会話は短い文だけ)"),
+                    adv("더운 날 — 출발 전 수분, 60분 넘으면 나트륨 음료", "Hot days — drink before you start; sodium drink if over 60 min", ja: "暑い日 — 出発前に水分、60分を超えるならナトリウム入り飲料"),
                 ]))
         case .combined?:
             out.append(MRAdvice(key: "lateCombined",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 심박도 더 들고 폼도 무거워졌습니다. 초반 강도가 높았거나 기본 지구력이 아직 부족할 때 나오는 패턴입니다. 초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 보세요.",
-                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 심박 효율 5%↑ 하락 + 폼 평소 범위 밖 · Maunder 2021(내구성)",
+                text: adv("최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반에 심박도 더 들고 폼도 무거워졌습니다. 초반 강도가 높았거나 기본 지구력이 아직 부족할 때 나오는 패턴입니다. 초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 보세요.", "In \(late.dominantCount) of your last \(late.evaluated) long runs, heart rate cost rose and form got heavier late. It's a pattern seen when the start is too hard or base endurance is still building. Start easier, and build steady weekly volume rather than one big long run.", ja: "直近のロング走\(late.evaluated)回のうち\(late.dominantCount)回で、後半に心拍も多く必要になり、フォームも重くなりました。序盤の強度が高かったり、基礎持久力がまだ足りないときに出るパターンです。序盤をもっと楽に入り、長いロング走1回より週間距離を継続して積んでみてください。"),
+                rationale: adv("최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 심박 효율 5%↑ 하락 + 폼 평소 범위 밖 · Maunder 2021(내구성)", "\(late.dominantCount) of \(late.evaluated) long runs in 8 weeks: late HR efficiency down 5%+ and form outside usual range · Maunder 2021 (durability)", ja: "直近8週のロング走\(late.evaluated)回のうち\(late.dominantCount)回で後半心拍効率が5%以上低下+フォームが普段の範囲外 · Maunder 2021(耐久力)"),
                 grade: "C", gainMin: 4, timeliness: slotToday ? 0.7 : 0.3, slot: slotToday ? "todayRun" : "weekly",
                 exercises: [
-                    "롱런 첫 20분은 이지 페이스보다도 느리게",
-                    "한 주 거리를 한 번에 몰지 말고 3~4회로 나눠 꾸준히",
+                    adv("롱런 첫 20분은 이지 페이스보다도 느리게", "First 20 min of a long run even slower than easy pace", ja: "ロング走の最初の20分はイージーペースよりもさらにゆっくり"),
+                    adv("한 주 거리를 한 번에 몰지 말고 3~4회로 나눠 꾸준히", "Spread weekly distance over 3–4 runs instead of one big day", ja: "1週間の距離を1回にまとめず、3~4回に分けて継続的に"),
                 ]))
         case .held? where plans.isEmpty:
             out.append(MRAdvice(key: "lateHeld",
-                text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반까지 심박 효율과 폼을 지켰습니다. 다음 단계는 지친 상태에서 페이스를 지키는 연습입니다 — 롱런 마지막 15분을 목표 대회 페이스로 올려 보세요.",
-                rationale: "최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 유지(심박 효율 하락 5% 미만 · 폼 평소 범위) · 롱런 후반 대회 페이스 삽입은 관행(통제 연구 없음)",
+                text: adv("최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 후반까지 심박 효율과 폼을 지켰습니다. 다음 단계는 지친 상태에서 페이스를 지키는 연습입니다 — 롱런 마지막 15분을 목표 대회 페이스로 올려 보세요.", "In \(late.dominantCount) of your last \(late.evaluated) long runs, you held HR efficiency and form to the end. The next step is practicing pace while tired — lift the last 15 minutes of your long run to goal race pace.", ja: "直近のロング走\(late.evaluated)回のうち\(late.dominantCount)回で、後半まで心拍効率とフォームを保ちました。次のステップは疲れた状態でペースを保つ練習です — ロング走の最後の15分を目標レースペースに上げてみてください。"),
+                rationale: adv("최근 8주 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 유지(심박 효율 하락 5% 미만 · 폼 평소 범위) · 롱런 후반 대회 페이스 삽입은 관행(통제 연구 없음)", "\(late.dominantCount) of \(late.evaluated) long runs in 8 weeks held late (HR efficiency loss under 5% · form in usual range) · race pace late in long runs is common practice (no controlled studies)", ja: "直近8週のロング走\(late.evaluated)回のうち\(late.dominantCount)回で後半を維持(心拍効率の低下5%未満 · フォームは普段の範囲) · ロング走後半にレースペースを入れるのは慣行(対照研究なし)"),
                 grade: "C", gainMin: 3, timeliness: 0.25, slot: "weekly"))
         default:
             break
@@ -371,13 +390,13 @@ func mrBuildAdvice(runs: [MRWorkout],
     // ⚠ 보급 기록이 없으므로 "가능성"으로만 말한다 — 페이스와 심박이 함께 내려간 90분 이상 롱런에서만 진단된다.
     if late.dominant == .energy, !out.contains(where: { $0.key == "gut" }) {
         out.append(MRAdvice(key: "lateEnergy",
-            text: "최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 90분이 지나면 페이스와 심박이 함께 내려갔습니다. 에너지가 떨어졌을 가능성이 있습니다. 90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보고, 초반 10분은 목표보다 느리게 시작해 보세요.",
-            rationale: "최근 8주 90분+ 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 페이스 20초/km↑ 느려짐 + 심박 3bpm↓ (보급 기록 없음, 추정) · ACSM/AND/DC 2016(1~2.5시간 30~60 g/h)",
+            text: adv("최근 롱런 \(late.evaluated)번 중 \(late.dominantCount)번, 90분이 지나면 페이스와 심박이 함께 내려갔습니다. 에너지가 떨어졌을 가능성이 있습니다. 90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보고, 초반 10분은 목표보다 느리게 시작해 보세요.", "In \(late.dominantCount) of your last \(late.evaluated) long runs, pace and heart rate dropped together after 90 minutes — you may have run low on energy. On long runs over 90 minutes, take 30–60 g of carbs per hour starting at 30–40 minutes, and start the first 10 minutes slower than goal.", ja: "直近のロング走\(late.evaluated)回のうち\(late.dominantCount)回で、90分を過ぎるとペースと心拍が一緒に下がりました。エネルギー切れの可能性があります。90分を超えるロング走では30~40分から1時間あたり30~60gの炭水化物を分けて摂り、最初の10分は目標より遅く始めてみてください。"),
+            rationale: adv("최근 8주 90분+ 롱런 \(late.evaluated)회 중 \(late.dominantCount)회 후반 페이스 20초/km↑ 느려짐 + 심박 3bpm↓ (보급 기록 없음, 추정) · ACSM/AND/DC 2016(1~2.5시간 30~60 g/h)", "\(late.dominantCount) of \(late.evaluated) 90+ min long runs in 8 weeks: late pace 20+ s/km slower and HR down 3+ bpm (no fueling data, estimated) · ACSM/AND/DC 2016 (30–60 g/h for 1–2.5 h)", ja: "直近8週の90分以上のロング走\(late.evaluated)回のうち\(late.dominantCount)回で後半ペースが20秒/km以上低下+心拍3bpm以上低下(補給記録なし、推定) · ACSM/AND/DC 2016(1~2.5時間で30~60 g/h)"),
             grade: "B", gainMin: 6, timeliness: slotToday ? 0.75 : 0.4, slot: slotToday ? "todayRun" : "weekly",
             exercises: [
-                "젤 1개 ≈ 탄수화물 22~25g — 1시간에 1~2개",
-                "첫 보급은 30~40분, 이후 20~30분 간격",
-                "물과 함께. 레이스에 쓸 제품으로 연습",
+                adv("젤 1개 ≈ 탄수화물 22~25g — 1시간에 1~2개", "One gel ≈ 22–25 g carbs — 1–2 per hour", ja: "ジェル1個 ≈ 炭水化物22~25g — 1時間に1~2個"),
+                adv("첫 보급은 30~40분, 이후 20~30분 간격", "First fuel at 30–40 min, then every 20–30 min", ja: "最初の補給は30~40分、その後20~30分間隔"),
+                adv("물과 함께. 레이스에 쓸 제품으로 연습", "With water. Practice with the product you'll race with", ja: "水と一緒に。レースで使う製品で練習"),
             ]))
     }
 
