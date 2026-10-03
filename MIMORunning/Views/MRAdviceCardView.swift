@@ -17,7 +17,7 @@ struct MRAdviceCardView: View {
     var body: some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text(AppLanguage.shared.s("제안", "Suggestions"))
+                Text(AppLanguage.shared.s("제안", "Suggestions", ja: "提案"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.6))
                     .textCase(.uppercase)

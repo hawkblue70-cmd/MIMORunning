@@ -36,8 +36,8 @@ final class MyPlannedRace {
 
     var formattedDistances: String {
         let parts = distancesKm.map { km -> String in
-            if km == 42.195  { return AppLanguage.shared.s("풀", "Full") }
-            if km == 21.0975 { return AppLanguage.shared.s("하프", "Half") }
+            if km == 42.195  { return AppLanguage.shared.s("풀", "Full", ja: "フル") }
+            if km == 21.0975 { return AppLanguage.shared.s("하프", "Half", ja: "ハーフ") }
             let i = Int(km)
             return km == Double(i) ? "\(i)K" : "\(km)K"
         }

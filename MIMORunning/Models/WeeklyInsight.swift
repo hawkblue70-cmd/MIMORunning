@@ -86,15 +86,35 @@ struct WeeklyPattern {
     var enShortNames: [String] = []  // 헤드라인 이름 풀 (영어)
     let koTemplates: [String]
     let enTemplates: [String]
+    var jaShortNames: [String] = []  // 헤드라인 이름 풀 (일본어) — 비면 영어
+    var jaTemplates: [String] = []   // 비면 영어
 
     func template(for weekOfYear: Int, isEnglish: Bool) -> String {
-        let t = isEnglish ? enTemplates : koTemplates
+        template(for: weekOfYear, lang: isEnglish ? .en : .ko)
+    }
+
+    func template(for weekOfYear: Int, lang: AppLanguage.Lang) -> String {
+        let t: [String]
+        switch lang {
+        case .ko: t = koTemplates
+        case .en: t = enTemplates
+        case .ja: t = jaTemplates.isEmpty ? enTemplates : jaTemplates
+        }
         guard !t.isEmpty else { return "" }
         return t[weekOfYear % t.count]
     }
 
     func shortName(for weekOfYear: Int, isEnglish: Bool = false) -> String {
-        let names = isEnglish && !enShortNames.isEmpty ? enShortNames : shortNames
+        shortName(for: weekOfYear, lang: isEnglish ? .en : .ko)
+    }
+
+    func shortName(for weekOfYear: Int, lang: AppLanguage.Lang) -> String {
+        let names: [String]
+        switch lang {
+        case .ko: names = shortNames
+        case .en: names = enShortNames.isEmpty ? shortNames : enShortNames
+        case .ja: names = !jaShortNames.isEmpty ? jaShortNames : (enShortNames.isEmpty ? shortNames : enShortNames)
+        }
         guard !names.isEmpty else { return "" }
         return names[weekOfYear % names.count]
     }
@@ -131,10 +151,17 @@ struct WeeklySummary {
 
     /// 폴백 2~3문장 템플릿
     func template(for weekOfYear: Int, isEnglish: Bool) -> String {
-        let s1 = isEnglish ? enCompositionSentence(weekOfYear) : koCompositionSentence(weekOfYear)
-        let s2 = isEnglish ? enBodySignalSentence(weekOfYear) : koBodySignalSentence(weekOfYear)
-        let s3 = isEnglish ? enFlowSentence(weekOfYear) : koFlowSentence(weekOfYear)
-        return [s1, s2, s3].filter { !$0.isEmpty }.joined(separator: " ")
+        template(for: weekOfYear, lang: isEnglish ? .en : .ko)
+    }
+
+    func template(for weekOfYear: Int, lang: AppLanguage.Lang) -> String {
+        let parts: [String]
+        switch lang {
+        case .ko: parts = [koCompositionSentence(weekOfYear), koBodySignalSentence(weekOfYear), koFlowSentence(weekOfYear)]
+        case .en: parts = [enCompositionSentence(weekOfYear), enBodySignalSentence(weekOfYear), enFlowSentence(weekOfYear)]
+        case .ja: parts = [jaCompositionSentence(weekOfYear), jaBodySignalSentence(weekOfYear), jaFlowSentence(weekOfYear)]
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: lang == .ja ? "" : " ")
     }
 
     // MARK: AI 사실 문자열
@@ -238,6 +265,88 @@ struct WeeklySummary {
             return ["주간 거리를 조절하며 가고 있습니다.",
                     "이번 2주는 거리를 줄이며 달렸습니다.",
                     "쉬어가는 흐름으로 달린 2주였습니다."][p]
+        default:
+            return ""
+        }
+    }
+
+
+    // MARK: 일본어 템플릿 문장
+
+    private func jaCompositionSentence(_ woy: Int) -> String {
+        guard totalRunCount > 0 else { return "" }
+        let variants: [String]
+        if intenseRunCount >= 3 {
+            variants = [
+                "インターバル・テンポを\(intenseRunCount)回織り交ぜた\(totalRunCount)回の構成でした。",
+                "高強度の練習を\(intenseRunCount)回入れた\(totalRunCount)回の2週間でした。",
+                "\(totalRunCount)回のうち\(intenseRunCount)回をインターバル・テンポにあてた2週間です。"
+            ]
+        } else if intenseRunCount >= 1 {
+            variants = [
+                "イージーラン中心にインターバル\(intenseRunCount)回を織り交ぜた\(totalRunCount)回でした。",
+                "\(totalRunCount)回走る間にインターバル・テンポが\(intenseRunCount)回ありました。",
+                "ほとんどがイージーランで、\(intenseRunCount)回のインターバルを含む構成です。"
+            ]
+        } else {
+            variants = [
+                "イージーラン中心に\(totalRunCount)回走った2週間でした。",
+                "楽なペースで\(totalRunCount)回積み重ねた2週間です。",
+                "\(totalRunCount)回ともイージーラン中心で続きました。"
+            ]
+        }
+        let base = variants[woy % variants.count]
+        return hasLongRun ? base + "ロング走も1回ありました。" : base
+    }
+
+    private func jaBodySignalSentence(_ woy: Int) -> String {
+        let p = (woy + 1) % 3
+        switch bodySignalKey {
+        case "fatigueSign":
+            return ["接地時間と上下動が増えました。体が疲労のサインを出しているのかもしれません。",
+                    "フォームが少し重くなりました。軽く走る日を入れてみるのもよいです。",
+                    "接地が長くなり、上下動も大きくなりました。休む日が助けになるかもしれません。"][p]
+        case "overstride":
+            return ["ストライドが伸びてケイデンスが下がりました。足が体の真下に着く感覚を意識してみてください。",
+                    "着地が前に出ています。ピッチを少し上げると自然に整うかもしれません。",
+                    "ストライドが先行して接地が長くなりました。足が膝の下に来る感覚で走ってみてください。"][p]
+        case "economyPlus":
+            return ["走り方が少しずつ変わってきています。体がリズムをつかんでいく流れです。",
+                    "フォームが安定して続いています。体が走ることに慣れてきています。",
+                    "走りの流れが定着してきています。"][p]
+        case "propulsion":
+            return ["ストライドが伸び、推進力がついてきている流れです。",
+                    "押し出す力がつくにつれてストライドが広がりました。",
+                    "ケイデンスを保ったままストライドが伸びました。走りが力強くなっています。"][p]
+        case "turnover":
+            return ["ケイデンスが上がり、小刻みなリズムがつかめてきています。",
+                    "ピッチが速くなり、リズムが体になじんできています。",
+                    "ピッチが速くなるにつれてフォームが安定しています。"][p]
+        case "compositionChange":
+            return ["練習構成が変わって指標が揺れるのは自然な流れです。",
+                    "構成の変化に体が適応中なので、指標の変動は自然です。",
+                    "高強度が増えると指標が揺れます。体が適応している過程です。"][p]
+        default:
+            return ""
+        }
+    }
+
+    private func jaFlowSentence(_ woy: Int) -> String {
+        if streakWeeks >= 3 {
+            return ["\(streakWeeks)週目に入った流れです。",
+                    "\(streakWeeks)週連続で走っています。",
+                    "着実に\(streakWeeks)週を続けてきました。"][woy % 3]
+        }
+        let p = woy % 3
+        switch weekDistanceTrend {
+        case .up:
+            return ["週間距離が少しずつ増える方向です。",
+                    "走る距離が着実に積み上がっています。",
+                    "週間距離が増えている流れです。"][p]
+        case .down:
+            return ["週間距離を調整しながら進んでいます。",
+                    "この2週間は距離を減らして走りました。",
+                    "ひと休みする流れで走った2週間でした。"][p]
         default:
             return ""
         }
@@ -376,6 +485,15 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Training intensity changed — give the trend a little more time to settle.",
                 "Harder sessions this 2 weeks. Metric changes are a sign of adaptation.",
                 "A more intense stretch. Recovery quality matters more than the numbers right now."
+            ],
+            jaShortNames: ["強弱のある週", "練習が濃くなった週"],
+            jaTemplates: [
+                "この2週間は強い練習が増えました。指標が揺れるのは自然な反応です。",
+                "練習の構成が変わると体も適応中です。数字より感覚に耳を傾けてみてください。",
+                "高強度の練習が増えた2週間でした。回復にもう少し気を配るとよいです。",
+                "練習の強度が変わると指標が揺れます。推移をもう少し見守ってください。",
+                "この2週間は練習が濃くなりました。指標の変化は体が適応しているサインです。",
+                "強い練習が入った週でした。指標の解釈より回復の質を先に大切にしましょう。"
             ]
         ))
     }
@@ -405,6 +523,16 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Pace up, heart rate steady",
                 "More speed on the same heartbeats",
                 "Heart rate and pace finding a better balance"
+            ],
+            jaShortNames: ["速くなるラン", "ペースが上がるラン", "楽になったラン"],
+            jaTemplates: [
+                "心拍は落ち着いたままペースが速くなりました",
+                "同じ努力でより速く走れています",
+                "心肺がペースについてきています",
+                "ペースが上がり、心拍は安定しました",
+                "同じ心拍でより速く進んでいます",
+                "心拍とペースのバランスがよくなっています",
+                "ペースが自然に速くなっています"
             ]
         ))
     }
@@ -431,6 +559,13 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Running \(actual)/km at \(temp)°C this week. Same effort at 15°C: around \(ref).",
                 "\(actual)/km in this heat. Strip away the temperature and you're at \(ref).",
                 "\(temp)°C this week, \(actual)/km avg — same effort at 15°C would be \(ref).",
+            ],
+            jaShortNames: ["暑い日のラン", "気温補正ペース"],
+            jaTemplates: [
+                "直近7日の平均は\(actual)/km、気温は\(temp)°Cでした。15°Cなら\(ref)ほどです。",
+                "\(temp)°Cで\(actual)/kmで走りました。同じ体で15°Cなら\(ref)くらいです。",
+                "この暑さで\(actual)/km。気温の影響を除くと\(ref)の水準です。",
+                "\(temp)°Cの直近7日、平均\(actual)/km — 同じ努力なら15°Cで\(ref)です。"
             ]
         ))
     }
@@ -454,6 +589,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Heart rate drifted \(actual) bpm/10 min in your long run at \(temp)°C. Usual: \(ref).",
                 "Long run at \(temp)°C: \(actual) bpm drift per 10 min. Reference (15°C): \(ref) bpm.",
                 "This week's long run at \(temp)°C showed \(actual) bpm/10 min drift — baseline \(ref).",
+            ],
+            jaShortNames: ["ドリフト注意", "心拍ドリフト"],
+            jaTemplates: [
+                "長いランで心拍が10分あたり\(actual)bpm上がりました。\(temp)°Cでの普段は\(ref)ほどです。",
+                "\(temp)°Cのロング走で10分ごとに\(actual)bpmずつ心拍が上がりました。15°C基準では\(ref)bpmです。",
+                "今週のロング走(\(temp)°C)の心拍ドリフトは10分あたり\(actual)bpmでした。基準\(ref)bpm。"
             ]
         ))
     }
@@ -463,6 +604,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         let secs  = Int(abs(delta).rounded())
         let dir   = delta > 0 ? "빠릅니다" : "느립니다"
         let enDir = delta > 0 ? "faster" : "slower"
+        let jaDir = delta > 0 ? "速いです" : "遅いです"
         patterns.append(WeeklyPattern(
             priority: 23, key: "hrPaceWeek",
             factSummary: "같은 심박에서 8주 전보다 \(secs)초 \(dir)",
@@ -477,6 +619,12 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "At the same heart rate, you're \(secs) sec/km \(enDir) than the past 8 weeks.",
                 "\(secs) sec/km \(enDir) at the same heart rate — aerobic efficiency shifted.",
                 "Same heart rate, \(secs) sec/km \(enDir) vs 8 weeks ago.",
+            ],
+            jaShortNames: ["心拍基準のスピード", "有酸素効率"],
+            jaTemplates: [
+                "同じ心拍で直近8週より\(secs)秒\(jaDir)。",
+                "心拍が同じでも\(secs)秒\(jaDir)。有酸素効率が変わりました。",
+                "8週前と同じ心拍で、速度が\(secs)秒\(jaDir)。"
             ]
         ))
     }
@@ -506,6 +654,16 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Cardio endurance is building up",
                 "Aerobic capacity continuing to develop",
                 "Your cardio is stepping up"
+            ],
+            jaShortNames: ["心肺が育つラン", "呼吸が整うラン"],
+            jaTemplates: [
+                "有酸素の土台が強くなっています",
+                "心肺能力が着実に上がっています",
+                "体がよりうまく走れるよう適応しています",
+                "心肺持久力が積み上がっています",
+                "有酸素能力が少しずつ伸びています",
+                "心肺がもう一段成長しています",
+                "有酸素能力が着実に上がってきています"
             ]
         ))
     }
@@ -539,6 +697,16 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "A recovery week done right",
                 "Rest weeks are training too",
                 "Two weeks of running smart, not hard"
+            ],
+            jaShortNames: ["楽になるペース", "土台が固まる時期"],
+            jaTemplates: [
+                "今日はゆっくり、明日のためのランです",
+                "ゆとりを持って走り、心拍もよく管理できました",
+                "ゆっくり走ることが速く走る力をつくります",
+                "回復しながら走った1週間でした",
+                "休む週も練習の一部です",
+                "体を大切にしながら走った2週間でした",
+                "心拍を低く保ちながら着実に走りました"
             ]
         ))
     }
@@ -563,6 +731,14 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "\(streak) weeks of running every week",
                 "\(streak) weeks without a break",
                 "Every week running for \(streak) weeks"
+            ],
+            jaShortNames: ["積み重なるラン", "続いていくラン", "実っていくラン"],
+            jaTemplates: [
+                "\(streak)週連続で走りました",
+                "\(streak)週続けて毎週走っています",
+                "休む週なく\(streak)週を続けてきました",
+                "休まず続けてきた\(streak)週です",
+                "毎週走って\(streak)週目です"
             ]
         ))
     }
@@ -589,6 +765,15 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Two solid weeks of showing up",
                 "Small consistency, big change ahead",
                 "Keep this rhythm going"
+            ],
+            jaShortNames: ["今日も一歩", "着実な2週間"],
+            jaTemplates: [
+                "この2週間、着実に走りました。積み重ねが見えています",
+                "走った日が積み重なって土台になります",
+                "継続こそ最も強い練習法です",
+                "2週間をしっかり走りきりました",
+                "小さな継続が大きな変化をつくります",
+                "このリズムを続けてみてください"
             ]
         ))
     }
@@ -615,6 +800,15 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
                 "Getting started is half the battle",
                 "Small beginnings lead to big changes",
                 "Step out today and tomorrow will be different"
+            ],
+            jaShortNames: ["一緒に走りましょう"],
+            jaTemplates: [
+                "2週間分のデータがたまると推移をお伝えします",
+                "今日走れば2週間後に変化が見えます",
+                "最初の一歩が一番難しく、一番大切です",
+                "走り始めれば半分達成です",
+                "小さな始まりが大きな変化の出発点です",
+                "今日走り出せば明日が変わります"
             ]
         ))
     }

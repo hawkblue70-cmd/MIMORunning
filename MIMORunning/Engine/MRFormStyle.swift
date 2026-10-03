@@ -302,55 +302,72 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         let gctDirKor = gs.delta < 0 ? "짧아졌습니다." : "길어졌습니다."
         let cadDirEng = cs.delta < 0 ? "dropped" : "rose"
         let gctDirEng = gs.delta < 0 ? "shortened" : "lengthened"
+        let durJa     = wks >= 12 ? "3か月続けて" : wks >= 8 ? "2か月続けて" : "\(wks)週続けて"
+        let timeJa    = isStrong ? "3か月で" : durJa
+        let cadDirJa  = cs.delta < 0 ? "下がり" : "上がり"
+        let gctDirJa  = gs.delta < 0 ? "短くなりました。" : "長くなりました。"
 
         // 1줄 — 사실
         let factKor = "같은 페이스에서 케이던스가\(timeKor) \(cadAbs)spm \(cadDirKor), 지면접촉이 \(gctAbs)ms \(gctDirKor)"
         let factEng = "At similar pace, cadence\(timeEng) \(cadDirEng) \(cadAbs) spm, contact \(gctDirEng) \(gctAbs) ms."
+        let factJa  = "同じペースでケイデンスが\(timeJa)\(cadAbs)spm\(cadDirJa)、接地時間が\(gctAbs)ms\(gctDirJa)"
 
         // 2줄 — 역학: 걸음 빈도(케이던스 방향) + 지면/공중 시간
         let strideKor: String? = abs(cs.delta) >= 1.0 ? (cs.delta > 0 ? "조금 더 잦은 걸음이 되고" : "조금 더 큰 걸음이 되고") : nil
         let strideEng: String? = abs(cs.delta) >= 1.0 ? (cs.delta > 0 ? "Steps got a little quicker" : "Steps got a little longer") : nil
+        let strideJa: String? = abs(cs.delta) >= 1.0 ? (cs.delta > 0 ? "歩みが少し細かくなり" : "一歩が少し大きくなり") : nil
         let gctDown = gs.delta < 0, airUp = airtimeDeltaMs > 0
         let elasticKor: String
         let elasticEng: String
+        let elasticJa: String
         if !gctDown && !airUp {
             elasticKor = "지면에 머무는 시간이 늘었습니다."
             elasticEng = "time on the ground went up."
+            elasticJa = "地面にいる時間が増えました。"
         } else {
             elasticKor = airUp ? "공중 시간은 \(airtimeMs)ms 늘었습니다." : "공중 시간은 \(airtimeMs)ms 줄었습니다."
             elasticEng = airUp ? "airtime rose ~\(airtimeMs) ms." : "airtime dropped ~\(airtimeMs) ms."
+            elasticJa = airUp ? "滞空時間は\(airtimeMs)ms増えました。" : "滞空時間は\(airtimeMs)ms減りました。"
         }
+        let mechJa = strideJa.map { "\($0)、\(elasticJa)" } ?? elasticJa
         let mechKor = strideKor.map { "\($0) \(elasticKor)" } ?? elasticKor
         let mechEng = strideEng.map { "\($0), and \(elasticEng)" } ?? (elasticEng.prefix(1).uppercased() + elasticEng.dropFirst())
 
         // 3줄 — 결론: 탄력(지면↓·공중↑) / 오래 딛기(지면↑·공중↓) / 그 외는 케이던스 방향
         let concKor: String
         let concEng: String
+        let concJa: String
         if gctDown && airUp {
             concKor = "같은 페이스를 더 짧은 접지로 달리고 있다는 뜻입니다."
             concEng = "At the same pace, you're spending less time on the ground."
+            concJa = "同じペースをより短い接地で走れているということです。"
         } else if !gctDown && !airUp {
             concKor = "같은 페이스를 조금 더 오래 딛고 달리고 있다는 뜻입니다."
             concEng = "At the same pace, you're spending a little longer on each footstrike."
+            concJa = "同じペースを少し長く地面に着いて走っているということです。"
         } else if cs.delta > 0 {
             concKor = "같은 페이스를 더 잦은 걸음으로 만들고 있다는 뜻입니다."
             concEng = "At the same pace, you're taking quicker steps."
+            concJa = "同じペースをより細かい歩みでつくっているということです。"
         } else {
             concKor = "같은 페이스를 더 큰 걸음으로 만들고 있다는 뜻입니다."
             concEng = "At the same pace, you're taking longer steps."
+            concJa = "同じペースをより大きな一歩でつくっているということです。"
         }
 
         // 이 러닝의 위치 — 추세 끝점(최근 3개월 잔차 평균) 대비. 러닝마다 마무리가 달라져 반복감을 줄인다.
-        var tailKor = "", tailEng = ""
+        var tailKor = "", tailEng = "", tailJa = ""
         var dropMech = false
         if let r = runCadenceResidual {
             let endpoint = cs.recentMean
             if r >= endpoint - 1 {
                 tailKor = " 이 러닝도 같은 방향입니다."
                 tailEng = " This run points the same way."
+                tailJa = "このランも同じ方向です。"
             } else if r < endpoint - 2 {
                 tailKor = " 이 러닝은 그 흐름보다 조금 느긋했습니다."
                 tailEng = " This run was a little more relaxed than that trend."
+                tailJa = "このランはその流れより少しゆったりしていました。"
             }
         } else if wks >= 8 {
             // 러닝별 값이 없고 추세가 오래 이어지면 — 이미 여러 번 본 문단이므로 사실 + 결론만
@@ -358,7 +375,8 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         }
         let korText = dropMech ? "\(factKor)\n\(concKor)\(tailKor)" : "\(factKor)\n\(mechKor)\n\(concKor)\(tailKor)"
         let engText = dropMech ? "\(factEng)\n\(concEng)\(tailEng)" : "\(factEng)\n\(mechEng)\n\(concEng)\(tailEng)"
-        let text  = L.s(korText, engText)
+        let jaText = dropMech ? "\(factJa)\n\(concJa)\(tailJa)" : "\(factJa)\n\(mechJa)\n\(concJa)\(tailJa)"
+        let text  = L.s(korText, engText, ja: jaText)
         let basis = [cs, gs].map { s in
             let strength = s.isMDCStrong ? "강" : "약"
             return L.isEnglish
@@ -477,9 +495,53 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
             }
         }
     }
+    let jaLines: [String] = capped.map { s in
+        let gctVal = "\(Int(abs(s.delta).rounded()))ms"
+        let cadVal = "\(Int(abs(s.delta).rounded()))spm"
+        if s.isMDCStrong {
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "同じペースでケイデンスが3か月で\(cadVal)上がりました。"
+                    : "同じペースでケイデンスが3か月で\(cadVal)下がりました。"
+                let l2 = s.delta > 0 ? "ピッチが速くなっているということです。" : "ピッチが遅くなっているということです。"
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "同じペースで接地時間が3か月で\(gctVal)短くなりました。"
+                    : "同じペースで接地時間が3か月で\(gctVal)長くなりました。"
+                let l2 = s.delta < 0 ? "地面からより早く離れているということです。" : "地面により長く着いているということです。"
+                return "\(l1)\n\(l2)"
+            default:
+                return s.delta > 0 ? "\(s.metric.label)が3か月で増えました。" : "\(s.metric.label)が3か月で減りました。"
+            }
+        } else {
+            let dur = s.weeksConsistent >= 12 ? "3か月続けて"
+                    : s.weeksConsistent >= 8  ? "2か月続けて"
+                    : "\(s.weeksConsistent)週続けて"
+            switch s.metric.key {
+            case "cadence":
+                let l1 = s.delta > 0
+                    ? "同じペースでケイデンスが\(dur)少しずつ上がっています。"
+                    : "同じペースでケイデンスが\(dur)少しずつ下がっています。"
+                let l2 = s.delta > 0 ? "ピッチがゆっくり速くなる傾向です。" : "ピッチがゆっくり遅くなる傾向です。"
+                return "\(l1)\n\(l2)"
+            case "gct":
+                let l1 = s.delta < 0
+                    ? "同じペースで接地時間が\(dur)少しずつ短くなっています。"
+                    : "同じペースで接地時間が\(dur)少しずつ長くなっています。"
+                let l2 = s.delta < 0 ? "地面からゆっくり早く離れるようになっている傾向です。" : "地面にゆっくり長く着くようになっている傾向です。"
+                return "\(l1)\n\(l2)"
+            default:
+                let dir = s.delta > 0 ? "増えて" : "減って"
+                return "同じペースで\(s.metric.label)が\(dur)少しずつ\(dir)います。"
+            }
+        }
+    }
     let text = L.s(
         korLines.joined(separator: "\n"),
-        engLines.joined(separator: "\n")
+        engLines.joined(separator: "\n"),
+        ja: jaLines.joined(separator: "\n")
     )
 
     let basis = capped.map { s in

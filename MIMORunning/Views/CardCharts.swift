@@ -135,7 +135,7 @@ struct CardWorkoutSeriesChart: View {
             AxisMarks(values: .automatic(desiredCount: 3)) { val in
                 AxisValueLabel {
                     if let t = val.as(Double.self) {
-                        Text(AppLanguage.shared.s("\(Int(t))분", "\(Int(t))m")).font(.system(size: 6 * labelScale)).foregroundStyle(Color.white.opacity(0.75))
+                        Text(AppLanguage.shared.s("\(Int(t))분", "\(Int(t))m", ja: "\(Int(t))分")).font(.system(size: 6 * labelScale)).foregroundStyle(Color.white.opacity(0.75))
                     }
                 }
             }
@@ -169,7 +169,7 @@ extension Array where Element == IntervalSegment {
         let label = dist >= 1000
             ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
             : "\(dist)m"
-        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+        return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)", ja: "\(label)×\(cnt)本")
     }
 }
 

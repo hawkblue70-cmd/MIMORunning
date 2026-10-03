@@ -266,9 +266,9 @@ enum MRRecovery {
         guard shift.metric.key == metric.key, shift.isReal, shift.delta > 0 else { return nil }
         let L = AppLanguage.shared
         let d = Int(shift.delta.rounded())
-        let text = L.isEnglish
-            ? "In runs finished at the same heart rate, your 1-minute recovery improved by \(d) bpm over 3 months."
-            : "같은 심박으로 끝낸 러닝에서 1분 회복이 3개월 새 \(d)bpm 늘었습니다."
+        let text = L.s("같은 심박으로 끝낸 러닝에서 1분 회복이 3개월 새 \(d)bpm 늘었습니다.",
+                       "In runs finished at the same heart rate, your 1-minute recovery improved by \(d) bpm over 3 months.",
+                       ja: "同じ心拍で終えたランで、1分後の心拍回復が3か月で\(d)bpm大きくなりました。")
         let basis = String(format: "잔차 Δ%+.1fbpm · MDC %.1f · Daanen 2012", shift.delta, shift.mdc)
         return (text, basis)
     }

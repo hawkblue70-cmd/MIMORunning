@@ -70,7 +70,7 @@ struct MRArchiveDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLanguage.shared.s("닫기", "Done")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Done", ja: "閉じる")) { dismiss() }
                 }
             }
         }
@@ -84,13 +84,20 @@ struct MRHealthMetricsView: View {
     let m: MRHealthMetrics
 
     private var dayNames: [String] {
-        AppLanguage.shared.isEnglish
-            ? ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-            : ["", "일", "월", "화", "수", "목", "금", "토"]
+        switch AppLanguage.shared.current {
+        case .ko: ["", "일", "월", "화", "수", "목", "금", "토"]
+        case .en: ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        case .ja: ["", "日", "月", "火", "水", "木", "金", "土"]
+        }
     }
 
     private var habitDayText: String {
         let L = AppLanguage.shared
+        if L.isJapanese {
+            let days = m.habitDays.map { dayNames[$0] }.joined(separator: "・")
+            let hour = m.typicalHour.map { "、だいたい\($0)時ごろ" } ?? ""
+            return "主に\(days)曜日\(hour)に走っています"
+        }
         if L.isEnglish {
             let days = m.habitDays.map { dayNames[$0] }.joined(separator: ", ")
             let hour = m.typicalHour.map { ", typically around \($0):00" } ?? ""
@@ -104,6 +111,10 @@ struct MRHealthMetricsView: View {
 
     private var evenDayText: String {
         let L = AppLanguage.shared
+        if L.isJapanese {
+            let hour = m.typicalHour.map { "。だいたい\($0)時ごろです" } ?? ""
+            return "特定の曜日に偏らず均等に走っています\(hour)"
+        }
         if L.isEnglish {
             let hour = m.typicalHour.map { ", typically around \($0):00" } ?? ""
             return "Your runs are evenly spread across the week\(hour)"
@@ -117,7 +128,7 @@ struct MRHealthMetricsView: View {
         let L = AppLanguage.shared
         if m.sessions90 > 0 {
             VStack(alignment: .leading, spacing: 12) {
-                Text(L.s("러닝 습관", "Running Habit"))
+                Text(L.s("러닝 습관", "Running Habit", ja: "ラン習慣"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
 
@@ -129,16 +140,16 @@ struct MRHealthMetricsView: View {
                 // 90일 통계
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(L.s("최근 90일", "Last 90 days"))
+                        Text(L.s("최근 90일", "Last 90 days", ja: "直近90日"))
                             .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
-                        Text(L.s("\(m.sessions90)회  \(Int(m.km90))km", "\(m.sessions90) runs  \(Int(m.km90)) km"))
+                        Text(L.s("\(m.sessions90)회  \(Int(m.km90))km", "\(m.sessions90) runs  \(Int(m.km90)) km", ja: "\(m.sessions90)回  \(Int(m.km90))km"))
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                     }
                     if m.sessions90LY > 0 {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(L.s("작년 같은 기간", "Same period last yr"))
+                            Text(L.s("작년 같은 기간", "Same period last yr", ja: "昨年の同時期"))
                                 .font(.system(size: 10)).foregroundStyle(Color.mrInk3)
-                            Text(L.s("\(m.sessions90LY)회  \(Int(m.km90LY))km", "\(m.sessions90LY) runs  \(Int(m.km90LY)) km"))
+                            Text(L.s("\(m.sessions90LY)회  \(Int(m.km90LY))km", "\(m.sessions90LY) runs  \(Int(m.km90LY)) km", ja: "\(m.sessions90LY)回  \(Int(m.km90LY))km"))
                                 .font(.system(size: 13, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.55))
                         }
@@ -173,7 +184,7 @@ struct MRHealthMetricsView: View {
                 Text(current + (unit.isEmpty ? "" : " \(unit)"))
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.white)
                 if let l = last {
-                    Text(AppLanguage.shared.s("(작년 \(l))", "(last yr \(l))"))
+                    Text(AppLanguage.shared.s("(작년 \(l))", "(last yr \(l))", ja: "(昨年 \(l))"))
                         .font(.system(size: 11)).foregroundStyle(Color.mrInk3)
                 }
             }
@@ -197,20 +208,20 @@ struct MRDriftView: View {
         let L = AppLanguage.shared
         if drift.ok {
             VStack(alignment: .leading, spacing: 16) {
-                Text(L.s("심박 드리프트", "HR Drift"))
+                Text(L.s("심박 드리프트", "HR Drift", ja: "心拍ドリフト"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.mrInk1)
 
                 HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L.s("선선한 날 15°C", "Cool day 15°C"))
+                        Text(L.s("선선한 날 15°C", "Cool day 15°C", ja: "涼しい日 15°C"))
                             .font(.system(size: 10))
                             .foregroundStyle(Color.mrInk3)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text(String(format: "%.1f", drift.bpmPer10MinAtRef))
                                 .font(.system(size: 26, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.mrInk1)
-                            Text(L.s("bpm/10분", "bpm/10 min"))
+                            Text(L.s("bpm/10분", "bpm/10 min", ja: "bpm/10分"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Color.mrInk3)
                         }
@@ -219,14 +230,14 @@ struct MRDriftView: View {
 
                     if drift.bpmPer10MinPerDegC > 0 {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(L.s("더운 날 30°C", "Hot day 30°C"))
+                            Text(L.s("더운 날 30°C", "Hot day 30°C", ja: "暑い日 30°C"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Color.mrInk3)
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(String(format: "%.1f", drift.bpmPer10Min(atC: 30)))
                                     .font(.system(size: 26, weight: .bold, design: .rounded))
                                     .foregroundStyle(Color.mrInk1)
-                                Text(L.s("bpm/10분", "bpm/10 min"))
+                                Text(L.s("bpm/10분", "bpm/10 min", ja: "bpm/10分"))
                                     .font(.system(size: 11))
                                     .foregroundStyle(Color.mrInk3)
                             }
@@ -236,7 +247,7 @@ struct MRDriftView: View {
                 }
 
                 Text(String(format: L.s("같은 페이스로 45분이면 심박이 %.0fbpm 올라갑니다",
-                                        "At the same pace for 45 min, HR rises by %.0f bpm"),
+                                        "At the same pace for 45 min, HR rises by %.0f bpm", ja: "同じペースで45分走ると心拍が%.0fbpm上がります"),
                             drift.bpmPer10MinAtRef * 4.5))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.mrInk2)
@@ -244,7 +255,7 @@ struct MRDriftView: View {
 
                 // ⚠ 근거 없는 해석을 붙이지 않는다. 관측값과 표본만 적는다.
                 Text(L.s("최근 1년 \(drift.sessions)개 세션 · 기온 범위 \(Int(drift.tempSpanC))°C",
-                         "Past year · \(drift.sessions) sessions · \(Int(drift.tempSpanC))°C range"))
+                         "Past year · \(drift.sessions) sessions · \(Int(drift.tempSpanC))°C range", ja: "直近1年 \(drift.sessions)セッション · 気温の幅\(Int(drift.tempSpanC))°C"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)

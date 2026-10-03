@@ -15,7 +15,7 @@ struct RestingHRTrendCard: View {
                 Image(systemName: "heart")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mrInk3)
-                Text(L.s("안정시 심박", "Resting HR"))
+                Text(L.s("안정시 심박", "Resting HR", ja: "安静時心拍"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -25,11 +25,11 @@ struct RestingHRTrendCard: View {
                 Text("\(Int(trend.recent.rounded()))bpm")
                     .font(.system(.title3, design: .rounded).weight(.bold))
                     .foregroundStyle(Theme.heartRate)
-                Text(L.s(" · 최근 90일 중앙값", " · last 90-day median"))
+                Text(L.s(" · 최근 90일 중앙값", " · last 90-day median", ja: " · 直近90日の中央値"))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.mrInk2)
                 if let ly = trend.recentLY {
-                    Text(L.s(" · 1년 전 같은 기간 \(Int(ly.rounded()))", " · same period last yr \(Int(ly.rounded()))"))
+                    Text(L.s(" · 1년 전 같은 기간 \(Int(ly.rounded()))", " · same period last yr \(Int(ly.rounded()))", ja: " · 1年前の同時期 \(Int(ly.rounded()))"))
                         .font(.system(size: 13))
                         .foregroundStyle(Color.mrInk3)
                 }
@@ -45,7 +45,7 @@ struct RestingHRTrendCard: View {
                 .frame(height: 100)
 
             Text(L.s("선: 달마다 안정시 심박 중앙값\(trend.rolling.isEmpty ? "" : " · 점선: 12개월 평균(계절 영향을 지운 추세)")\(maxKm > 0 ? " · 막대: 월별 러닝 거리(가장 많은 달 \(Int(maxKm.rounded()))km)" : "") · 겨울에 몇 bpm 오르는 계절 흔들림이 있습니다",
-                     "Line: monthly resting HR median\(trend.rolling.isEmpty ? "" : " · dashed: 12-month average (season removed)")\(maxKm > 0 ? " · bars: monthly running distance (max \(Int(maxKm.rounded())) km)" : "") · it rises a few bpm in winter"))
+                     "Line: monthly resting HR median\(trend.rolling.isEmpty ? "" : " · dashed: 12-month average (season removed)")\(maxKm > 0 ? " · bars: monthly running distance (max \(Int(maxKm.rounded())) km)" : "") · it rises a few bpm in winter", ja: "線: 月ごとの安静時心拍の中央値\(trend.rolling.isEmpty ? "" : " · 点線: 12か月平均(季節の影響を除いた推移)")\(maxKm > 0 ? " · 棒: 月別のラン距離(最多の月 \(Int(maxKm.rounded()))km)" : "") · 冬に数bpm上がる季節の揺れがあります"))
                 .font(.system(size: 11))
                 .foregroundStyle(Color.mrInk3)
                 .fixedSize(horizontal: false, vertical: true)

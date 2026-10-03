@@ -240,7 +240,7 @@ struct RecordBarChart: View {
                 if !compact { footnote }
                 if !compact, let flow = flowComment { flowCommentView(flow) }   // 공유 카드(export)에도 붙인다
             } else {
-                Text(emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period"))
+                Text(emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period", ja: "この期間の記録はありません"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -277,7 +277,7 @@ struct RecordBarChart: View {
                     .background(Color.white.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: 7))
             } else {
-                Text(L.s("구간을 탭하면 정확한 값이 보입니다", "Tap a bucket for exact values"))
+                Text(L.s("구간을 탭하면 정확한 값이 보입니다", "Tap a bucket for exact values", ja: "区間をタップすると正確な値が表示されます"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -292,7 +292,7 @@ struct RecordBarChart: View {
         return HStack(spacing: 6) {
             if compact { Spacer(minLength: 0) }   // 압축 모드(날짜 축 아래)는 오른쪽 정렬
             HStack(spacing: compact ? 1.5 : 2) {
-                Text(L.s("강도", "Effort"))
+                Text(L.s("강도", "Effort", ja: "強度"))
                     .font(axisFont)
                     .foregroundStyle(Color.primary)   // 회색이면 범례가 묻혔다 — 흰색(라이트 테마는 검정)
                     .padding(.trailing, 2)
@@ -321,7 +321,7 @@ struct RecordBarChart: View {
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(L.s("거리 km", "Distance km"))
+                Text(L.s("거리 km", "Distance km", ja: "距離 km"))
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.primary)
                 if showsTotals {
@@ -342,8 +342,8 @@ struct RecordBarChart: View {
             ForEach(bars) { bar in
                 BarMark(
                     x: .value(periodName, bar.id, unit: xUnit),
-                    yStart: .value(L.s("기준", "Base"), 0),
-                    yEnd: .value(L.s("거리(km)", "Distance (km)"), bar.km),
+                    yStart: .value(L.s("기준", "Base", ja: "基準"), 0),
+                    yEnd: .value(L.s("거리(km)", "Distance (km)", ja: "距離(km)"), bar.km),
                     width: .ratio(barWidthRatio)
                 )
                 .foregroundStyle(barColor(bar).gradient)
@@ -461,7 +461,7 @@ struct RecordBarChart: View {
     /// 페이스 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점(어두운 테두리).
     @ChartContentBuilder
     private var paceMarks: some ChartContent {
-        let seriesName = L.s("페이스", "Pace")
+        let seriesName = L.s("페이스", "Pace", ja: "ペース")
         if let baseline = RecordSeries.paceBaseline(bars).flatMap({ yForPace($0) }) {
             // 평균 점선 — 값 라벨은 축 머리("평균 6'18\"")에 있으므로 차트 안에는 두지 않는다(오른쪽 막대와 겹침)
             RuleMark(y: .value(seriesName, baseline))
@@ -474,7 +474,7 @@ struct RecordBarChart: View {
                 LineMark(
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(seriesName, p.y),
-                    series: .value(L.s("구간", "Segment"), seg.id)
+                    series: .value(L.s("구간", "Segment", ja: "区間"), seg.id)
                 )
                 .foregroundStyle(Theme.pace.opacity(Metrics.lineOpacity * bucketOpacity(p.id)))
                 .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
@@ -509,7 +509,7 @@ struct RecordBarChart: View {
     private var footnote: some View {
         // 축 설명(위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km)은 뺐다 — 축 눈금 자체가 페이스·km라 되풀이였다(2026-09-30)
         Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
-                 "Bars = distance (color = effort) · line = pace"))
+                 "Bars = distance (color = effort) · line = pace", ja: "棒 = 距離(色 = 強度) · 線 = ペース"))
             .font(.system(size: 8.5))
             .foregroundStyle(Color.primary)
             .fixedSize(horizontal: false, vertical: true)
@@ -538,21 +538,21 @@ struct RecordBarChart: View {
     // MARK: - 축 머리 요약
 
     private var distanceTrailing: String {
-        "\(kmText(summary.totalKm)) · \(L.s("\(summary.runCount)회", "\(summary.runCount) runs"))"
+        "\(kmText(summary.totalKm)) · \(L.s("\(summary.runCount)회", "\(summary.runCount) runs", ja: "\(summary.runCount)回"))"
     }
 
     private var paceTrailing: String? {
         guard let mean = summary.meanPaceSec else { return nil }
-        var parts = [L.s("평균 \(paceText(mean))", "avg \(paceText(mean))")]
+        var parts = [L.s("평균 \(paceText(mean))", "avg \(paceText(mean))", ja: "平均 \(paceText(mean))")]
         if let best = summary.bestPaceSec {
-            parts.append(L.s("가장 빠른 \(paceText(best))", "best \(paceText(best))"))
+            parts.append(L.s("가장 빠른 \(paceText(best))", "best \(paceText(best))", ja: "最速 \(paceText(best))"))
         }
         return parts.joined(separator: " · ")
     }
 
     // MARK: - 색·강조
 
-    private var periodName: String { L.s("기간", "Period") }
+    private var periodName: String { L.s("기간", "Period", ja: "期間") }
 
     private func barColor(_ bar: RecordBar) -> Color {
         guard let mean = bar.meanEffort else { return Color.secondary.opacity(0.45) }
@@ -620,19 +620,19 @@ struct RecordBarChart: View {
             if bar.km > 0 { segs.append((String(format: "%.2fkm", bar.km), .white.opacity(0.9))) }
             if bar.minutes > 0 { segs.append((clockText(bar.minutes), Theme.time)) }
             if let e = bar.meanEffort {
-                segs.append((L.s("강도 \(effortText(e))", "effort \(effortText(e))"),
+                segs.append((L.s("강도 \(effortText(e))", "effort \(effortText(e))", ja: "強度 \(effortText(e))"),
                              EffortPalette.color(for: EffortResolver.clamp(e))))
             }
             if bar.au > 0 { segs.append(("\(Int(bar.au.rounded())) AU", Theme.violet)) }
             if let p = bar.paceSec { segs.append((paceText(p), Theme.pace)) }
         } else {
             if bar.km > 0 { segs.append((kmText(bar.km), .white.opacity(0.9))) }
-            if bar.runCount > 0 { segs.append((L.s("\(bar.runCount)회", "\(bar.runCount) runs"), .white.opacity(0.9))) }
+            if bar.runCount > 0 { segs.append((L.s("\(bar.runCount)회", "\(bar.runCount) runs", ja: "\(bar.runCount)回"), .white.opacity(0.9))) }
             if bar.au > 0 {
                 let au = bar.au.rounded().formatted(.number.grouping(.automatic))
                 segs.append(("\(au) AU", Theme.violet))
             }
-            if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))"), Theme.pace)) }
+            if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))", ja: "平均 \(paceText(p))"), Theme.pace)) }
         }
         if let hr = bar.avgHR { segs.append(("\(Int(hr.rounded())) bpm", Theme.heartRate)) }
         return segs
@@ -644,19 +644,19 @@ struct RecordBarChart: View {
             if bar.km > 0 { parts.append(String(format: "%.2fkm", bar.km)) }
             if bar.minutes > 0 { parts.append(clockText(bar.minutes)) }
             if let e = bar.meanEffort {
-                parts.append(L.s("강도 \(effortText(e))", "effort \(effortText(e))"))
+                parts.append(L.s("강도 \(effortText(e))", "effort \(effortText(e))", ja: "強度 \(effortText(e))"))
             }
             if bar.au > 0 { parts.append("\(Int(bar.au.rounded())) AU") }
             if let p = bar.paceSec { parts.append(paceText(p)) }
         } else {
             if bar.km > 0 { parts.append(kmText(bar.km)) }
-            if bar.runCount > 0 { parts.append(L.s("\(bar.runCount)회", "\(bar.runCount) runs")) }
+            if bar.runCount > 0 { parts.append(L.s("\(bar.runCount)회", "\(bar.runCount) runs", ja: "\(bar.runCount)回")) }
             if bar.au > 0 {
                 let au = bar.au.rounded().formatted(.number.grouping(.automatic))
                 parts.append("\(au) AU")
             }
             if let p = bar.paceSec {
-                parts.append(L.s("평균 \(paceText(p))", "avg \(paceText(p))"))
+                parts.append(L.s("평균 \(paceText(p))", "avg \(paceText(p))", ja: "平均 \(paceText(p))"))
             }
         }
         if let hr = bar.avgHR { parts.append("\(Int(hr.rounded())) bpm") }
@@ -683,12 +683,12 @@ struct RecordBarChart: View {
 
     private var accessibilitySummary: String {
         guard hasData else {
-            return emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period")
+            return emptyMessage ?? L.s("이 기간에 기록이 없습니다", "No records in this period", ja: "この期間の記録はありません")
         }
         var parts = [L.s("거리 막대와 페이스 선을 한 차트에 — 오른쪽 축 km, 왼쪽 축 페이스",
-                         "One chart: distance bars (right axis, km) and pace line (left axis)"),
+                         "One chart: distance bars (right axis, km) and pace line (left axis)", ja: "距離の棒とペースの線をひとつのチャートに — 右軸がkm、左軸がペース"),
                      distanceTrailing]
-        if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)")) }
+        if let p = paceTrailing { parts.append(L.s("페이스 \(p)", "pace \(p)", ja: "ペース \(p)")) }
         if !compact, let flow = flowComment {
             parts.append(flow.status)
             if let direction = flow.direction { parts.append(direction) }

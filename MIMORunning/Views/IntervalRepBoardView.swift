@@ -68,7 +68,7 @@ struct IntervalRepBoardView: View {
 
             // 준비운동 줄 — 회차 앞
             if let w = board.warmup {
-                edgeRow(L.s("준비", "WU"), w).opacity(edgeOpacity(w)).padding(.vertical, 1 * scale)
+                edgeRow(L.s("준비", "WU", ja: "WU"), w).opacity(edgeOpacity(w)).padding(.vertical, 1 * scale)
             }
 
             // 회차 줄 — 열 하나 또는 쌍
@@ -86,7 +86,7 @@ struct IntervalRepBoardView: View {
 
             // 정리운동 줄 — 회차 뒤, 그 구간 끝(대개 마지막 프레임)에
             if let c = board.cooldown {
-                edgeRow(L.s("정리", "CD"), c).opacity(edgeOpacity(c)).padding(.vertical, 1 * scale)
+                edgeRow(L.s("정리", "CD", ja: "CD"), c).opacity(edgeOpacity(c)).padding(.vertical, 1 * scale)
             }
 
             // 바닥글: "평균 4'52"" — 마지막 회차와 함께

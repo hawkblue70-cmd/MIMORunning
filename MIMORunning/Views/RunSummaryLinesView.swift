@@ -92,12 +92,12 @@ struct RunSummaryLinesView: View {
             if open {
                 VStack(alignment: .leading, spacing: 3 * scale) {
                     if let evidence = line.evidence {
-                        detailRow(label: AppLanguage.shared.s("근거", "Why"),
+                        detailRow(label: AppLanguage.shared.s("근거", "Why", ja: "根拠"),
                                   labelColor: Color.white.opacity(0.62),
                                   text: evidence, textColor: Color.white.opacity(0.80))
                     }
                     if let next = line.next {
-                        detailRow(label: AppLanguage.shared.s("다음", "Next"),
+                        detailRow(label: AppLanguage.shared.s("다음", "Next", ja: "次へ"),
                                   labelColor: color(line.tone).opacity(0.9),
                                   text: next, textColor: Color.white.opacity(0.96))
                     }

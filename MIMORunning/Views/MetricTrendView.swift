@@ -37,10 +37,10 @@ enum CardioFitnessClassifier {
         let L = AppLanguage.shared
         let t = thresholds(age: age, isMale: isMale)
         switch vo2 {
-        case ..<t.belowAvg: return L.s("낮음",      "Low")
-        case ..<t.aboveAvg: return L.s("평균 이하", "Below Avg")
-        case ..<t.high:     return L.s("평균 이상", "Above Avg")
-        default:            return L.s("높음",      "High")
+        case ..<t.belowAvg: return L.s("낮음",      "Low", ja: "低い")
+        case ..<t.aboveAvg: return L.s("평균 이하", "Below Avg", ja: "平均以下")
+        case ..<t.high:     return L.s("평균 이상", "Above Avg", ja: "平均以上")
+        default:            return L.s("높음",      "High", ja: "高い")
         }
     }
 
@@ -48,10 +48,10 @@ enum CardioFitnessClassifier {
         let L = AppLanguage.shared
         let t = thresholds(age: age, isMale: isMale)
         return [
-            Band(label: L.s("낮음",      "Low"),       color: Color(hex: "FF453A"), low: yMin,       high: t.belowAvg),
-            Band(label: L.s("평균 이하", "Below Avg"), color: Color(hex: "FF9F0A"), low: t.belowAvg, high: t.aboveAvg),
-            Band(label: L.s("평균 이상", "Above Avg"), color: Color(hex: "FFD60A"), low: t.aboveAvg, high: t.high),
-            Band(label: L.s("높음",      "High"),      color: Color(hex: "30D158"), low: t.high,     high: yMax),
+            Band(label: L.s("낮음",      "Low", ja: "低い"),       color: Color(hex: "FF453A"), low: yMin,       high: t.belowAvg),
+            Band(label: L.s("평균 이하", "Below Avg", ja: "平均以下"), color: Color(hex: "FF9F0A"), low: t.belowAvg, high: t.aboveAvg),
+            Band(label: L.s("평균 이상", "Above Avg", ja: "平均以上"), color: Color(hex: "FFD60A"), low: t.aboveAvg, high: t.high),
+            Band(label: L.s("높음",      "High", ja: "高い"),      color: Color(hex: "30D158"), low: t.high,     high: yMax),
         ]
     }
 
@@ -93,10 +93,10 @@ enum TrendRange: String, CaseIterable, Identifiable {
     var label: String {
         let L = AppLanguage.shared
         switch self {
-        case .week:     return L.s("주",    "1W")
-        case .month:    return L.s("1개월", "1M")
-        case .sixMonth: return L.s("6개월", "6M")
-        case .year:     return L.s("1년",   "1Y")
+        case .week:     return L.s("주",    "1W", ja: "週")
+        case .month:    return L.s("1개월", "1M", ja: "1か月")
+        case .sixMonth: return L.s("6개월", "6M", ja: "6か月")
+        case .year:     return L.s("1년",   "1Y", ja: "1年")
         }
     }
 
@@ -205,14 +205,14 @@ struct MetricTrendView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if !isLoading && !dataPoints.isEmpty {
-                        Button(AppLanguage.shared.s("내보내기", "Export")) {
+                        Button(AppLanguage.shared.s("내보내기", "Export", ja: "書き出す")) {
                             showShareCard = true
                         }
                         .foregroundStyle(Theme.violet)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                         .foregroundStyle(Theme.violet)
                 }
             }
@@ -243,7 +243,7 @@ struct MetricTrendView: View {
     // MARK: - Subviews
 
     private var rangePicker: some View {
-        Picker(AppLanguage.shared.s("기간", "Period"), selection: $selectedRange) {
+        Picker(AppLanguage.shared.s("기간", "Period", ja: "期間"), selection: $selectedRange) {
             ForEach(TrendRange.allCases) { r in Text(r.label).tag(r) }
         }
         .pickerStyle(.segmented)
@@ -256,11 +256,11 @@ struct MetricTrendView: View {
         let countLabel: String = {
             let bw = selectedRange.bucketWeeks
             if bw == 2 {
-                return L.s("\(displayPoints.count)개 구간 (2주 평균)", "\(displayPoints.count) periods (2w avg)")
+                return L.s("\(displayPoints.count)개 구간 (2주 평균)", "\(displayPoints.count) periods (2w avg)", ja: "\(displayPoints.count)区間(2週平均)")
             } else if bw == 1 {
-                return L.s("\(displayPoints.count)주 평균", "\(displayPoints.count)w avg")
+                return L.s("\(displayPoints.count)주 평균", "\(displayPoints.count)w avg", ja: "\(displayPoints.count)週平均")
             } else {
-                return L.s("\(dataPoints.count)개 기록", "\(dataPoints.count) records")
+                return L.s("\(dataPoints.count)개 기록", "\(dataPoints.count) records", ja: "\(dataPoints.count)件の記録")
             }
         }()
         return VStack(alignment: .leading, spacing: 8) {
@@ -398,7 +398,7 @@ struct MetricTrendView: View {
     private var statsCard: some View {
         HStack(spacing: 0) {
             if let cur = effectiveCurrent {
-                statCell(label: AppLanguage.shared.s("현재값", "Current"), value: metric.formattedValue(cur, usePounds: useMiles), color: metric.sparkColor)
+                statCell(label: AppLanguage.shared.s("현재값", "Current", ja: "現在値"), value: metric.formattedValue(cur, usePounds: useMiles), color: metric.sparkColor)
                 if periodAverage != nil {
                     Rectangle()
                         .fill(Color.white.opacity(0.08))
@@ -408,7 +408,7 @@ struct MetricTrendView: View {
             }
             if let avg = periodAverage {
                 statCell(
-                    label: AppLanguage.shared.s("기간 평균 (\(dataPoints.count)회)", "Period avg (\(dataPoints.count))"),
+                    label: AppLanguage.shared.s("기간 평균 (\(dataPoints.count)회)", "Period avg (\(dataPoints.count))", ja: "期間平均(\(dataPoints.count)回)"),
                     value: avgDisplayString(avg),
                     color: avgDisplayColor(avg)
                 )
@@ -440,10 +440,10 @@ struct MetricTrendView: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("데이터 없음", "No Data"))
+            Text(AppLanguage.shared.s("데이터 없음", "No Data", ja: "データなし"))
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text(AppLanguage.shared.s("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없습니다", "No \(metric.koreanLabel) data for this period"))
+            Text(AppLanguage.shared.s("이 기간에 기록된 \(metric.koreanLabel) 데이터가 없습니다", "No \(metric.koreanLabel) data for this period", ja: "この期間に記録された\(metric.koreanLabel)のデータはありません"))
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

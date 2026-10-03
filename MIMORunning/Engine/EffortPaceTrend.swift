@@ -40,7 +40,11 @@ enum EffortPaceTrend {
         guard d >= 1 else { return nil }
         let L = AppLanguage.shared
         let text: String
-        if L.isEnglish {
+        if L.isJapanese {
+            text = isPersonal
+                ? "強度\(cutoff)以下(自分のイージーラン基準)で走ったランのペースが、3か月で\(d)秒/km速くなりました。"
+                : "強度\(cutoff)以下で走ったランのペースが、3か月で\(d)秒/km速くなりました。"
+        } else if L.isEnglish {
             text = isPersonal
                 ? "In runs at effort ≤\(cutoff) (your easy-run level), pace got \(d)s/km faster over 3 months."
                 : "In runs at effort ≤\(cutoff), pace got \(d)s/km faster over 3 months."

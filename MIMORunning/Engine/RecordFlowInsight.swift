@@ -205,14 +205,14 @@ enum RecordFlowInsight {
         let km = bars.reduce(0.0) { $0 + $1.km }
 
         var parts = [periodLabel,
-                     L.s("\(runs)회", "\(runs) runs"),
+                     L.s("\(runs)회", "\(runs) runs", ja: "\(runs)回"),
                      "\(kmText(km)) km"]
 
         let rated = bars.compactMap(\.meanEffort)
         if !rated.isEmpty {
             let easy = rated.filter { $0 <= Double(input.easyCutoff) }.count
             let pct = Int((Double(easy) / Double(rated.count) * 100).rounded())
-            parts.append(L.s("쉬운 날 \(pct)%", "easy days \(pct)%"))
+            parts.append(L.s("쉬운 날 \(pct)%", "easy days \(pct)%", ja: "楽な日 \(pct)%"))
         }
         return parts.joined(separator: " · ")
     }
@@ -224,19 +224,19 @@ enum RecordFlowInsight {
         switch sentence {
         case .fasterSameEffort:
             return L.s("같은 노력으로 더 빨라지고 있습니다.",
-                       "Getting faster at the same effort.")
+                       "Getting faster at the same effort.", ja: "同じ努力でより速くなっています。")
         case .moreAndHarder:
             return L.s("거리와 강도가 함께 올라가는 중입니다. 쉬운 날을 하나 더 두면 오래 갑니다.",
-                       "Distance and effort are both climbing. One more easy day helps this last.")
+                       "Distance and effort are both climbing. One more easy day helps this last.", ja: "距離と強度が一緒に上がっています。楽な日をもう1日入れると長続きします。")
         case .moreSteadyEffort:
             return L.s("거리를 늘리면서도 강도는 지켰습니다.",
-                       "More distance without more effort.")
+                       "More distance without more effort.", ja: "距離を伸ばしながら強度は保ちました。")
         case .recovering:
             return L.s("거리와 강도를 낮춘 회복 구간입니다.",
-                       "A recovery stretch — less distance, lower effort.")
+                       "A recovery stretch — less distance, lower effort.", ja: "距離と強度を下げた回復期間です。")
         case .slowerHarder:
             return L.s("힘은 더 드는데 페이스는 느려졌습니다. 더위·수면·피로를 한번 돌아봐 주세요.",
-                       "Harder effort but slower pace. Worth checking heat, sleep and fatigue.")
+                       "Harder effort but slower pace. Worth checking heat, sleep and fatigue.", ja: "きつさは増したのにペースは遅くなりました。暑さ・睡眠・疲労を一度振り返ってみてください。")
         case .steady:
             let runs = input.bars.reduce(0) { $0 + $1.runCount }
             let km = input.bars.reduce(0.0) { $0 + $1.km }
@@ -245,28 +245,28 @@ enum RecordFlowInsight {
             let n = String(format: "%.1f", perWeek)
             let avg = String(format: "%.1f", perRun)
             return L.s("고른 흐름입니다. 주 \(n)회 · 평균 \(avg) km.",
-                       "A steady rhythm — \(n)/week · \(avg) km avg.")
+                       "A steady rhythm — \(n)/week · \(avg) km avg.", ja: "安定した流れです。週\(n)回 · 平均\(avg) km。")
         case .easierSlower:
             return L.s("천천히, 편하게 뛴 구간입니다. 의도한 여유라면 그대로 좋습니다.",
-                       "Slower and easier — fine if the easing was intended.")
+                       "Slower and easier — fine if the easing was intended.", ja: "ゆっくり楽に走った期間です。意図したゆとりならそのままで大丈夫です。")
         case .pushingFaster:
             return L.s("더 밀어붙여 빨라졌습니다. 다음 쉬운 날을 꼭 챙기세요.",
-                       "Faster by pushing harder. Make sure the next easy day stays easy.")
+                       "Faster by pushing harder. Make sure the next easy day stays easy.", ja: "より追い込んで速くなりました。次の楽な日を必ず確保してください。")
         case .lessButHarder:
             return L.s("거리는 줄었지만 강도는 올랐습니다. 양보다 질에 기울어진 구간.",
-                       "Less distance, more effort — a quality-over-volume stretch.")
+                       "Less distance, more effort — a quality-over-volume stretch.", ja: "距離は減りましたが強度は上がりました。量より質に寄った期間。")
         case .lowerEffort:
             return L.s("강도를 낮춘 구간입니다.",
-                       "Effort has come down.")
+                       "Effort has come down.", ja: "強度を下げた期間です。")
         case .harder:
             return L.s("강도가 올라가는 중입니다. 쉬운 날이 함께 있는지 봐 주세요.",
-                       "Effort is climbing. Check that easy days are still in the mix.")
+                       "Effort is climbing. Check that easy days are still in the mix.", ja: "強度が上がっています。楽な日も入っているか確認してください。")
         case .lessDistance:
             return L.s("거리를 줄인 구간입니다.",
-                       "Distance has come down.")
+                       "Distance has come down.", ja: "距離を減らした期間です。")
         case .slower:
             return L.s("같은 강도인데 페이스가 느려졌습니다. 더위나 피로일 수 있습니다.",
-                       "Same effort, slower pace — heat or fatigue may be at play.")
+                       "Same effort, slower pace — heat or fatigue may be at play.", ja: "同じ強度なのにペースが遅くなりました。暑さや疲労かもしれません。")
         case .none:
             return nil
         }

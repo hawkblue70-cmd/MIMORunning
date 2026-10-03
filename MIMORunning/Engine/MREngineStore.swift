@@ -1255,7 +1255,7 @@ final class MREngineStore: ObservableObject {
         if let r = registered {
             c.recentRaceName = r.name; c.recentRaceDate = r.date
         } else if let t = typed {
-            c.recentRaceName = AppLanguage.shared.s("대회", "the race"); c.recentRaceDate = t
+            c.recentRaceName = AppLanguage.shared.s("대회", "the race", ja: "レース"); c.recentRaceDate = t
         }
         return c
     }

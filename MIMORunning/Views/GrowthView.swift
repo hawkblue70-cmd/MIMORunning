@@ -297,7 +297,7 @@ struct GrowthView: View {
                     }
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("성장", "Growth"))
+            .navigationTitle(AppLanguage.shared.s("성장", "Growth", ja: "成長"))
             .navigationBarTitleDisplayMode(.large)
         }
         .onChange(of: raceDetector.isReady) { _, ready in
@@ -532,7 +532,7 @@ struct GrowthView: View {
                     // 주 단위에서는 숨기되 자리는 비워 둔다(hidden). 지우면 토글이 오른쪽으로
                     // 밀려 일·주를 오갈 때마다 줄이 흔들린다.
                     Button { showMileageStreakShareCard = true } label: {
-                        Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow"),
+                        Label(AppLanguage.shared.s("흐름 내보내기", "Export Flow", ja: "流れを書き出す"),
                               systemImage: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .medium))
                     }
@@ -551,21 +551,21 @@ struct GrowthView: View {
     }
 
     private var mileageTitle: String {
-        AppLanguage.shared.s("러닝 흐름", "Running Flow")
+        AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ")
     }
 
     private var mileageScreenTitle: String {
-        AppLanguage.shared.s("러닝 흐름", "Running Flow")
+        AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ")
     }
 
     /// 공유 카드에 찍는 기간 라벨 — "최근 30일" / "8월" / "최근 12주"
     private var recordPeriodLabel: String {
-        showDaily ? dailyMonthLabel : AppLanguage.shared.s("최근 12주", "Last 12 weeks")
+        showDaily ? dailyMonthLabel : AppLanguage.shared.s("최근 12주", "Last 12 weeks", ja: "直近12週")
     }
 
     private var dailyMonthLabel: String {
         let cal = Calendar.current
-        if isAtCurrentMonth { return AppLanguage.shared.s("최근 30일", "Last 30 days") }
+        if isAtCurrentMonth { return AppLanguage.shared.s("최근 30일", "Last 30 days", ja: "直近30日") }
         let comps = cal.dateComponents([.year, .month], from: dailyMonth)
         if AppLanguage.shared.isJapanese { return "\(comps.year ?? 2025)年\(comps.month ?? 1)月" }
         if AppLanguage.shared.isEnglish {
@@ -612,7 +612,7 @@ struct GrowthView: View {
         let isWeekly = !showDaily
         return HStack(spacing: 0) {
             Button { showDaily = true; refreshRecordBars() } label: {
-                Text(L.s("일", "D"))
+                Text(L.s("일", "D", ja: "日"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(showDaily ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
@@ -621,7 +621,7 @@ struct GrowthView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Button { showDaily = false; refreshRecordBars() } label: {
-                Text(L.s("주", "W"))
+                Text(L.s("주", "W", ja: "週"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(isWeekly ? Color.white : Color.secondary)
                     .padding(.horizontal, 9)
@@ -693,12 +693,12 @@ struct GrowthView: View {
         switch recordPeriod {
         case .day:
             return isAtCurrentMonth
-                ? L.s("최근 30일 러닝 기록이 없습니다", "No runs in the last 30 days")
-                : L.s("이 달에 러닝 기록이 없습니다", "No runs this month")
+                ? L.s("최근 30일 러닝 기록이 없습니다", "No runs in the last 30 days", ja: "直近30日のラン記録はありません")
+                : L.s("이 달에 러닝 기록이 없습니다", "No runs this month", ja: "この月のラン記録はありません")
         case .week:
-            return L.s("이번 12주간 러닝 기록이 없습니다", "No runs in the last 12 weeks")
+            return L.s("이번 12주간 러닝 기록이 없습니다", "No runs in the last 12 weeks", ja: "この12週間のラン記録はありません")
         case .month:
-            return L.s("최근 12개월간 러닝 기록이 없습니다", "No runs in the last 12 months")
+            return L.s("최근 12개월간 러닝 기록이 없습니다", "No runs in the last 12 months", ja: "直近12か月のラン記録はありません")
         }
     }
 
@@ -713,34 +713,34 @@ struct GrowthView: View {
         let weekCount = thisWeekRunCount
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text(L.s("연속 달리기", "Streak"))
+            Text(L.s("연속 달리기", "Streak", ja: "連続ラン"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
 
             // ⚠ 한 줄 요약 대신 라벨+값 배치 — 글씨 크기를 유지하면서 숫자가 충돌하지 않는다.
             HStack(alignment: .top, spacing: 28) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L.s("연속", "Streak"))
+                    Text(L.s("연속", "Streak", ja: "連続"))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.4))
-                    Text(streak >= 2 ? L.s("\(streak)주", "\(streak)wk") : L.s("1주", "1wk"))
+                    Text(streak >= 2 ? L.s("\(streak)주", "\(streak)wk", ja: "\(streak)週") : L.s("1주", "1wk", ja: "1週"))
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L.s("최근 \(Self.heatmapWeeks)주간", "\(Self.heatmapWeeks) wks"))
+                    Text(L.s("최근 \(Self.heatmapWeeks)주간", "\(Self.heatmapWeeks) wks", ja: "直近\(Self.heatmapWeeks)週間"))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.4))
-                    Text(L.s("\(activeDays)일", "\(activeDays)d"))
+                    Text(L.s("\(activeDays)일", "\(activeDays)d", ja: "\(activeDays)日"))
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L.s("이번 주", "This Week"))
+                    Text(L.s("이번 주", "This Week", ja: "今週"))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.4))
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text(L.s("\(weekCount)회 \(Int(weekKm))km", "\(weekCount)× \(Int(weekKm))km"))
+                        Text(L.s("\(weekCount)회 \(Int(weekKm))km", "\(weekCount)× \(Int(weekKm))km", ja: "\(weekCount)回 \(Int(weekKm))km"))
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                         if let d = weekDelta, abs(d) >= 1 {
@@ -771,6 +771,7 @@ struct GrowthView: View {
         let h = total / 60
         let m = total % 60
         let L = AppLanguage.shared
+        if L.isJapanese { return h > 0 ? "\(h)時間\(m)分" : "\(m)分" }
         if L.isEnglish { return h > 0 ? "\(h)h \(m)m" : "\(m)m" }
         return h > 0 ? "\(h)시간 \(m)분" : "\(m)분"
     }
@@ -785,16 +786,16 @@ struct GrowthView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L.s("이번 주", "This Week"))
+                    Text(L.s("이번 주", "This Week", ja: "今週"))
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(L.s("월요일부터 지금까지", "Monday through today"))
+                    Text(L.s("월요일부터 지금까지", "Monday through today", ja: "月曜日から今まで"))
                         .font(.system(size: 13))
                         .foregroundStyle(Color(hex: "8A8A92"))
                 }
                 Spacer()
                 Button { showWeeklyShareCard = true } label: {
-                    Label(L.s("카드 내보내기", "Export Card"), systemImage: "square.and.arrow.up")
+                    Label(L.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .foregroundStyle(Theme.violetText)
@@ -802,7 +803,7 @@ struct GrowthView: View {
             }
 
             if km == 0 && mins == 0 && count == 0 {
-                Text(L.s("이번 주 첫 러닝을 기다리고 있습니다", "Waiting for your first run this week"))
+                Text(L.s("이번 주 첫 러닝을 기다리고 있습니다", "Waiting for your first run this week", ja: "今週最初のランを待っています"))
                     .font(.system(size: 15))
                     .foregroundStyle(Color(hex: "8A8A92"))
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
@@ -813,20 +814,20 @@ struct GrowthView: View {
                 HStack(spacing: 8) {
                     WeekStatTile(
                         value: String(format: km >= 10 ? "%.1f km" : "%.2f km", km),
-                        label: L.s("거리", "Distance")
+                        label: L.s("거리", "Distance", ja: "距離")
                     )
                     WeekStatTile(
                         value: weekTimeFormatted(Int(mins)),
-                        label: L.s("시간", "Time")
+                        label: L.s("시간", "Time", ja: "時間")
                     )
                     WeekStatTile(
-                        value: L.s("\(count)회", "\(count)"),
-                        label: L.s("횟수", "Runs")
+                        value: L.s("\(count)회", "\(count)", ja: "\(count)回"),
+                        label: L.s("횟수", "Runs", ja: "回数")
                     )
                     if streak > 0 {
                         WeekStatTile(
-                            value: L.s("\(streak)주", "\(streak)wk"),
-                            label: L.s("연속", "Streak")
+                            value: L.s("\(streak)주", "\(streak)wk", ja: "\(streak)週"),
+                            label: L.s("연속", "Streak", ja: "連続")
                         )
                     }
                 }
@@ -842,17 +843,17 @@ struct GrowthView: View {
             .easyEffortPace
         ]
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends"), subtitle: L.s("최근 7일 대비 직전 7일", "Last 7 days vs prior 7 days"))
+            SectionLabel(title: L.s("주간 지표 추세", "Weekly Metric Trends", ja: "週間の指標推移"), subtitle: L.s("최근 7일 대비 직전 7일", "Last 7 days vs prior 7 days", ja: "直近7日と前の7日の比較"))
             if let obs = formObservation {
                 MRFormObservationCard(text: obs.text, basis: obs.basis, isStable: obs.isStable)
             }
             if let rec = recoveryObservation {
                 MRFormObservationCard(text: rec.text, basis: rec.basis, isStable: true,
-                                      title: L.s("회복", "Recovery"), icon: "heart.circle")
+                                      title: L.s("회복", "Recovery", ja: "回復"), icon: "heart.circle")
             }
             if let ep = effortPaceObservation {
                 MRFormObservationCard(text: ep.text, basis: ep.basis, isStable: true,
-                                      title: L.s("쉬운 날 페이스", "Easy-Effort Pace"),
+                                      title: L.s("쉬운 날 페이스", "Easy-Effort Pace", ja: "イージー日のペース"),
                                       icon: "gauge.with.dots.needle.33percent")
             }
             weeklyPatternCommentCard
@@ -884,7 +885,7 @@ struct GrowthView: View {
         if let pattern = weeklyPatternCache.first, !weeklyCommentText.isEmpty {
             let style = weeklyPatternStyle(for: pattern.key)
             let woy = mondayCal.component(.weekOfYear, from: Date())
-            let headline = pattern.shortName(for: woy, isEnglish: AppLanguage.shared.isEnglish)
+            let headline = pattern.shortName(for: woy, lang: AppLanguage.shared.current)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Image(systemName: style.symbol)
@@ -937,9 +938,9 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let entries = prEntriesCache
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("PR 타임라인", "PR Timeline"), subtitle: L.s("거리별 최고 기록", "Best by distance"))
+            SectionLabel(title: L.s("PR 타임라인", "PR Timeline", ja: "PRタイムライン"), subtitle: L.s("거리별 최고 기록", "Best by distance", ja: "距離別の自己ベスト"))
             if entries.isEmpty {
-                EmptyChartPlaceholder(message: L.s("표준 거리 완주 기록이 생기면 PR이 여기에 표시됩니다", "Complete a standard distance to see your PR"))
+                EmptyChartPlaceholder(message: L.s("표준 거리 완주 기록이 생기면 PR이 여기에 표시됩니다", "Complete a standard distance to see your PR", ja: "標準距離を完走するとPRがここに表示されます"))
             } else {
                 PRGrid(entries: entries)
             }
@@ -950,9 +951,9 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         let events = journeyMilestonesCache
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: L.s("나의 여정", "My Journey"), subtitle: L.s("첫 러닝부터 지금까지", "From your first run to now"))
+            SectionLabel(title: L.s("나의 여정", "My Journey", ja: "わたしの旅路"), subtitle: L.s("첫 러닝부터 지금까지", "From your first run to now", ja: "最初のランから今まで"))
             if events.isEmpty {
-                EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐집니다", "Your journey will appear as you log more"))
+                EmptyChartPlaceholder(message: L.s("기록이 쌓이면 여정이 여기에 펼쳐집니다", "Your journey will appear as you log more", ja: "記録が積み重なると、旅路がここに広がります"))
             } else {
                 JourneyTimeline(events: events)
             }
@@ -992,22 +993,22 @@ struct GrowthView: View {
         let streak = engine.streakWeeks
         if streak >= 3 {
             return L.s("\(streak)주 연속 달리고 있습니다 — 루틴이 자리 잡고 있습니다",
-                       "\(streak) weeks in a row — you're building a routine")
+                       "\(streak) weeks in a row — you're building a routine", ja: "\(streak)週連続で走っています — 習慣が定着してきています")
         }
         if streak == 2 {
             return L.s("2주 연속 달리고 있습니다 — 이번 주도 이어가 보세요",
-                       "2 weeks running — keep it up this week")
+                       "2 weeks running — keep it up this week", ja: "2週連続で走っています — 今週も続けてみてください")
         }
 
         let thisKm = weeklyKmsCache.last?.km ?? 0
         let prevKm = weeklyKmsCache.dropLast().last?.km ?? 0
         if thisKm > prevKm, prevKm > 0 {
             let diff = thisKm - prevKm
-            return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었습니다", "+%.1fkm more than last week"), diff)
+            return String(format: L.s("이번 주 거리가 지난 주보다 +%.1fkm 늘었습니다", "+%.1fkm more than last week", ja: "今週の距離が先週より+%.1fkm増えました"), diff)
         }
 
         if let recent = prEntriesCache.first(where: { $0.isNew }) {
-            return L.s("\(recent.label) 신기록을 세웠습니다", "New \(recent.label) PR")
+            return L.s("\(recent.label) 신기록을 세웠습니다", "New \(recent.label) PR", ja: "\(recent.label)の自己ベストを更新しました")
         }
 
         let pts = pacePointsCache
@@ -1015,7 +1016,7 @@ struct GrowthView: View {
             let latestAvg = pts.suffix(3).map(\.speedKmh).reduce(0, +) / 3
             let earlierAvg = pts.prefix(3).map(\.speedKmh).reduce(0, +) / 3
             if earlierAvg > 0, latestAvg > earlierAvg * 1.02 {
-                return L.s("최근 페이스가 꾸준히 빨라지고 있습니다", "Your pace has been steadily improving")
+                return L.s("최근 페이스가 꾸준히 빨라지고 있습니다", "Your pace has been steadily improving", ja: "最近のペースが着実に速くなっています")
             }
         }
 
@@ -1028,7 +1029,7 @@ struct GrowthView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
             Text(AppLanguage.shared.s("러닝을 시작하면\n성장 차트가 여기에 나타나요",
-                                     "Start running and your\ngrowth chart will appear here"))
+                                     "Start running and your\ngrowth chart will appear here", ja: "ランを始めると\n成長チャートがここに表示されます"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -1309,9 +1310,9 @@ struct GrowthView: View {
         // p21/p22/p23는 WeeklySummary 3문장 구조가 아닌 패턴 자체 템플릿을 쓴다.
         let standaloneKeys: Set<String> = ["heatAdjusted", "driftWeek", "hrPaceWeek"]
         if let top = weeklyPatternCache.first, standaloneKeys.contains(top.key) {
-            weeklyCommentText = top.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+            weeklyCommentText = top.template(for: weekOfYear, lang: AppLanguage.shared.current)
         } else {
-            weeklyCommentText = summary.template(for: weekOfYear, isEnglish: AppLanguage.shared.isEnglish)
+            weeklyCommentText = summary.template(for: weekOfYear, lang: AppLanguage.shared.current)
         }
 
         // ② 같은 주·같은 패턴이면 메모리 캐시 사용
@@ -1319,9 +1320,10 @@ struct GrowthView: View {
         // 템플릿 해시: 문구를 한 글자만 고쳐도 키가 자동으로 바뀐다.
         // · 패턴 koTemplates/enTemplates (동적 값 포함) + WeeklySummary 폴백 문장 → 정렬 후 FNV-1a
         // · 동적 값(페이스·기온 등)이 바뀌어도 키가 갱신되므로 데이터 변경 시 자동 재생성.
-        var _hashSources = weeklyPatternCache.flatMap { $0.koTemplates + $0.enTemplates }
+        var _hashSources = weeklyPatternCache.flatMap { $0.koTemplates + $0.enTemplates + $0.jaTemplates }
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: false))
         _hashSources.append(summary.template(for: weekOfYear, isEnglish: true))
+        _hashSources.append(summary.template(for: weekOfYear, lang: .ja))
         let _tHash = String(format: "%08x", Self.stableHash(_hashSources.sorted().joined(separator: "|")))
         let langSuffix = "_\(AppLanguage.shared.current.rawValue)"
         let cacheKey = "v\(Self.weeklyCommentVersion)_\(_tHash)_\(year)W\(weekOfYear)_\(summary.topPatternKey)\(langSuffix)"
@@ -1529,15 +1531,15 @@ struct GrowthView: View {
         // 첫 러닝
         if let firstRun = allRuns.first {
             events.append(.init(id: "first_run", date: firstRun.date, kind: .first,
-                                title: L.s("첫 러닝", "First Run"), detail: firstRun.formattedDistance))
+                                title: L.s("첫 러닝", "First Run", ja: "初めてのラン"), detail: firstRun.formattedDistance))
         }
 
         // 거리별 첫 완주 (5K / 10K / 하프 / 풀)
         let distMilestones: [(Double, String, String)] = [
-            (5000,  "first_5k",   L.s("첫 5K 완주",   "First 5K")),
-            (10000, "first_10k",  L.s("첫 10K 완주",  "First 10K")),
-            (21097, "first_half", L.s("첫 하프 완주",  "First Half")),
-            (42195, "first_full", L.s("첫 풀 완주",    "First Full")),
+            (5000,  "first_5k",   L.s("첫 5K 완주",   "First 5K", ja: "初の5K完走")),
+            (10000, "first_10k",  L.s("첫 10K 완주",  "First 10K", ja: "初の10K完走")),
+            (21097, "first_half", L.s("첫 하프 완주",  "First Half", ja: "初のハーフ完走")),
+            (42195, "first_full", L.s("첫 풀 완주",    "First Full", ja: "初のフル完走")),
         ]
         var coveredRunIDs = Set<UUID>()
         for (minDist, key, title) in distMilestones {
@@ -1560,8 +1562,8 @@ struct GrowthView: View {
                     id: "cum_\(Int(km))",
                     date: a.date,
                     kind: .cumulative,
-                    title: L.s("누적 러닝 \(Int(km))km 돌파", "\(Int(km))km run total"),
-                    detail: String(format: L.s("총 %.0fkm", "Total %.0fkm"), totalKm)
+                    title: L.s("누적 러닝 \(Int(km))km 돌파", "\(Int(km))km run total", ja: "累計\(Int(km))km突破"),
+                    detail: String(format: L.s("총 %.0fkm", "Total %.0fkm", ja: "合計%.0fkm"), totalKm)
                 ))
                 nextThresh += 1
             }
@@ -1572,7 +1574,7 @@ struct GrowthView: View {
            longest.distance >= 5000,
            !coveredRunIDs.contains(longest.id) {
             events.append(.init(id: "longest", date: longest.date, kind: .longest,
-                                title: L.s("현재 최장 거리", "Longest Run"), detail: longest.formattedDistance))
+                                title: L.s("현재 최장 거리", "Longest Run", ja: "現在の最長距離"), detail: longest.formattedDistance))
         }
 
         return events.sorted { $0.date < $1.date }
@@ -1585,8 +1587,8 @@ struct GrowthView: View {
         return [
             ("5K",   "5K",                  4700...5500),
             ("10K",  "10K",                 9500...10500),
-            ("half", L.s("하프", "Half"),   20000...22000),
-            ("full", L.s("풀",   "Full"),   41000...43000),
+            ("half", L.s("하프", "Half", ja: "ハーフ"),   20000...22000),
+            ("full", L.s("풀",   "Full", ja: "フル"),   41000...43000),
         ]
     }
 
@@ -1691,13 +1693,13 @@ struct GrowthView: View {
         let L = AppLanguage.shared
         if streak >= 2 {
             return L.s("\(streak)주 연속 · \(Self.heatmapWeeks)주간 \(activeDays)일 러닝",
-                       "\(streak) weeks · \(activeDays) days in \(Self.heatmapWeeks) wks")
+                       "\(streak) weeks · \(activeDays) days in \(Self.heatmapWeeks) wks", ja: "\(streak)週連続 · \(Self.heatmapWeeks)週間で\(activeDays)日ラン")
         } else if activeDays > 0 {
             return L.s("최근 \(Self.heatmapWeeks)주간 \(activeDays)일 러닝",
-                       "\(activeDays) days in the last \(Self.heatmapWeeks) wks")
+                       "\(activeDays) days in the last \(Self.heatmapWeeks) wks", ja: "直近\(Self.heatmapWeeks)週間で\(activeDays)日ラン")
         } else {
             return L.s("최근 \(Self.heatmapWeeks)주간 기록 없음",
-                       "No runs in the last \(Self.heatmapWeeks) wks")
+                       "No runs in the last \(Self.heatmapWeeks) wks", ja: "直近\(Self.heatmapWeeks)週間の記録なし")
         }
     }
 
@@ -1784,10 +1786,10 @@ struct GrowthView: View {
                 } label: {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(L.s("쉬어간 기간 · \(displayGaps.count)회", "Rest Periods · \(displayGaps.count)"))
+                            Text(L.s("쉬어간 기간 · \(displayGaps.count)회", "Rest Periods · \(displayGaps.count)", ja: "休んだ期間 · \(displayGaps.count)回"))
                                 .font(.headline)
                                 .foregroundStyle(.white)
-                            Text(L.s("14일 이상 러닝 없음", "14+ day running gaps"))
+                            Text(L.s("14일 이상 러닝 없음", "14+ day running gaps", ja: "14日以上ランなし"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1813,13 +1815,13 @@ struct GrowthView: View {
                                 Text(gapMonthLabel(gap.start))
                                     .font(.system(size: 14))
                                     .foregroundStyle(.white)
-                                Text(L.s("\(gap.days)일", "\(gap.days) days"))
+                                Text(L.s("\(gap.days)일", "\(gap.days) days", ja: "\(gap.days)日"))
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(Color(hex: "AEAEB2"))
                                 Spacer()
                                 if let pre = gap.prePace, let post = gap.postPace {
                                     Text(L.s("복귀 후 \(pf(post)) · 쉬기 전 \(pf(pre))",
-                                             "After \(pf(post)) · Before \(pf(pre))"))
+                                             "After \(pf(post)) · Before \(pf(pre))", ja: "復帰後 \(pf(post)) · 休む前 \(pf(pre))"))
                                         .font(.system(size: 12))
                                         .foregroundStyle(Color(hex: "8E8E93"))
                                 }
@@ -1923,8 +1925,8 @@ struct GrowthView: View {
             let L = AppLanguage.shared
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(
-                    title: L.s("몸의 변화", "Body Changes"),
-                    subtitle: L.s("측정 기록 기반", "Based on health records")
+                    title: L.s("몸의 변화", "Body Changes", ja: "体の変化"),
+                    subtitle: L.s("측정 기록 기반", "Based on health records", ja: "計測記録に基づく")
                 )
                 if let pk  = bodyMassPeakData      { bodyMassPeakCard(pk) }
                 if let st  = bodyMassStabilityData  { bodyMassStabilityCard(st) }
@@ -1943,6 +1945,7 @@ struct GrowthView: View {
 
         let peakDateStr: String = {
             let comps = Calendar.current.dateComponents([.year, .month], from: data.peakDate)
+            if L.isJapanese { return "\(comps.year ?? 0)年\(comps.month ?? 0)月" }
             if L.isEnglish {
                 let df = DateFormatter(); df.locale = Locale(identifier: "en_US"); df.dateFormat = "MMM yyyy"
                 return df.string(from: data.peakDate)
@@ -1951,6 +1954,11 @@ struct GrowthView: View {
         }()
 
         let titleText: String = {
+            if L.isJapanese {
+                return data.isLighter
+                    ? "今の体重は記録がある期間の最高値より\(dKgStr)kg軽いです"
+                    : "今の体重は記録がある期間の最高値より\(dKgStr)kg重いです"
+            }
             if L.isEnglish {
                 return data.isLighter
                     ? "You are \(dKgStr) kg lighter than your recorded peak."
@@ -1963,11 +1971,11 @@ struct GrowthView: View {
         }()
         let basisText = L.s(
             "기록이 있는 기간의 최고치 기준입니다. 그 전은 알 수 없습니다.",
-            "Based on your recorded peak. Earlier history is unknown."
+            "Based on your recorded peak. Earlier history is unknown.", ja: "記録がある期間の最高値が基準です。それ以前はわかりません。"
         )
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(L.s("최고치 대비", "vs. Recorded Peak"))
+            Text(L.s("최고치 대비", "vs. Recorded Peak", ja: "最高値との比較"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(titleText)
@@ -1977,13 +1985,13 @@ struct GrowthView: View {
 
             // Table
             VStack(alignment: .leading, spacing: 3) {
-                bodyMassRow(label: L.s("최고", "Peak"),
+                bodyMassRow(label: L.s("최고", "Peak", ja: "最高"),
                             value: "\(pkStr) kg",
                             note: "(\(peakDateStr))")
-                bodyMassRow(label: L.s("지금", "Now"),
+                bodyMassRow(label: L.s("지금", "Now", ja: "現在"),
                             value: "\(curStr) kg",
                             note: nil)
-                bodyMassRow(label: L.s("차이", "Diff"),
+                bodyMassRow(label: L.s("차이", "Diff", ja: "差"),
                             value: "\(data.isLighter ? "−" : "+")\(dKgStr) kg",
                             note: "· \(dPctStr)%")
             }
@@ -2027,24 +2035,24 @@ struct GrowthView: View {
 
         let titleText = L.s(
             "체중이 \(minStr) ~ \(maxStr)kg 사이에서 유지되고 있습니다",
-            "Your weight has stayed between \(minStr) and \(maxStr) kg"
+            "Your weight has stayed between \(minStr) and \(maxStr) kg", ja: "体重は\(minStr) ~ \(maxStr)kgの間で保たれています"
         )
         let sdSentence: String = {
             if data.stdDev < 0.8 {
-                return L.s("흔들림이 거의 없습니다.", "Very stable — barely any fluctuation.")
+                return L.s("흔들림이 거의 없습니다.", "Very stable — barely any fluctuation.", ja: "ほとんど変動がありません。")
             } else if data.stdDev <= 2.0 {
-                return L.s("평소 범위 안에서 오르내리고 있습니다.", "Normal day-to-day variation.")
+                return L.s("평소 범위 안에서 오르내리고 있습니다.", "Normal day-to-day variation.", ja: "普段の範囲内で上下しています。")
             } else {
-                return L.s("최근 폭이 조금 넓습니다.", "The range has been a bit wider lately.")
+                return L.s("최근 폭이 조금 넓습니다.", "The range has been a bit wider lately.", ja: "最近は幅が少し広めです。")
             }
         }()
         let basisText = L.s(
             "측정 \(data.count)회 · 표준편차 \(sdStr) kg · 최근 6개월",
-            "\(data.count) readings · SD \(sdStr) kg · last 6 months"
+            "\(data.count) readings · SD \(sdStr) kg · last 6 months", ja: "計測\(data.count)回 · 標準偏差\(sdStr) kg · 直近6か月"
         )
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(L.s("유지", "Stability"))
+            Text(L.s("유지", "Stability", ja: "維持"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(titleText)
@@ -2070,29 +2078,29 @@ struct GrowthView: View {
         let storyA = (
             headline: L.s(
                 "체중이 크게 줄지 않아도 달리기만으로 간 지방이 줄었습니다.",
-                "Running alone reduces liver fat — even without significant weight loss."
+                "Running alone reduces liver fat — even without significant weight loss.", ja: "体重が大きく減らなくても、ランニングだけで肝臓の脂肪が減りました。"
             ),
             body: L.s(
                 "무작위 배정 연구 14편 551명에서 운동군의 평균 체중 감소는 2.8%뿐이었는데도, 간 지방이 30% 이상 줄어든 사람이 3.5배 많았습니다.",
-                "Across 14 randomized trials (551 people), the exercise group lost just 2.8% of body weight on average — yet were 3.5× more likely to reduce liver fat by 30% or more."
+                "Across 14 randomized trials (551 people), the exercise group lost just 2.8% of body weight on average — yet were 3.5× more likely to reduce liver fat by 30% or more.", ja: "ランダム化試験14件・551人で、運動群の平均体重減少は2.8%にすぎなかったのに、肝臓の脂肪が30%以上減った人が3.5倍多くいました。"
             ),
             cite: "Stine 2023, Am J Gastroenterol"
         )
         let storyB = (
             headline: L.s(
                 "주 1시간 미만 달려도 주 3시간 이상 달리는 사람과 같은 이득을 얻었습니다.",
-                "Running less than 1 hour per week yields the same benefit as 3+ hours."
+                "Running less than 1 hour per week yields the same benefit as 3+ hours.", ja: "週1時間未満のランでも、週3時間以上走る人と同じ効果が得られました。"
             ),
             body: L.s(
                 "55,137명을 15년 추적한 연구에서 러너는 전체 사망 위험이 30%, 심혈관 사망 위험이 45% 낮았고 평균 3년 더 살았습니다.",
-                "In a 15-year study of 55,137 adults, runners had 30% lower all-cause mortality and 45% lower cardiovascular mortality, living an average of 3 years longer."
+                "In a 15-year study of 55,137 adults, runners had 30% lower all-cause mortality and 45% lower cardiovascular mortality, living an average of 3 years longer.", ja: "55,137人を15年追跡した研究で、ランナーは全死亡リスクが30%、心血管死亡リスクが45%低く、平均3年長生きしました。"
             ),
             cite: "Lee 2014, J Am Coll Cardiol"
         )
         let story = healthStoryIndex == 0 ? storyA : storyB
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(L.s("건강 이야기", "Health Insight"))
+            Text(L.s("건강 이야기", "Health Insight", ja: "健康のはなし"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(story.headline)
@@ -2149,9 +2157,11 @@ private struct RunHeatmap: View {
 
     // Mon, -, Wed, -, Fri, Sat, Sun  (blank on Tue/Thu to reduce clutter)
     private var dayLabels: [String] {
-        AppLanguage.shared.isEnglish
-            ? ["M", "", "W", "", "F", "Sa", "Su"]
-            : ["월", "", "수", "", "금", "토", "일"]
+        switch AppLanguage.shared.current {
+        case .ko: ["월", "", "수", "", "금", "토", "일"]
+        case .en: ["M", "", "W", "", "F", "Sa", "Su"]
+        case .ja: ["月", "", "水", "", "金", "土", "日"]
+        }
     }
 
     var body: some View {
@@ -2224,7 +2234,7 @@ private struct RunHeatmap: View {
         let L = AppLanguage.shared
         return HStack(spacing: 5) {
             Spacer()
-            Text(L.s("적음", "Less"))
+            Text(L.s("적음", "Less", ja: "少"))
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
             ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
@@ -2232,7 +2242,7 @@ private struct RunHeatmap: View {
                     .fill(cellColor(km: km, isFuture: false))
                     .frame(width: cellSize, height: cellSize)
             }
-            Text(L.s("많음", "More"))
+            Text(L.s("많음", "More", ja: "多"))
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
         }
@@ -2473,7 +2483,7 @@ private struct MetricSparkCard: View {
                                     .foregroundStyle(isGood ? metric.sparkColor : Color(hex: "FF9F0A"))
                                     .lineLimit(1)
                             } else {
-                                Text(AppLanguage.shared.s("변화 없음", "No change"))
+                                Text(AppLanguage.shared.s("변화 없음", "No change", ja: "変化なし"))
                                     .font(.system(size: 11))
                                     .foregroundStyle(Color.white.opacity(0.30))
                                     .lineLimit(1)
@@ -2482,7 +2492,7 @@ private struct MetricSparkCard: View {
                     }
                     sparkline
                 } else {
-                    Text(AppLanguage.shared.s("데이터 없음", "No Data"))
+                    Text(AppLanguage.shared.s("데이터 없음", "No Data", ja: "データなし"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .frame(height: 36)
@@ -2656,7 +2666,7 @@ private struct WeekStatTile: View {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(iconColor)
-                Text(pattern.shortName(for: woy, isEnglish: AppLanguage.shared.isEnglish))
+                Text(pattern.shortName(for: woy, lang: AppLanguage.shared.current))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()

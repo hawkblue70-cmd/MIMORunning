@@ -136,26 +136,26 @@ func mrThresholdAsOf(runs: [MRWorkout], restingHRSamples: [(date: Date, value: D
     let combined = mrCombineThresholdHR(regression: reg, sustained: sus)
 
     var basis = [L.s("하프 예측 \(mrFormatHMS(half.midMin))에서 60분 대회 페이스로 환산",
-                     "60-min race pace from half prediction \(mrFormatHMS(half.midMin))")]
+                     "60-min race pace from half prediction \(mrFormatHMS(half.midMin))", ja: "ハーフ予測\(mrFormatHMS(half.midMin))から60分レースペースに換算")]
     // 기준 기록 — mrPredict와 같은 앵커 규칙(환산시간 / 거리^1.06 최소). 언제 빠질지 보이게 며칠 전인지 밝힌다.
     let anchor = recent.min(by: { $0.timeMinRef / pow($0.distanceM, 1.06) < $1.timeMinRef / pow($1.distanceM, 1.06) })
     if let a = anchor {
         let ago = cal.dateComponents([.day], from: a.date, to: cal.startOfDay(for: asOf)).day ?? 0
-        let name = a.label == "하프" ? L.s("하프", "Half") : a.label
+        let name = a.label == "하프" ? L.s("하프", "Half", ja: "ハーフ") : a.label
         basis.append(L.s("기준 기록: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago)일 전)",
-                         "Anchor: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago) days ago)"))
+                         "Anchor: \(name) \(mrFormatDisplay(a.timeMin)) (\(ago) days ago)", ja: "基準記録: \(name) \(mrFormatDisplay(a.timeMin))(\(ago)日前)"))
     }
     if let r = reg {
         basis.append(L.s("심박–페이스 회귀(러닝 \(hrp.n)회) \(Int(r.rounded()))bpm",
-                         "HR–pace regression (\(hrp.n) runs) \(Int(r.rounded()))bpm"))
+                         "HR–pace regression (\(hrp.n) runs) \(Int(r.rounded()))bpm", ja: "心拍–ペース回帰(ラン\(hrp.n)回) \(Int(r.rounded()))bpm"))
     }
     if let s = sus {
         basis.append(L.s("20~70분 대회급 노력 \(s.n)회 심박 중앙값 \(Int(s.hr.rounded()))bpm",
-                         "Median HR of \(s.n) race-level 20–70 min efforts \(Int(s.hr.rounded()))bpm"))
+                         "Median HR of \(s.n) race-level 20–70 min efforts \(Int(s.hr.rounded()))bpm", ja: "20~70分のレース級の努力\(s.n)回の心拍中央値 \(Int(s.hr.rounded()))bpm"))
     }
     if reg != nil, sus != nil, combined == nil {
         basis.append(L.s("두 심박 추정이 \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm 넘게 어긋나 심박은 표시하지 않습니다",
-                         "HR not shown — the two estimates differ by more than \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm"))
+                         "HR not shown — the two estimates differ by more than \(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm", ja: "2つの心拍推定が\(Int(MR_THRESHOLD_HR_AGREE_BPM))bpm以上ずれているため、心拍は表示しません"))
     }
 
     return MRThresholdEstimate(asOf: asOf, paceSecPerKm: pace, paceConfidence: half.confidence,
@@ -288,10 +288,10 @@ func mrThresholdUpdateSentence(anchor: MRRaceEffort, beforePace: Double?, afterP
     guard gain >= MR_THRESHOLD_IMPROVE_SEC else { return nil }
     let L = AppLanguage.shared
     let df = DateFormatter()
-    df.locale = Locale(identifier: L.isEnglish ? "en_US" : "ko_KR")
+    df.locale = L.locale
     df.setLocalizedDateFormatFromTemplate("MMMd")
-    let name = anchor.label == "하프" ? L.s("하프", "Half") : anchor.label
+    let name = anchor.label == "하프" ? L.s("하프", "Half", ja: "ハーフ") : anchor.label
     let s = Int(gain.rounded())
     return L.s("\(df.string(from: anchor.date)) \(name) 기록으로 \(s)초 빨라졌습니다",
-               "\(s)s/km faster after your \(name) on \(df.string(from: anchor.date))")
+               "\(s)s/km faster after your \(name) on \(df.string(from: anchor.date))", ja: "\(df.string(from: anchor.date))の\(name)の記録で\(s)秒速くなりました")
 }

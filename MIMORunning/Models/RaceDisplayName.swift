@@ -25,7 +25,7 @@ enum RaceDisplayName {
         let L = AppLanguage.shared
         let standards: [(km: Double, label: String)] = [
             (5.0, "5K"), (10.0, "10K"),
-            (21.0975, L.s("하프", "Half")), (42.195, L.s("풀", "Full")),
+            (21.0975, L.s("하프", "Half", ja: "ハーフ")), (42.195, L.s("풀", "Full", ja: "フル")),
         ]
         if let hit = standards.first(where: { abs($0.km - km) / $0.km <= 0.02 }) { return hit.label }
         if abs(km - km.rounded()) < 0.05 { return "\(Int(km.rounded()))K" }

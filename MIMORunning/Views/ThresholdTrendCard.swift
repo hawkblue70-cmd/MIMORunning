@@ -28,7 +28,7 @@ struct ThresholdTrendCard: View {
                 Image(systemName: "speedometer")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mrInk3)
-                Text(L.s("역치 페이스", "Threshold Pace"))
+                Text(L.s("역치 페이스", "Threshold Pace", ja: "閾値ペース"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -39,7 +39,7 @@ struct ThresholdTrendCard: View {
                     .font(.system(.title3, design: .rounded).weight(.bold))
                     .foregroundStyle(Theme.pace)
                 if let hr = current.hr {
-                    Text(L.s(" · 역치 심박 \(Int(hr.rounded()))bpm", " · Threshold HR \(Int(hr.rounded()))bpm"))
+                    Text(L.s(" · 역치 심박 \(Int(hr.rounded()))bpm", " · Threshold HR \(Int(hr.rounded()))bpm", ja: " · 閾値心拍 \(Int(hr.rounded()))bpm"))
                         .font(.system(size: 13))
                         .foregroundStyle(Color.mrInk2)
                 }
@@ -55,7 +55,7 @@ struct ThresholdTrendCard: View {
                 .frame(height: 100)
 
             Text(L.s("점: 최근 12개월 강한 러닝을 60분 대회 페이스로 환산 · 굵은 점이 지금 기준 기록",
-                     "Dots: hard runs in the last 12 months as 1-hour race pace · bold dot is the current anchor"))
+                     "Dots: hard runs in the last 12 months as 1-hour race pace · bold dot is the current anchor", ja: "点: 直近12か月の強度の高いランを60分レースペースに換算 · 太い点が現在の基準記録"))
                 .font(.system(size: 11))
                 .foregroundStyle(Color.mrInk3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -66,7 +66,7 @@ struct ThresholdTrendCard: View {
             } label: {
                 HStack(alignment: .top, spacing: 4) {
                     Text(L.s("오래 버틸 수 있는 가장 빠른 페이스(약 1시간 대회 페이스) · 본인 기록으로 낸 추정",
-                             "The fastest pace you can hold for a long time (about 1-hour race pace) · estimated from your runs"))
+                             "The fastest pace you can hold for a long time (about 1-hour race pace) · estimated from your runs", ja: "長く保てる最も速いペース(約1時間のレースペース) · 自分の記録からの推定"))
                         .font(.system(size: 11))
                         .foregroundStyle(Color.mrInk3)
                         .multilineTextAlignment(.leading)

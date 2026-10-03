@@ -41,7 +41,7 @@ struct MRRestingHRTrend: Equatable, Sendable {
     ///   같은 달 비교(+2.8)는 "높아지는 추세"라고 말했다 — 원인은 본인이 그래프를 보고 판단한다.
     static var explainer: String {
         AppLanguage.shared.s("훈련이 쌓이면 낮아집니다(훈련 연구 평균 4~6bpm). 쉬거나 부상·질병·수면 부족·스트레스가 있으면 몇 주 안에 2~9bpm 오릅니다. 오르내린 시기를 그때의 훈련·생활과 맞춰 보세요.",
-                             "It drops as training builds up (studies average 4–6 bpm). Rest, injury, illness, poor sleep or stress can raise it 2–9 bpm within weeks. Match the rises and falls to what was happening in your training and life.")
+                             "It drops as training builds up (studies average 4–6 bpm). Rest, injury, illness, poor sleep or stress can raise it 2–9 bpm within weeks. Match the rises and falls to what was happening in your training and life.", ja: "練習を積むと下がります(研究の平均4~6bpm)。休養やけが・病気・睡眠不足・ストレスがあると数週間で2~9bpm上がります。上下した時期をそのときの練習や生活と照らし合わせてみてください。")
     }
 }
 

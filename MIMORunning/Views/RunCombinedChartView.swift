@@ -522,7 +522,7 @@ struct RunCombinedChartView: View {
         // "둘이 안 맞는다"로 읽혔다. 열 머리에 작게 표시해 둔다.
         // (차트를 끌면 십자선이 그 지점 값을 따로 보여 준다 — 그쪽은 단위까지 붙는다.)
         ctx.draw(
-            Text(AppLanguage.shared.s("끝값", "end"))
+            Text(AppLanguage.shared.s("끝값", "end", ja: "終了値"))
                 .font(.system(size: 7, weight: .medium))
                 .foregroundStyle(p.textPrimary.opacity(0.45)),
             at: CGPoint(x: labelX, y: rect.minY - 2),
