@@ -137,9 +137,7 @@ enum ChartOverlayType: String, CaseIterable, Codable {
             return String(format: "%.2f", v)
         }
         let fmtX: (Double) -> String = { m in
-            AppLanguage.shared.isEnglish
-                ? String(format: "%.0fm", m)
-                : String(format: "%.0f분", m)
+            AppLanguage.shared.s(String(format: "%.0f분", m), String(format: "%.0fm", m), ja: String(format: "%.0f分", m))
         }
 
         // Fonts & colors

@@ -10,10 +10,10 @@ enum InsightTabKind: CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .rhythm:      return AppLanguage.shared.s("리듬", "Rhythm")
-        case .form:        return AppLanguage.shared.s("폼", "Form")
-        case .performance: return AppLanguage.shared.s("퍼포먼스", "Performance")
-        case .race:        return AppLanguage.shared.s("대회", "Race")
+        case .rhythm:      return AppLanguage.shared.s("리듬", "Rhythm", ja: "リズム")
+        case .form:        return AppLanguage.shared.s("폼", "Form", ja: "フォーム")
+        case .performance: return AppLanguage.shared.s("퍼포먼스", "Performance", ja: "パフォーマンス")
+        case .race:        return AppLanguage.shared.s("대회", "Race", ja: "レース")
         }
     }
 }
@@ -365,7 +365,7 @@ private struct CadenceEqualizerView: View {
                 Text("spm").font(.system(size: 9)).foregroundStyle(IC.label)
                 Spacer()
                 if steadyRatio >= 0.70 {
-                    Text(L.s("일정하게 유지", "Steady"))
+                    Text(L.s("일정하게 유지", "Steady", ja: "一定を維持"))
                         .font(.system(size: 8.5, weight: .medium))
                         .foregroundStyle(IC.green)
                         .padding(.horizontal, 8).padding(.vertical, 3)
@@ -413,17 +413,17 @@ private struct CadenceEqualizerView: View {
             .frame(height: 52)
             // Bottom labels
             HStack {
-                Text(L.s("시작", "Start"))
+                Text(L.s("시작", "Start", ja: "スタート"))
                     .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
                 Spacer()
                 if totalKm > 10 {
                     let perBar = totalKm / Double(max(1, bars.count))
                     Text(L.s("구간당 \(String(format: "%.1f", perBar))km",
-                             "\(String(format: "%.1f", perBar))km/bar"))
+                             "\(String(format: "%.1f", perBar))km/bar", ja: "1本あたり\(String(format: "%.1f", perBar))km"))
                         .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
                     Spacer()
                 }
-                Text(L.s("종료", "End"))
+                Text(L.s("종료", "End", ja: "フィニッシュ"))
                     .font(.system(size: 7.5)).foregroundStyle(Color(hex: "6B7280"))
             }
         }
@@ -613,10 +613,10 @@ private enum AchievementBadgeKind {
     var text: String {
         let L = AppLanguage.shared
         switch self {
-        case .longestEver:      return L.s("🏅 최장 거리",    "🏅 All-time Longest")
-        case .bestPace:         return L.s("⚡ 페이스 최고",   "⚡ Best Pace")
-        case .longestThisMonth: return L.s("🏅 이번 달 최장", "🏅 Month Longest")
-        case .streak(let n):    return L.s("🔥 \(n)일 연속",  "🔥 \(n)-day Streak")
+        case .longestEver:      return L.s("🏅 최장 거리",    "🏅 All-time Longest", ja: "🏅 最長距離")
+        case .bestPace:         return L.s("⚡ 페이스 최고",   "⚡ Best Pace", ja: "⚡ ベストペース")
+        case .longestThisMonth: return L.s("🏅 이번 달 최장", "🏅 Month Longest", ja: "🏅 今月の最長")
+        case .streak(let n):    return L.s("🔥 \(n)일 연속",  "🔥 \(n)-day Streak", ja: "🔥 \(n)日連続")
         }
     }
 
@@ -724,9 +724,9 @@ private struct HeroSideBlockView: View {
         return HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .trailing, spacing: 5) {
                 // 1줄: 이번 주
-                loadLine(L.s("이번 주", "This wk"), km: wkKm)
+                loadLine(L.s("이번 주", "This wk", ja: "今週"), km: wkKm)
                 // 2줄: 이번 달
-                loadLine(L.s("이번 달", "This mo"), km: moKm)
+                loadLine(L.s("이번 달", "This mo", ja: "今月"), km: moKm)
                 // 3줄: 배지 — 없으면 자리만 유지해 높이가 흔들리지 않게
                 if let badge {
                     AchievementBadgeView(badge: badge)
@@ -899,9 +899,9 @@ struct RunInsightTabCard: View {
 
     private var sectionHeader: some View {
         let L = AppLanguage.shared
-        let base = L.s("오늘의 러닝", "Today's Run")
+        let base = L.s("오늘의 러닝", "Today's Run", ja: "今日のラン")
         let effectiveLabel: String? = workoutTypeFn?(activity.id) == .race
-            ? L.s("대회", "Race")
+            ? L.s("대회", "Race", ja: "レース")
             : workoutTypeLabel
         let title = effectiveLabel.map { "\(base) · \($0)" } ?? base
         return VStack(alignment: .leading, spacing: 3) {
@@ -909,7 +909,7 @@ struct RunInsightTabCard: View {
                 HStack(spacing: 6) {
                     Text(title).font(.system(size: 13, weight: .medium))
                     if isAutoDetected {
-                        Text(L.s("자동 감지", "Auto"))
+                        Text(L.s("자동 감지", "Auto", ja: "自動判定"))
                             .font(.system(size: 9)).foregroundStyle(.secondary)
                     }
                 }
@@ -918,7 +918,7 @@ struct RunInsightTabCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up.on.square")
                             .font(.system(size: 11, weight: .semibold))
-                        Text(L.s("오늘의 인사이트 내보내기", "Export Insights"))
+                        Text(L.s("오늘의 인사이트 내보내기", "Export Insights", ja: "今日のインサイトを書き出す"))
                             .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -943,14 +943,14 @@ struct RunInsightTabCard: View {
         guard let wt = workoutTypeFn?(activity.id) else { return nil }
         let L = AppLanguage.shared
         switch wt {
-        case .buildUp:     return L.s("갈수록 페이스를 올리는 훈련", "Progressive acceleration training")
-        case .tempo:       return L.s("젖산역치 근처를 일정하게 버티는 훈련", "Sustained threshold-pace run")
-        case .interval:    return L.s("고강도와 회복을 반복하는 훈련", "High-intensity intervals with recovery")
-        case .lsd:         return L.s("낮은 강도로 오래 달려 지구력을 쌓는 훈련", "Long slow run to build aerobic base")
-        case .longRun:     return L.s("평소보다 긴 거리로 지구력을 늘리는 훈련", "Extended run to build endurance")
-        case .distanceRun: return L.s("목표 거리를 채우는 훈련", "Race-pace long distance run")
-        case .easy:        return L.s("편안한 페이스로 회복하는 러닝", "Easy recovery run")
-        case .race:        return L.s("기록에 도전한 대회 러닝", "Race effort run")
+        case .buildUp:     return L.s("갈수록 페이스를 올리는 훈련", "Progressive acceleration training", ja: "徐々にペースを上げる練習")
+        case .tempo:       return L.s("젖산역치 근처를 일정하게 버티는 훈련", "Sustained threshold-pace run", ja: "乳酸閾値付近を一定に保つ練習")
+        case .interval:    return L.s("고강도와 회복을 반복하는 훈련", "High-intensity intervals with recovery", ja: "高強度と回復を繰り返す練習")
+        case .lsd:         return L.s("낮은 강도로 오래 달려 지구력을 쌓는 훈련", "Long slow run to build aerobic base", ja: "低い強度で長く走り持久力を積む練習")
+        case .longRun:     return L.s("평소보다 긴 거리로 지구력을 늘리는 훈련", "Extended run to build endurance", ja: "普段より長い距離で持久力を伸ばす練習")
+        case .distanceRun: return L.s("목표 거리를 채우는 훈련", "Race-pace long distance run", ja: "目標距離を走りきる練習")
+        case .easy:        return L.s("편안한 페이스로 회복하는 러닝", "Easy recovery run", ja: "楽なペースで回復するラン")
+        case .race:        return L.s("기록에 도전한 대회 러닝", "Race effort run", ja: "記録に挑んだレース")
         case .general:     return nil
         }
     }
@@ -1083,20 +1083,20 @@ struct RunInsightTabCard: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(L.s(
                 "참고용 피트니스 인사이트입니다. 연령대 평균과 추정 최대심박은 개인차가 큰 추정치이며 의학적 판단이 아닙니다. 유산소 피트니스 기준은 FRIEND(Fitness Registry and Importance of Exercise National Database)를 따릅니다.",
-                "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database)."
+                "Reference-only fitness insights. Age-group norms and estimated max HR are rough estimates with high individual variation and are not medical advice. Cardio fitness norms follow FRIEND (Fitness Registry and Importance of Exercise National Database).", ja: "参考用のフィットネスインサイトです。年代平均と推定最大心拍は個人差の大きい推定値で、医学的な判断ではありません。心肺フィットネスの基準はFRIEND(Fitness Registry and Importance of Exercise National Database)に従います。"
             ))
             // 회복 점·띠 범례 — 리듬 탭에서 실제로 그려졌을 때만. 강도 분포 각주와 같은 자리·같은 크기.
             if tab == .rhythm, recoveryResult != nil, hrSamples.count >= 5 {
                 Text(L.s(
                     "심박 차트 오른쪽 두 점은 운동을 마친 뒤 1분·2분 심박입니다. 숫자는 끝났을 때보다 얼마나 떨어졌는지입니다.\n\n빨간 띠는 오늘과 같은 심박으로 끝냈을 때 평소 떨어지던 폭(가운데 50%)입니다. 최근 1년 기록에서 끝낸 심박의 영향을 걷어내고 계산합니다. 점이 띠보다 위면 평소보다 덜, 아래면 더 떨어진 것입니다. 쿨다운을 걷는지 서 있는지에 따라 크게 달라지는 값이라 다른 사람과 비교하는 기준은 아닙니다.",
-                    "The two dots at the right of the HR chart are your heart rate 1 and 2 minutes after finishing. The numbers show how far it fell from where you stopped.\n\nThe red band is how far it usually falls when you finish at today's heart rate (middle 50%), estimated from the past year with the effect of finishing heart rate removed. A dot above the band means it fell less than usual, below means more. This value depends heavily on whether you walk or stand during cool-down, so it is not a basis for comparing with other people."
+                    "The two dots at the right of the HR chart are your heart rate 1 and 2 minutes after finishing. The numbers show how far it fell from where you stopped.\n\nThe red band is how far it usually falls when you finish at today's heart rate (middle 50%), estimated from the past year with the effect of finishing heart rate removed. A dot above the band means it fell less than usual, below means more. This value depends heavily on whether you walk or stand during cool-down, so it is not a basis for comparing with other people.", ja: "心拍チャート右の2つの点は、運動を終えた1分後・2分後の心拍です。数字は終了時からどれだけ下がったかです。\n\n赤い帯は、今日と同じ心拍で終えたときに普段下がる幅(中央50%)です。直近1年の記録から終了時心拍の影響を取り除いて計算します。点が帯より上なら普段より下がりが小さく、下なら大きかったことになります。クールダウンで歩くか立ち止まるかで大きく変わる値なので、他の人と比べる基準ではありません。"
                 ))
             }
             // L-2: 강도 분포 참고선의 근거와 한계 — 퍼포먼스 탭에서만. 기존 각주와 같은 크기·색, 강조 없음.
             if tab == .performance, performanceHasIntensity {
                 Text(L.s(
                     "강도 분포의 점선은 지구력 종목 선수들에게서 반복 관찰된 분포입니다(저강도 80% · 중간 0~5% · 고강도 15~20%). 낮은 강도는 부담이 적어 오래 쌓을 수 있고, 높은 강도는 최대 능력을 올립니다. 가운데는 회복 부담에 비해 얻는 것이 적다고 알려져 있습니다.\n\n주간 훈련량이 많은 선수를 관찰한 값이라 목표가 아니라 참고선입니다. 구간은 첫 젖산 역치(AT1)와 두 번째 역치(AT2)로 나눴고, 두 값은 안정시 심박과 추정 최대심박으로 계산한 추정치입니다.",
-                    "The dotted lines in the intensity distribution show a pattern repeatedly observed in endurance athletes (low 80% · mid 0–5% · high 15–20%). Low intensity is easy to accumulate with little strain; high intensity raises maximal capacity. The middle is known to return less for its recovery cost.\n\nThese values come from athletes with high weekly volume, so they are a reference, not a target. The bands are split at the first lactate threshold (AT1) and the second (AT2), both estimated from resting HR and an age-estimated max HR."
+                    "The dotted lines in the intensity distribution show a pattern repeatedly observed in endurance athletes (low 80% · mid 0–5% · high 15–20%). Low intensity is easy to accumulate with little strain; high intensity raises maximal capacity. The middle is known to return less for its recovery cost.\n\nThese values come from athletes with high weekly volume, so they are a reference, not a target. The bands are split at the first lactate threshold (AT1) and the second (AT2), both estimated from resting HR and an age-estimated max HR.", ja: "強度分布の点線は、持久系競技の選手で繰り返し観察された分布です(低強度80% · 中強度0~5% · 高強度15~20%)。低い強度は負担が少なく長く積み重ねられ、高い強度は最大能力を高めます。中間は回復の負担に比べて得るものが少ないとされています。\n\n週間練習量の多い選手を観察した値なので、目標ではなく参考線です。区間は第1乳酸閾値(AT1)と第2閾値(AT2)で分けており、どちらも安静時心拍と推定最大心拍から計算した推定値です。"
                 ))
             }
         }
@@ -1178,7 +1178,7 @@ private struct HRTimeSeriesView: View {
     var body: some View {
         guard samples.count >= 5 else {
             return AnyView(
-                Text(AppLanguage.shared.s("심박 데이터 없음", "No HR data"))
+                Text(AppLanguage.shared.s("심박 데이터 없음", "No HR data", ja: "心拍データなし"))
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.35))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1286,7 +1286,7 @@ private struct HRTimeSeriesView: View {
 
                     // "고도" 이름표 — 회색 면적이 무엇인지 알 수 없다는 피드백. 차트 안 오른쪽 아래(고도 면적 안,
                     // 러닝 끝이라 심박선은 보통 위쪽). 최고 높이 숫자는 회복 점이 있으면 접히므로 거기에 붙이지 않는다.
-                    ctx.draw(Text(AppLanguage.shared.s("고도", "Elev")).font(.system(size: 7.5))
+                    ctx.draw(Text(AppLanguage.shared.s("고도", "Elev", ja: "標高")).font(.system(size: 7.5))
                         .foregroundStyle(.white.opacity(0.5)),
                         at: CGPoint(x: chartRight - 3, y: chartH - 2), anchor: .bottomTrailing)
 
@@ -1388,7 +1388,7 @@ private struct HRTimeSeriesView: View {
                             .foregroundStyle(.white.opacity(0.72)),
                             at: CGPoint(x: x2 + 5, y: l.y), anchor: .leading)
                     }
-                    ctx.draw(Text(AppLanguage.shared.s("1·2분", "1·2m")).font(.system(size: 7))
+                    ctx.draw(Text(AppLanguage.shared.s("1·2분", "1·2m", ja: "1·2分")).font(.system(size: 7))
                         .foregroundStyle(.white.opacity(0.55)),
                         at: CGPoint(x: x1, y: h), anchor: .bottomLeading)
                 }
@@ -1483,7 +1483,7 @@ private struct WeekStripView: View {
             }
             HStack(spacing: gap) {
                 ForEach(dayInfos) { info in
-                    Text(info.isToday ? AppLanguage.shared.s("오늘", "Today") : "")
+                    Text(info.isToday ? AppLanguage.shared.s("오늘", "Today", ja: "今日") : "")
                         .font(.system(size: 6, weight: .medium))
                         .foregroundStyle(.white.opacity(0.65))
                         .frame(width: cellSize)
@@ -1705,29 +1705,29 @@ private struct RhythmInsightCard: View {
 
     private var kpiRow: some View {
         HStack(spacing: 0) {
-            KPICell(label: AppLanguage.shared.s("시간", "Time"),
+            KPICell(label: AppLanguage.shared.s("시간", "Time", ja: "時間"),
                     value: activity.formattedDuration)
             kpiSep
-            KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
+            KPICell(label: AppLanguage.shared.s("페이스", "Pace", ja: "ペース"),
                     value: activity.formattedPace ?? "--'--\"",
                     context: flatEquivalentText, contextColor: IC.label)
             kpiSep
             if let hr = activity.avgHeartRate {
-                KPICell(label: AppLanguage.shared.s("심박", "HR"),
+                KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "\(hr)", unit: "bpm", color: IC.hrRed)
             } else {
-                KPICell(label: AppLanguage.shared.s("심박", "HR"),
+                KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "--", color: .secondary)
             }
             kpiSep
             if let workCad = intervalWorkCadence {
-                KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)"),
+                KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)", ja: "ケイデンス(本練習区間)"),
                         value: "\(Int(workCad.rounded()))", unit: "spm", color: IC.cadCyan)
             } else if let cad = detail?.avgCadence {
-                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
+                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "\(cad)", unit: "spm", color: IC.cadCyan)
             } else {
-                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
+                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "--", color: .secondary)
             }
         }
@@ -1828,7 +1828,7 @@ private struct RhythmInsightCard: View {
                 rhythmCell(chartH: Self.topChartH, captionH: topCaptionH) {
                     if hasZones {
                         VStack(spacing: 8) {
-                            cellTitle(L.s("심박수 영역", "HR Zones"))
+                            cellTitle(L.s("심박수 영역", "HR Zones", ja: "心拍ゾーン"))
                             ZoneDonutView(zones: hrZones)
                                 .frame(width: 100, height: 100)
                         }
@@ -1851,8 +1851,8 @@ private struct RhythmInsightCard: View {
                     if hasHR {
                         VStack(spacing: 8) {
                             // 오른쪽 점들이 "운동 후"라는 걸 x축 라벨(1·2분)만으로는 알 수 없다.
-                            cellTitle(L.s("러닝 심박수", "Run HR"),
-                                      trailing: recoveryResult == nil ? nil : L.s("심박수 회복", "HR Recovery"))
+                            cellTitle(L.s("러닝 심박수", "Run HR", ja: "ラン心拍数"),
+                                      trailing: recoveryResult == nil ? nil : L.s("심박수 회복", "HR Recovery", ja: "心拍回復"))
                             HRTimeSeriesView(
                             samples: hrSamples,
                             zones: hasZones ? hrZones : [],
@@ -1900,7 +1900,7 @@ private struct RhythmInsightCard: View {
                     if let cad = displayCad {
                         let gaugeBaseline: RunningFormBaseline? = rhythmIsLongDistanceContext ? nil : formBaseline
                         VStack(spacing: 1.5) {
-                            cellTitle(L.s("케이던스", "Cadence"))
+                            cellTitle(L.s("케이던스", "Cadence", ja: "ケイデンス"))
                             CadenceRPMGaugeView(cadence: cad, scale: Self.gaugeScale,
                                                 formBaseline: gaugeBaseline, activity: activity,
                                                 isInterval: workoutTypeFn?(activity.id) == .interval,
@@ -1934,7 +1934,7 @@ private struct RhythmInsightCard: View {
                            chartAlignment: .top) {
                     if let info = vo2Info, let vo2 = detail?.vo2Max {
                         VStack(spacing: 1.5) {
-                            cellTitle(L.s("유산소 피트니스", "Aerobic Fitness"))
+                            cellTitle(L.s("유산소 피트니스", "Aerobic Fitness", ja: "心肺フィットネス"))
                             VO2RPMGaugeView(fi: info, vo2: vo2, scale: Self.gaugeScale)
                                 .frame(height: 87 * Self.gaugeScale)
                         }
@@ -2027,7 +2027,7 @@ private struct RhythmInsightCard: View {
                 let sign = delta >= 0 ? "+" : "−"
                 let mag = abs(c - stat.median) / max(stat.sd, 1)
                 devs.append(Dev(
-                    label: L.s("케이던스 \(sign)\(abs(delta))spm", "Cadence \(sign)\(abs(delta))spm"),
+                    label: L.s("케이던스 \(sign)\(abs(delta))spm", "Cadence \(sign)\(abs(delta))spm", ja: "ケイデンス \(sign)\(abs(delta))spm"),
                     magnitude: mag, isAbsWarn: c < 160
                 ))
             }
@@ -2041,7 +2041,7 @@ private struct RhythmInsightCard: View {
                 let mag = abs(delta) / max(stat.sd, 0.001)
                 devs.append(Dev(
                     label: L.s("보폭 \(sign)\(String(format: "%.2f", abs(delta)))m",
-                                "Stride \(sign)\(String(format: "%.2f", abs(delta)))m"),
+                                "Stride \(sign)\(String(format: "%.2f", abs(delta)))m", ja: "ストライド \(sign)\(String(format: "%.2f", abs(delta)))m"),
                     magnitude: mag, isAbsWarn: false
                 ))
             }
@@ -2054,7 +2054,7 @@ private struct RhythmInsightCard: View {
                 let sign = delta >= 0 ? "+" : "−"
                 let mag = abs(gc - stat.median) / max(stat.sd, 1)
                 devs.append(Dev(
-                    label: L.s("지면접촉 \(sign)\(abs(delta))ms", "Contact \(sign)\(abs(delta))ms"),
+                    label: L.s("지면접촉 \(sign)\(abs(delta))ms", "Contact \(sign)\(abs(delta))ms", ja: "接地時間 \(sign)\(abs(delta))ms"),
                     magnitude: mag, isAbsWarn: gc > 300
                 ))
             }
@@ -2070,7 +2070,7 @@ private struct RhythmInsightCard: View {
         var pieces: [(text: String, color: Color)] = top.map { dev in
             (dev.label, dev.isAbsWarn ? Color(hex: "FF6B6B") : Color.white.opacity(0.75))
         }
-        let metricWords = [L.s("케이던스", "Cadence"), L.s("보폭", "Stride"), L.s("지면접촉", "Contact")]
+        let metricWords = [L.s("케이던스", "Cadence", ja: "ケイデンス"), L.s("보폭", "Stride", ja: "ストライド"), L.s("지면접촉", "Contact", ja: "接地時間")]
         let interpRepeats = metricWords.contains { w in
             interp.text.localizedCaseInsensitiveContains(w) && top.contains { $0.label.hasPrefix(w) }
         }
@@ -2091,28 +2091,28 @@ private struct RhythmInsightCard: View {
 
         // 1. 케이던스 절대 기준 (최우선)
         if let cad = det.avgCadence, cad < 160 {
-            return (L.s("보폭이 큰 편입니다", "Wide stride tendency"), Color(hex: "FF6B6B"))
+            return (L.s("보폭이 큰 편입니다", "Wide stride tendency", ja: "ストライドが大きめです"), Color(hex: "FF6B6B"))
         }
 
         // 2. 지면접촉 (가장 민감한 상대 신호)
         if let stat = bb.groundContact, let gc = det.avgGroundContactTime {
             let delta = gc - stat.median
-            if delta <= -10 { return (L.s("지면접촉이 평소보다 짧았습니다", "Shorter ground contact than usual"), Theme.positive) }
-            if delta >= 10  { return (L.s("지면접촉이 평소보다 길었습니다", "Longer ground contact than usual"), Color.white.opacity(0.75)) }
+            if delta <= -10 { return (L.s("지면접촉이 평소보다 짧았습니다", "Shorter ground contact than usual", ja: "接地時間が普段より短かったです"), Theme.positive) }
+            if delta >= 10  { return (L.s("지면접촉이 평소보다 길었습니다", "Longer ground contact than usual", ja: "接地時間が普段より長かったです"), Color.white.opacity(0.75)) }
         }
 
         // 3. 케이던스 상대 신호
         if let stat = bb.cadence, let cad = det.avgCadence {
             let delta = Double(cad) - stat.median
-            if delta >= 3  { return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual"), Theme.positive) }
-            if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual"), Color.white.opacity(0.75)) }
+            if delta >= 3  { return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual", ja: "ケイデンスが普段より高かったです"), Theme.positive) }
+            if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), Color.white.opacity(0.75)) }
         }
 
         // 4. 보폭
         if let stat = bb.strideLength, let sl = det.avgStrideLength {
             let delta = sl - stat.median
-            if delta >= 0.03  { return (L.s("보폭이 평소보다 넓었습니다", "Longer stride than usual"), Theme.positive) }
-            if delta <= -0.03 { return (L.s("보폭이 짧았습니다", "Shorter stride"), Color.white.opacity(0.75)) }
+            if delta >= 0.03  { return (L.s("보폭이 평소보다 넓었습니다", "Longer stride than usual", ja: "ストライドが普段より広かったです"), Theme.positive) }
+            if delta <= -0.03 { return (L.s("보폭이 짧았습니다", "Shorter stride", ja: "ストライドが短かったです"), Color.white.opacity(0.75)) }
         }
 
         // 5. 심박
@@ -2121,11 +2121,11 @@ private struct RhythmInsightCard: View {
             let delta = todayHR - stat.median
             let rawDelta = Double(hr) - stat.median
             // 개선 주장은 원본도 낮을 때만 — 9a64c3b와 같은 규칙
-            if delta <= -4, rawDelta <= 0 { return (L.s("같은 페이스인데 심박이 낮았습니다", "Lower HR for this pace"), Theme.positive) }
-            if delta >= 5  { return (L.s("평소보다 심박이 높았습니다", "Higher HR than usual"), Color.white.opacity(0.75)) }
+            if delta <= -4, rawDelta <= 0 { return (L.s("같은 페이스인데 심박이 낮았습니다", "Lower HR for this pace", ja: "同じペースで心拍が低かったです"), Theme.positive) }
+            if delta >= 5  { return (L.s("평소보다 심박이 높았습니다", "Higher HR than usual", ja: "普段より心拍が高かったです"), Color.white.opacity(0.75)) }
         }
 
-        return (L.s("폼이 평소대로 안정적이었습니다", "Form right on baseline"), Theme.positive)
+        return (L.s("폼이 평소대로 안정적이었습니다", "Form right on baseline", ja: "フォームは普段どおり安定していました"), Theme.positive)
     }
 
     /// 러닝 종류별 전·후반 폼 판정. splits 4개 미만이거나 판정 불필요 종류면 nil.
@@ -2214,13 +2214,13 @@ private struct RhythmInsightCard: View {
             let fc = halfAvgCadence(Array(fullSplits.prefix(half)))
             let result: (text: String, color: Color)
             if sc >= expectedCad, let fc, sc - fc >= 2 {
-                result = (L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup"), Theme.positive)
+                result = (L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"), Theme.positive)
             } else if sc >= expectedCad {
-                result = (L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose"), Theme.positive)
+                result = (L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"), Theme.positive)
             } else if sc <= expectedCad - 2 {
-                result = (L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load"), Color(hex: "FFD166"))
+                result = (L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"), Color(hex: "FFD166"))
             } else {
-                result = (L.s("평소 패턴대로 페이스를 올렸습니다", "Paced up in your usual pattern"), Color.white.opacity(0.75))
+                result = (L.s("평소 패턴대로 페이스를 올렸습니다", "Paced up in your usual pattern", ja: "普段のパターンどおりにペースを上げました"), Color.white.opacity(0.75))
             }
             #if DEBUG
             print("[Form:종류] type=\(wtName) 후반P=\(pf(sp)) 구간=\(band.rawValue) 기대C=\(Int(expectedCad)) 전반C=\(fc.map { Int($0) } ?? -1) 실제C=\(Int(sc)) → \"\(result.text)\"")
@@ -2242,13 +2242,13 @@ private struct RhythmInsightCard: View {
                 let gctRise = sg - fg
                 if gctRise <= -7 {
                     result = (L.s("후반으로 갈수록 지면접촉이 짧아졌습니다. 템포 페이스가 잘 맞았습니다",
-                                  "Ground contact shortened — tempo pace was well-matched"), Theme.positive)
+                                  "Ground contact shortened — tempo pace was well-matched", ja: "後半になるほど接地時間が短くなりました。テンポのペースがよく合っていました"), Theme.positive)
                 } else if gctRise < 8 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural"), Theme.positive)
+                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"), Theme.positive)
                 } else {
                     let rise = Int(gctRise.rounded())
                     result = (L.s("후반에 지면접촉이 +\(rise)ms 늘었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
-                                  "Ground contact +\(rise)ms in second half — pace may be slightly high"), Color(hex: "FFD166"))
+                                  "Ground contact +\(rise)ms in second half — pace may be slightly high", ja: "後半に接地時間が+\(rise)ms増えました。テンポのペースが少し速いかもしれません"), Color(hex: "FFD166"))
                 }
                 #if DEBUG
                 let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
@@ -2259,11 +2259,11 @@ private struct RhythmInsightCard: View {
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural"), Theme.positive)
+                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"), Theme.positive)
                 } else {
                     let drop = Int(cadDrop.rounded())
                     result = (L.s("후반에 발걸음이 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
-                                  "Cadence dropped \(drop)spm — pace may be slightly high"), Color(hex: "FFD166"))
+                                  "Cadence dropped \(drop)spm — pace may be slightly high", ja: "後半にピッチが\(drop)spm落ちました。テンポのペースが少し速いかもしれません"), Color(hex: "FFD166"))
                 }
                 #if DEBUG
                 let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
@@ -2292,11 +2292,11 @@ private struct RhythmInsightCard: View {
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
                 if gctRise <= -7 {
-                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened through the long run"), Theme.positive)
+                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened through the long run", ja: "長い距離なのに後半になるほど接地時間が短くなりました"), Theme.positive)
                 } else if gctRise < 10 {
                     result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
                 } else {
-                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
+                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
                 }
                 #if DEBUG
                 let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
@@ -2309,7 +2309,7 @@ private struct RhythmInsightCard: View {
                 if cadDrop < 2 {
                     result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
                 } else {
-                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
+                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
                 }
                 #if DEBUG
                 let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
@@ -2357,14 +2357,14 @@ private struct RhythmInsightCard: View {
             let branch: String
 
             if slope <= -1.5 {
-                result = (L.s("반복이 진행될수록 발걸음이 느려졌습니다", "Cadence faded as reps progressed"), Color.white.opacity(0.75))
+                result = (L.s("반복이 진행될수록 발걸음이 느려졌습니다", "Cadence faded as reps progressed", ja: "本数が進むほどピッチが落ちました"), Color.white.opacity(0.75))
                 branch = "(A) 기울기 하락"
             } else if slope >= 1.0 {
-                result = (L.s("뒤로 갈수록 발걸음이 더 살아났습니다", "Cadence grew stronger through the reps"), Theme.positive)
+                result = (L.s("뒤로 갈수록 발걸음이 더 살아났습니다", "Cadence grew stronger through the reps", ja: "後になるほどピッチが上がりました"), Theme.positive)
                 branch = "(A) 기울기 상승"
             } else if sd > 2.0 {
                 // (B) 산포 — 추세 평탄할 때만
-                result = (L.s("회차마다 발걸음 편차가 있었습니다", "Cadence varied across reps"), Color.white.opacity(0.75))
+                result = (L.s("회차마다 발걸음 편차가 있었습니다", "Cadence varied across reps", ja: "本ごとにピッチのばらつきがありました"), Color.white.opacity(0.75))
                 branch = "(B) 산포"
             } else {
                 // (C) 수준 — baseline 최고 구간(fast) 중앙 케이던스와 비교
@@ -2378,22 +2378,22 @@ private struct RhythmInsightCard: View {
                     let diff = Int((mean - ref).rounded())
                     if mean >= ref + 3 {
                         result = (L.s("\(n)회 내내 균일했고, 발걸음이 평소 최고보다 \(diff) spm 높았습니다",
-                                      "\(n) reps consistent — cadence \(diff) spm above personal best band"), Theme.positive)
+                                      "\(n) reps consistent — cadence \(diff) spm above personal best band", ja: "\(n)本を通して均一で、ピッチが普段の最高より\(diff) spm高かったです"), Theme.positive)
                         branch = "(C) 수준↑↑"
                     } else if mean >= ref {
                         result = (L.s("\(n)회 내내 균일했고, 평소 최고 수준까지 올렸습니다",
-                                      "\(n) reps consistent — matched personal best cadence band"), Theme.positive)
+                                      "\(n) reps consistent — matched personal best cadence band", ja: "\(n)本を通して均一で、普段の最高水準まで上げました"), Theme.positive)
                         branch = "(C) 수준↑"
                     } else if mean < ref - 2 {
                         result = (L.s("전력 구간인데 발걸음이 평소만큼 올라오지 않았습니다",
-                                      "Hard effort, but cadence didn't reach usual high"), Color.white.opacity(0.75))
+                                      "Hard effort, but cadence didn't reach usual high", ja: "本練習区間なのにピッチが普段ほど上がりませんでした"), Color.white.opacity(0.75))
                         branch = "(C) 수준↓"
                     } else {
-                        result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps"), Theme.positive)
+                        result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps", ja: "\(n)本を通してピッチが均一でした"), Theme.positive)
                         branch = "(C) 기준 내"
                     }
                 } else {
-                    result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps"), Theme.positive)
+                    result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps", ja: "\(n)本を通してピッチが均一でした"), Theme.positive)
                     branch = "(C) baseline없음→폴백"
                 }
             }
@@ -2422,17 +2422,17 @@ private struct RhythmInsightCard: View {
             let paceDelta = sp - fp
             var result: (text: String, color: Color)
             if paceDelta <= 0 {
-                result = (L.s("후반에도 페이스가 떨어지지 않았습니다", "Pace held through the finish"), Theme.positive)
+                result = (L.s("후반에도 페이스가 떨어지지 않았습니다", "Pace held through the finish", ja: "後半もペースが落ちませんでした"), Theme.positive)
             } else if paceDelta <= 25 {
-                result = (L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌습니다", "Pace slipped \(Int(paceDelta.rounded()))s in second half"), Color.white.opacity(0.75))
+                result = (L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌습니다", "Pace slipped \(Int(paceDelta.rounded()))s in second half", ja: "後半にペースが\(Int(paceDelta.rounded()))秒落ちました"), Color.white.opacity(0.75))
             } else {
-                result = (L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast"), Color(hex: "FFD166"))
+                result = (L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast", ja: "後半のペースが大きく落ちました。序盤が速かったのかもしれません"), Color(hex: "FFD166"))
             }
             // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
             let fGCT = halfAvgGCT(first); let sGCT = halfAvgGCT(second)
             if let fg = fGCT, let sg = sGCT, (sg - fg) <= -7 {
                 let delta = Int(abs((sg - fg).rounded()))
-                result = (result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though."),
+                result = (result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
                           result.color)
             }
             #if DEBUG
@@ -2487,16 +2487,16 @@ private struct RhythmInsightCard: View {
             let result: (text: String, color: Color)?
             let branch: Int
             if formImproved {
-                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened as the run progressed"), Theme.positive)
+                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened as the run progressed", ja: "後半になるほど接地時間が短くなりました"), Theme.positive)
                 branch = 0
             } else if formHeavy {
-                result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half"), Color.white.opacity(0.75))
+                result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
                 branch = 1
             } else if cv > 5 {
-                result = (L.s("페이스 기복이 있었습니다", "Pace varied through the run"), Color.white.opacity(0.75))
+                result = (L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"), Color.white.opacity(0.75))
                 branch = 2
             } else if cv <= 3 {
-                result = (L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish"), Theme.positive)
+                result = (L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"), Theme.positive)
                 branch = 3
             } else {
                 result = nil
@@ -2525,14 +2525,14 @@ private struct RhythmInsightCard: View {
             let pct = Int((ratio * 100).rounded())
             let result: (text: String, color: Color)
             if ratio >= 0.80 {
-                result = (L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%"), Theme.positive)
+                result = (L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%", ja: "しっかりイージーペースを守りました"), Theme.positive)
             } else if ratio >= 0.50 {
                 // 존 **비율**만 보는 규칙이라 "중간중간 올라갔다"처럼 시간 변화를 말하면 안 된다 —
                 // 심박 곡선이 평평해도(차트 캡션 "끝까지 안정적") 이 문장이 떠서 서로 부딪쳤다.
                 result = (L.s("이지 구간이 \(pct)%였습니다. 조금 더 천천히 가도 좋습니다",
-                              "Easy zones \(pct)% — a little slower would help"), Color.white.opacity(0.75))
+                              "Easy zones \(pct)% — a little slower would help", ja: "イージー区間が\(pct)%でした。もう少しゆっくりでも大丈夫です"), Color.white.opacity(0.75))
             } else {
-                result = (L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort"), Color(hex: "FFD166"))
+                result = (L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort", ja: "イージーランなのに心拍がかなり高めでした。もっとゆっくり走っても大丈夫です"), Color(hex: "FFD166"))
             }
             #if DEBUG
             print("[Form:종류] type=\(wtName) Z2이하비율=\(pct)% → \"\(result.text)\"")
@@ -2604,7 +2604,7 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         return Text(L.s(
             "폼 데이터 분석 중… \(progress.done)/\(progress.total)",
-            "Analyzing form data… \(progress.done)/\(progress.total)"
+            "Analyzing form data… \(progress.done)/\(progress.total)", ja: "フォームデータを分析中… \(progress.done)/\(progress.total)"
         ))
         .font(.system(size: 8.5))
         .foregroundStyle(Color.white.opacity(0.4))
@@ -2617,17 +2617,17 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         // 인터벌은 band 기반 범위를 표시하지 않음
         if workoutTypeFn?(activity.id) == .interval {
-            return L.s("전력 구간 참고 170–190", "Work cadence ref. 170–190")
+            return L.s("전력 구간 참고 170–190", "Work cadence ref. 170–190", ja: "本練習区間の目安 170–190")
         }
         guard let bb = formBaseline?.baseline(for: activity, gradeAdjustedPace: runGAP),
               let stat = bb.cadence else {
             // 기록이 쌓이기 전 임시 폴백 — 절대 기준을 "권장"으로 단정하지 않는다.
             // 케이던스는 페이스·체형에 따라 크게 달라지고, 기록이 모이면 개인 기준으로 바뀐다.
-            return L.s("일반 참고 범위 160–180", "General range 160–180")
+            return L.s("일반 참고 범위 160–180", "General range 160–180", ja: "一般的な目安 160–180")
         }
         let lo = Int(stat.lower.rounded())
         let hi = Int(stat.upper.rounded())
-        return L.s("비슷한 페이스 기준 · \(lo)–\(hi)", "Similar pace · \(lo)–\(hi)")
+        return L.s("비슷한 페이스 기준 · \(lo)–\(hi)", "Similar pace · \(lo)–\(hi)", ja: "近いペース基準 · \(lo)–\(hi)")
     }
 
     private func cadenceVerdictInfo(cad: Int) -> (text: String, color: Color) {
@@ -2637,27 +2637,27 @@ private struct RhythmInsightCard: View {
         guard let bl = formBaseline, bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence != nil else {
             let inRange = (160...175).contains(cad)
             let text = inRange
-                ? L.s("일반적인 범위입니다", "Typical range")
+                ? L.s("일반적인 범위입니다", "Typical range", ja: "一般的な範囲です")
                 : cad < 160
-                    ? L.s("일반 범위보다 낮습니다", "Below typical")
-                    : L.s("일반 범위보다 높습니다", "Above typical")
+                    ? L.s("일반 범위보다 낮습니다", "Below typical", ja: "一般的な範囲より低いです")
+                    : L.s("일반 범위보다 높습니다", "Above typical", ja: "一般的な範囲より高いです")
             return (text, inRange ? IC.green : IC.label)
         }
         let (lower, upper, warning) = bl.cadenceBand(for: activity, gradeAdjustedPace: runGAP)
         let c = Double(cad)
         if warning != nil && c < 160 {
-            return (L.s("보폭이 큰 편입니다", "Wide stride"), IC.hrRed)
+            return (L.s("보폭이 큰 편입니다", "Wide stride", ja: "ストライドが大きめです"), IC.hrRed)
         }
         // 판정은 폼 카드와 같은 반올림 규칙 (FormNarrative.status) — 하단 라벨 "lo–hi"와 경계가 일치
         let cadStat = bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence
             ?? FormStat(median: (lower + upper) / 2, sd: (upper - lower) / 2.4, count: 0, p10: nil, p90: nil)
         switch FormNarrative.status(rawValue: c, stat: cadStat, metric: .cadence) {
         case .inRange, .unknown:
-            return (L.s("평소 범위입니다", "Typical range"), IC.green)
+            return (L.s("평소 범위입니다", "Typical range", ja: "普段の範囲です"), IC.green)
         case .above:
-            return (L.s("평소보다 빨랐습니다", "Higher than usual"), Color(hex: "3A7BD5"))
+            return (L.s("평소보다 빨랐습니다", "Higher than usual", ja: "普段より高かったです"), Color(hex: "3A7BD5"))
         case .below:
-            return (L.s("평소보다 낮았습니다", "Lower than usual"), Color(hex: "5AC8FA"))
+            return (L.s("평소보다 낮았습니다", "Lower than usual", ja: "普段より低かったです"), Color(hex: "5AC8FA"))
         }
     }
 
@@ -2666,25 +2666,25 @@ private struct RhythmInsightCard: View {
         let visible = hrZones.filter { $0.fraction > 0.01 }
         let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
-        if z2frac >= 0.60 { return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2") }
+        if z2frac >= 0.60 { return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました") }
         guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
         let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
         let heatSuffix: String = {
             guard heatDelta >= RunSummary.heatNoteMinBpm else { return "" }
             let n = Int(heatDelta.rounded())
             return (heatHRModel?.isFallback == true)
-                ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat")
-                : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
+                ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat", ja: " · 暑さで+\(n)bpmほど")
+                : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat", ja: " · 暑さで+\(n)bpm")
         }()
         switch dom.id {
-        case 1: return L.s("가벼운 회복 강도였습니다", "Light recovery run")
-        case 2: return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2")
+        case 1: return L.s("가벼운 회복 강도였습니다", "Light recovery run", ja: "軽い回復強度でした")
+        case 2: return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました")
         case 3:
             // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "의도한 고강도"와도 부딪혔다
             if rhythmWorkoutType == .interval {
-                return L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed") + heatSuffix
+                return L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed", ja: "本練習と回復が混ざった平均がゾーン3です") + heatSuffix
             }
-            return L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone") + heatSuffix
+            return L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone", ja: "心拍はテンポ域にとどまりました") + heatSuffix
         default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType) + heatSuffix
         }
     }
@@ -2702,14 +2702,14 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         let inRange = (160...175).contains(cadence)
         let statusText = inRange
-            ? L.s("일반적인 범위입니다", "Typical range")
+            ? L.s("일반적인 범위입니다", "Typical range", ja: "一般的な範囲です")
             : cadence < 160
-                ? L.s("일반 범위보다 낮습니다", "Below typical")
-                : L.s("일반 범위보다 높습니다", "Above typical")
+                ? L.s("일반 범위보다 낮습니다", "Below typical", ja: "一般的な範囲より低いです")
+                : L.s("일반 범위보다 높습니다", "Above typical", ja: "一般的な範囲より高いです")
         let statusColor: Color = inRange ? IC.green : IC.label
 
         return VStack(alignment: .leading, spacing: 6) {
-            Text(AppLanguage.shared.s("케이던스", "Cadence"))
+            Text(AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"))
                 .font(.system(size: 10)).foregroundStyle(IC.label)
             CadenceTrackView(cadence: cadence)
             HStack {
@@ -2726,9 +2726,9 @@ private struct RhythmInsightCard: View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let refNote = L.s("\(info.ageDecade)\(g) 기준 · FRIEND DB",
-                          "\(info.ageDecade)\(g) · FRIEND DB")
-        let levelLabels = [L.s("낮음", "Low"), L.s("평균이하", "Below"),
-                           L.s("평균이상", "Above"), L.s("높음", "High")]
+                          "\(info.ageDecade)\(g) · FRIEND DB", ja: "\(info.ageDecade)\(g)基準 · FRIEND DB")
+        let levelLabels = [L.s("낮음", "Low", ja: "低い"), L.s("평균이하", "Below", ja: "平均以下"),
+                           L.s("평균이상", "Above", ja: "平均以上"), L.s("높음", "High", ja: "高い")]
         let thresholds = ["<\(Int(info.normBelowAvg))",
                           "\(Int(info.normBelowAvg))–\(Int(info.normAboveAvg))",
                           "\(Int(info.normAboveAvg))–\(Int(info.normHigh))",
@@ -2790,9 +2790,9 @@ private struct RhythmInsightCard: View {
               info.rank <= 3 else { return nil }
         let L = AppLanguage.shared
         if info.rank == 1 {
-            return L.s("↑ 최근 \(info.sampleCount)회 중 가장 긴 거리", "↑ Longest of last \(info.sampleCount) runs")
+            return L.s("↑ 최근 \(info.sampleCount)회 중 가장 긴 거리", "↑ Longest of last \(info.sampleCount) runs", ja: "↑ 直近\(info.sampleCount)回で最長の距離")
         }
-        return L.s("↑ 최근 \(info.sampleCount)회 중 \(info.rank)번째로 긴 거리", "↑ #\(info.rank) of last \(info.sampleCount) by distance")
+        return L.s("↑ 최근 \(info.sampleCount)회 중 \(info.rank)번째로 긴 거리", "↑ #\(info.rank) of last \(info.sampleCount) by distance", ja: "↑ 直近\(info.sampleCount)回で\(info.rank)番目に長い距離")
     }
 
     private var vo2Info: RunInsightEngine.VO2FitnessInfo? {
@@ -2824,18 +2824,18 @@ private struct RhythmInsightCard: View {
                 secAbove += min(max(samples[i + 1].offset - samples[i].offset, 0), 30)
             }
             if secAbove >= 120 {
-                return (L.s("최고 강도까지 올렸습니다", "Pushed to max intensity"), Color(hex: "FF9A3C"))
+                return (L.s("최고 강도까지 올렸습니다", "Pushed to max intensity", ja: "最高強度まで上げました"), Color(hex: "FF9A3C"))
             }
         }
         // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저
         if diff >= 8, rhythmWorkoutType != .buildUp,
            let climb = GradeAdjustedPace.halvesNetClimb(detail?.altitudeTimeProfile.map { (x: $0.offset, altitude: $0.altitude) } ?? []),
            climb.second - climb.first >= GradeAdjustedPace.halvesClimbGapM, climb.second > 0 {
-            return (L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb"), Color.white.opacity(0.75))
+            return (L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb", ja: "後半の上りで心拍が上がりました"), Color.white.opacity(0.75))
         }
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
         if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
-        if diff <= -5 { return (L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half"), Color(hex: "4C8DFF")) }
+        if diff <= -5 { return (L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"), Color(hex: "4C8DFF")) }
         return (FormNarrative.hrSteadyCaption(type: rhythmWorkoutType), Theme.positive)
     }
 
@@ -2848,7 +2848,7 @@ private struct RhythmInsightCard: View {
         let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
         let valStr = String(format: "%.1f", vo2)
         return (L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(fi.ageDecade)\(g) 기준 \(level.name)",
-                    "\(valStr) is \(level.name) for \(fi.ageDecade)\(g)"), levelColors[idx])
+                    "\(valStr) is \(level.name) for \(fi.ageDecade)\(g)", ja: "\(valStr)は\(fi.ageDecade)\(g)基準で\(level.name)"), levelColors[idx])
     }
 
     /// 총평 줄 — 입력 조립은 `RunSummaryBuilder` 하나만 쓴다(§5.8: 리듬 카드·공유 카드가 같은 문장을 보게).
@@ -2871,7 +2871,7 @@ private struct RhythmInsightCard: View {
         // 1) 연속 기록
         let streak = computeRunningStreak(activity: activity, history: history)
         if streak >= 3 {
-            return L.s("\(streak)일 연속 달리고 있습니다", "\(streak) consecutive days")
+            return L.s("\(streak)일 연속 달리고 있습니다", "\(streak) consecutive days", ja: "\(streak)日連続で走っています")
         }
         // 1.5) 장거리 폼 유지 — 명시 태그된 .longRun/.lsd는 formSummaryLine이 담당
         let _curWT = workoutTypeFn?(activity.id) ?? .general
@@ -2913,7 +2913,7 @@ private struct RhythmInsightCard: View {
         for cat: InsightCategory in [.efficiency, .intensity, .endurance] {
             if let m = insights.first(where: { $0.category == cat })?.message { return m }
         }
-        return L.s("편안한 강도로 잘 쌓고 있습니다", "Building fitness at a comfortable pace")
+        return L.s("편안한 강도로 잘 쌓고 있습니다", "Building fitness at a comfortable pace", ja: "楽な強度でしっかり積めています")
     }
 }
 
@@ -3220,31 +3220,31 @@ private struct PerformanceInsightCard: View {
 
     private var kpiRow: some View {
         HStack(spacing: 0) {
-            KPICell(label: AppLanguage.shared.s("시간", "Time"),
+            KPICell(label: AppLanguage.shared.s("시간", "Time", ja: "時間"),
                     value: activity.formattedDuration)
             kpiSep
-            KPICell(label: AppLanguage.shared.s("페이스", "Pace"),
+            KPICell(label: AppLanguage.shared.s("페이스", "Pace", ja: "ペース"),
                     value: activity.formattedPace ?? "--'--\"",
                     context: flatEquivalentText, contextColor: IC.label)
             kpiSep
             if let hr = activity.avgHeartRate {
-                KPICell(label: AppLanguage.shared.s("심박", "HR"),
+                KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "\(hr)", unit: "bpm", color: IC.hrRed)
             } else {
-                KPICell(label: AppLanguage.shared.s("심박", "HR"),
+                KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "--", color: .secondary)
             }
             kpiSep
             // 인터벌은 리듬·폼 카드와 같은 전력 구간 평균 — 카드마다 175/184처럼 다른 숫자가 보이지 않게
             if workoutTypeFn?(activity.id) == .interval,
                let wc = IntervalSegment.workAverage(detail?.intervalSegments ?? [], { $0.avgCadence.map(Double.init) }) {
-                KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)"),
+                KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)", ja: "ケイデンス(本練習区間)"),
                         value: "\(Int(wc.rounded()))", unit: "spm", color: IC.cadCyan)
             } else if let cad = detail?.avgCadence {
-                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
+                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "\(cad)", unit: "spm", color: IC.cadCyan)
             } else {
-                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence"),
+                KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "--", color: .secondary)
             }
         }
@@ -3276,18 +3276,18 @@ private struct PerformanceInsightCard: View {
             HStack(spacing: 0) {
                 Spacer()
                 if let d = hrDelta, d > 0 {
-                    (Text(L.s("심박 효율: ", "HR Efficiency: "))
+                    (Text(L.s("심박 효율: ", "HR Efficiency: ", ja: "心拍効率: "))
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
                     + Text("↓\(d) bpm")
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
                     + Text(scatterIsHeatAdjusted
-                           ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)")
-                           : L.s(" (동일 페이스 기준)", " (vs. similar pace)"))
+                           ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)", ja: " (同じペース · 15°C基準)")
+                           : L.s(" (동일 페이스 기준)", " (vs. similar pace)", ja: " (同じペース基準)"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 } else {
-                    Text(L.s("심박 효율", "HR Efficiency"))
+                    Text(L.s("심박 효율", "HR Efficiency", ja: "心拍効率"))
                         .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 }
                 Spacer()
@@ -3457,21 +3457,21 @@ private struct PerformanceInsightCard: View {
             let legendLabel = Color.white.opacity(0.70)
             let legend: Text = {
                 var t = Text("●").foregroundStyle(ScatterStyle.past)
-                    + Text(" \(L.s("4~8주 전", "4–8w ago"))   ").foregroundStyle(legendLabel)   // 과거 무리 = 4~8주 전 · 최근 = 4주
+                    + Text(" \(L.s("4~8주 전", "4–8w ago", ja: "4~8週前"))   ").foregroundStyle(legendLabel)   // 과거 무리 = 4~8주 전 · 최근 = 4주
                     + Text("●").foregroundStyle(ScatterStyle.recent)
-                    + Text(" \(L.s("최근", "Recent"))   ").foregroundStyle(legendLabel)
+                    + Text(" \(L.s("최근", "Recent", ja: "最近"))   ").foregroundStyle(legendLabel)
                 if scatterTodayExcluded {
-                    t = t + Text(L.s("오늘은 인터벌·빌드업이라 제외", "Today excluded (interval/build-up)")).foregroundStyle(legendLabel)
+                    t = t + Text(L.s("오늘은 인터벌·빌드업이라 제외", "Today excluded (interval/build-up)", ja: "今日はインターバル・ビルドアップのため除外")).foregroundStyle(legendLabel)
                 } else {
                     t = t + Text("●").foregroundStyle(ScatterStyle.today)
-                        + Text(" \(L.s("오늘", "Today"))").foregroundStyle(legendLabel)
+                        + Text(" \(L.s("오늘", "Today", ja: "今日"))").foregroundStyle(legendLabel)
                 }
                 if band != nil {
                     t = t + Text("   ▬").foregroundStyle(Color.white.opacity(0.30))
-                        + Text(" \(L.s("평소 범위", "Typical"))").foregroundStyle(legendLabel)
+                        + Text(" \(L.s("평소 범위", "Typical", ja: "普段の範囲"))").foregroundStyle(legendLabel)
                 }
                 if scatterIsHeatAdjusted {
-                    t = t + Text("   \(L.s("15°C 기준", "at 15°C"))").foregroundStyle(Color.white.opacity(0.50))
+                    t = t + Text("   \(L.s("15°C 기준", "at 15°C", ja: "15°C基準"))").foregroundStyle(Color.white.opacity(0.50))
                 }
                 return t
             }()
@@ -3488,18 +3488,18 @@ private struct PerformanceInsightCard: View {
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let bounds: [Double] = [15, 26, 33, 41, 57]
         let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
-        let levelNames = [L.s("낮음","Low"), L.s("평균이하","Below avg"), L.s("평균이상","Above avg"), L.s("높음","High")]
+        let levelNames = [L.s("낮음","Low", ja: "低い"), L.s("평균이하","Below avg", ja: "平均以下"), L.s("평균이상","Above avg", ja: "平均以上"), L.s("높음","High", ja: "高い")]
         var gradeIdx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
         let valStr = String(format: "%.1f", vo2)
         let gradeText = L.s("\(valStr)\(KoreanParticle.topic(after: valStr)) \(info.ageDecade)\(g) 기준 \(levelNames[gradeIdx])",
-                            "\(valStr) is \(levelNames[gradeIdx]) for \(info.ageDecade)\(g)")
+                            "\(valStr) is \(levelNames[gradeIdx]) for \(info.ageDecade)\(g)", ja: "\(valStr)は\(info.ageDecade)\(g)基準で\(levelNames[gradeIdx])")
         let gradeColor = levelColors[gradeIdx]
         let splitData = splitChartData
         return HStack(alignment: .top, spacing: 10) {
             // 좌: VO2 반원 게이지
             VStack(alignment: .center, spacing: 3) {
-                Text(L.s("유산소 피트니스", "Aerobic Fitness"))
+                Text(L.s("유산소 피트니스", "Aerobic Fitness", ja: "心肺フィットネス"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 VO2RPMGaugeView(fi: info, vo2: vo2, scale: insightGaugeScale)
                 Color.clear.frame(height: compact ? 5 : 12)
@@ -3523,9 +3523,9 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         let prevCtx: String? = base.prevWeeklyLoadKm > 0
             ? L.s("지난주 \(String(format: "%.1f", base.prevWeeklyLoadKm))km",
-                  "Last wk \(String(format: "%.1f", base.prevWeeklyLoadKm))km")
+                  "Last wk \(String(format: "%.1f", base.prevWeeklyLoadKm))km", ja: "先週 \(String(format: "%.1f", base.prevWeeklyLoadKm))km")
             : nil
-        return MetricRow(label: L.s("이번 주 훈련량", "Weekly Load"),
+        return MetricRow(label: L.s("이번 주 훈련량", "Weekly Load", ja: "今週の練習量"),
                          value: String(format: "%.1fkm", base.weeklyLoadKm),
                          context: prevCtx)
     }
@@ -3557,7 +3557,7 @@ private struct PerformanceInsightCard: View {
             // 한 줄에 들어가게 짧게 — 길면 "…"로 잘렸다
             return "↑ " + AppLanguage.shared.s(
                 "비슷한 페이스보다 심박 \(h) 낮음",
-                "HR \(h) lower at similar pace"
+                "HR \(h) lower at similar pace", ja: "近いペースより心拍が\(h)低い"
             )
         }
         let recent = history
@@ -3569,8 +3569,8 @@ private struct PerformanceInsightCard: View {
               rank <= 3 else { return nil }
         let L = AppLanguage.shared
         return rank == 1
-            ? L.s("↑ 최근 \(sample.count)회 중 가장 긴 거리", "↑ Longest of last \(sample.count) runs")
-            : L.s("↑ 최근 \(sample.count)회 중 \(rank)번째로 긴 거리", "↑ #\(rank) of last \(sample.count)")
+            ? L.s("↑ 최근 \(sample.count)회 중 가장 긴 거리", "↑ Longest of last \(sample.count) runs", ja: "↑ 直近\(sample.count)回で最長の距離")
+            : L.s("↑ 최근 \(sample.count)회 중 \(rank)번째로 긴 거리", "↑ #\(rank) of last \(sample.count)", ja: "↑ 直近\(sample.count)回で\(rank)番目に長い距離")
     }
 
     /// 비교·판정용 심박 — 모델이 있으면 15°C 환산, 없으면 원본. 산점도·심박 효율 캡션이 **이 함수 하나만** 쓴다.
@@ -3739,28 +3739,28 @@ private struct PerformanceInsightCard: View {
         let neutral = Color.white.opacity(0.85)
         if wt == .buildUp {
             return (L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",
-                        "HR rose with the faster second half."), neutral)
+                        "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"), neutral)
         }
         let aerobic = wt == .longRun || wt == .lsd || wt == .easy || wt == .general
         if pct <= 5 {
             return aerobic
                 ? (L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 거리를 유산소로 감당했습니다.",
-                       "HR held against pace to the end — you covered this distance aerobically."), IC.green)
+                       "HR held against pace to the end — you covered this distance aerobically.", ja: "後半までペースに対する心拍を保ちました。この距離を有酸素でこなしました。"), IC.green)
                 : (L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 페이스로 이 거리를 버틸 힘이 있습니다.",
-                       "HR held against pace to the end — you can sustain this pace for this distance."), IC.green)
+                       "HR held against pace to the end — you can sustain this pace for this distance.", ja: "後半までペースに対する心拍を保ちました。このペースでこの距離を走りきる力があります。"), IC.green)
         }
         if pct <= 10 {
             return hot
                 ? (L.s("후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.",
-                       "HR drifted up, but on a hot day that's within the normal range."), neutral)
+                       "HR drifted up, but on a hot day that's within the normal range.", ja: "後半に心拍が上がりましたが、暑い日なので自然な範囲です。"), neutral)
                 : (L.s("조건은 좋았는데 후반에 심박이 올랐습니다. 이 거리와 강도가 아직 조금 부담일 수 있습니다.",
-                       "Conditions were fine but HR drifted up — this distance and effort may still be a bit much."), neutral)
+                       "Conditions were fine but HR drifted up — this distance and effort may still be a bit much.", ja: "条件はよかったのに後半に心拍が上がりました。この距離と強度はまだ少し負担なのかもしれません。"), neutral)
         }
         return hot
             ? (L.s("후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.",
-                   "HR drifted a lot — heat and fluid loss likely played a big part."), Theme.caution)
+                   "HR drifted a lot — heat and fluid loss likely played a big part.", ja: "後半に心拍が大きく上がりました。暑さと水分不足の影響が大きかったと考えられます。"), Theme.caution)
             : (L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있습니다.",
-                   "HR drifted a lot — this may still be a stretch, or the start was too fast."), Theme.caution)
+                   "HR drifted a lot — this may still be a stretch, or the start was too fast.", ja: "後半に心拍が大きく上がりました。この距離と強度がまだきついか、序盤が速かったのかもしれません。"), Theme.caution)
     }
 
     /// 디커플링 띠 차트의 네 구간 색 — 모두 이 카드에 이미 있는 색.
@@ -3792,10 +3792,10 @@ private struct PerformanceInsightCard: View {
         let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
         let reading = decouplingReading(pct)
         let band = Self.decouplingBandIndex(pct)
-        let labels = [L.s("음수", "<0"), "0~5", "5~10", L.s("10 이상", "10+")]
+        let labels = [L.s("음수", "<0", ja: "マイナス"), "0~5", "5~10", L.s("10 이상", "10+", ja: "10以上")]
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(L.s("디커플링", "Decoupling"))
+                Text(L.s("디커플링", "Decoupling", ja: "デカップリング"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 Text(valueText)
                     .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
@@ -3867,7 +3867,7 @@ private struct PerformanceInsightCard: View {
         let mainSegs = segments.filter { $0.stepLabel == "운동" || $0.stepLabel == "회복" }
 
         VStack(alignment: .leading, spacing: 4) {
-            Text(L.s("인터벌 구간", "Interval Segments"))
+            Text(L.s("인터벌 구간", "Interval Segments", ja: "インターバル区間"))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -3897,7 +3897,7 @@ private struct PerformanceInsightCard: View {
                     }()
                     if isWork {
                         HStack(spacing: 6) {
-                            Text("운동")
+                            Text(AppLanguage.shared.s("운동", "Work", ja: "本練習"))
                                 .font(.system(size: 8, weight: .medium))
                                 .foregroundStyle(Theme.positive)
                                 .frame(width: 24, alignment: .leading)
@@ -4007,8 +4007,8 @@ private struct PerformanceInsightCard: View {
                                : backPct >= 90 ? .white.opacity(0.7)
                                : Color(hex: "FF9A3C")
         let backSuffix: String = backPct > 100
-            ? L.s(" · 네거티브 스플릿", " · Negative split")
-            : backPct < 90 ? L.s(" · 후반 감속", " · Fade") : ""
+            ? L.s(" · 네거티브 스플릿", " · Negative split", ja: " · ネガティブスプリット")
+            : backPct < 90 ? L.s(" · 후반 감속", " · Fade", ja: " · 後半失速") : ""
 
         VStack(alignment: .leading, spacing: 5) {
             Canvas { ctx, size in
@@ -4058,7 +4058,7 @@ private struct PerformanceInsightCard: View {
                 ctx.stroke(dashPath, with: .color(Color(hex: "5BB8FF").opacity(0.7)),
                            style: StrokeStyle(lineWidth: 0.8, dash: [4, 3]))
                 ctx.draw(
-                    Text(L.s("평균", "avg"))
+                    Text(L.s("평균", "avg", ja: "平均"))
                         .font(.system(size: 6.5))
                         .foregroundStyle(Color(hex: "5BB8FF").opacity(0.8)),
                     at: CGPoint(x: w - 10, y: avgLineY),
@@ -4084,7 +4084,7 @@ private struct PerformanceInsightCard: View {
             HStack {
                 Text("1").font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
                 Spacer()
-                Text(L.s("전반 │ 후반", "1H │ 2H"))
+                Text(L.s("전반 │ 후반", "1H │ 2H", ja: "前半 │ 後半"))
                     .font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
                 Spacer()
                 Text(String(format: "%.0fkm", totalKm))
@@ -4097,7 +4097,7 @@ private struct PerformanceInsightCard: View {
                                : Color(hex: "FF9A3C")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(L.s("편차", "SD"))
+                    Text(L.s("편차", "SD", ja: "ばらつき"))
                         .font(.system(size: 8.5)).foregroundStyle(IC.label)
                         .frame(width: 22, alignment: .leading)
                     GeometryReader { geo in
@@ -4109,13 +4109,13 @@ private struct PerformanceInsightCard: View {
                         }
                     }
                     .frame(height: 7)
-                    Text("±\(sdSec)" + L.s("초", "s"))
+                    Text("±\(sdSec)" + L.s("초", "s", ja: "秒"))
                         .font(.system(size: 9, weight: .medium)).foregroundStyle(sdColor)
                         .frame(width: 30, alignment: .trailing)
                 }
                 HStack {
                     Spacer()
-                    Text(L.s("후반 유지", "2H retention")
+                    Text(L.s("후반 유지", "2H retention", ja: "後半維持")
                          + " " + String(format: "%.0f%%", backPct) + backSuffix)
                         .font(.system(size: 9)).foregroundStyle(backColor)
                 }
@@ -4139,10 +4139,10 @@ private struct PerformanceInsightCard: View {
 
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .trailing) {
-                Text(L.s("페이스 분포", "Pace Distribution"))
+                Text(L.s("페이스 분포", "Pace Distribution", ja: "ペース分布"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                     .frame(maxWidth: .infinity, alignment: .center)
-                Text("±\(sdSec)" + L.s("초", "s"))
+                Text("±\(sdSec)" + L.s("초", "s", ja: "秒"))
                     .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.85))
             }
             Canvas { ctx, size in
@@ -4251,7 +4251,7 @@ private struct PerformanceInsightCard: View {
             HStack {
                 Text("1").font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
                 Spacer()
-                Text(L.s("전반│후반", "1H│2H")).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Text(L.s("전반│후반", "1H│2H", ja: "前半│後半")).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
                 Spacer()
                 Text(totalKm.truncatingRemainder(dividingBy: 1) < 0.05
                      ? String(format: "%.0fkm", totalKm) : String(format: "%.1fkm", totalKm))
@@ -4271,9 +4271,9 @@ private struct PerformanceInsightCard: View {
         var label: String {
             let L = AppLanguage.shared
             switch self {
-            case .easy:   return L.s("저강도", "Low")
-            case .medium: return L.s("중간",   "Mid")
-            case .hard:   return L.s("고강도", "High")
+            case .easy:   return L.s("저강도", "Low", ja: "低強度")
+            case .medium: return L.s("중간",   "Mid", ja: "中強度")
+            case .hard:   return L.s("고강도", "High", ja: "高強度")
             }
         }
         static func of(_ type: WorkoutType) -> IntensityTier {
@@ -4583,15 +4583,15 @@ private struct PerformanceInsightCard: View {
     private func displayBucket(for type: WorkoutType) -> (label: String, color: Color) {
         let L = AppLanguage.shared
         let label: String = switch type {
-        case .interval:    L.s("인터벌",    "Interval")
-        case .tempo:       L.s("템포런",    "Tempo")
-        case .buildUp:     L.s("빌드업",    "Build-Up")
-        case .distanceRun: L.s("거리주",    "Dist.Run")
-        case .lsd:         L.s("LSD",       "LSD")
-        case .longRun:     L.s("롱런",      "Long Run")
-        case .easy:        L.s("이지런",    "Easy")
-        case .race:        L.s("대회",      "Race")
-        case .general:     L.s("일반 러닝", "General")
+        case .interval:    L.s("인터벌",    "Interval", ja: "インターバル")
+        case .tempo:       L.s("템포런",    "Tempo", ja: "テンポ走")
+        case .buildUp:     L.s("빌드업",    "Build-Up", ja: "ビルドアップ")
+        case .distanceRun: L.s("거리주",    "Dist.Run", ja: "距離走")
+        case .lsd:         L.s("LSD",       "LSD", ja: "LSD")
+        case .longRun:     L.s("롱런",      "Long Run", ja: "ロング走")
+        case .easy:        L.s("이지런",    "Easy", ja: "イージー")
+        case .race:        L.s("대회",      "Race", ja: "レース")
+        case .general:     L.s("일반 러닝", "General", ja: "通常ラン")
         }
         return (label, WorkoutTypeColor.color(for: type))
     }
@@ -4604,10 +4604,10 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
-                Text(L.s("이 러닝 기준 \(weeks)주 · \(totalRuns)회", "Before this run · \(weeks)w · \(totalRuns)"))
+                Text(L.s("이 러닝 기준 \(weeks)주 · \(totalRuns)회", "Before this run · \(weeks)w · \(totalRuns)", ja: "このラン時点 \(weeks)週 · \(totalRuns)回"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                 if unclassified > 0 {
-                    Text(L.s("분류 중 \(unclassified)건", "+\(unclassified) pending"))
+                    Text(L.s("분류 중 \(unclassified)건", "+\(unclassified) pending", ja: "分類中\(unclassified)件"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 }
             }
@@ -4622,7 +4622,7 @@ private struct PerformanceInsightCard: View {
                             .foregroundStyle(isToday ? .white : IC.label.opacity(isEmpty ? 0.55 : 1))
                             .lineLimit(1).minimumScaleFactor(0.8)
                         if isToday {
-                            Text(L.s("(오늘)", "(today)"))
+                            Text(L.s("(오늘)", "(today)", ja: "(今日)"))
                                 .font(.system(size: 7)).foregroundStyle(item.color)
                         }
                     }
@@ -4646,10 +4646,10 @@ private struct PerformanceInsightCard: View {
                 }
             }
             if unclassified > 0 {
-                Text(L.s("총 \(totalRuns)회 (분류 중 \(unclassified)건)", "\(totalRuns) runs (\(unclassified) pending)"))
+                Text(L.s("총 \(totalRuns)회 (분류 중 \(unclassified)건)", "\(totalRuns) runs (\(unclassified) pending)", ja: "計\(totalRuns)回(分類中\(unclassified)件)"))
                     .font(.system(size: 8)).foregroundStyle(IC.label)
             } else {
-                Text(L.s("총 \(totalRuns)회", "\(totalRuns) runs"))
+                Text(L.s("총 \(totalRuns)회", "\(totalRuns) runs", ja: "計\(totalRuns)回"))
                     .font(.system(size: 8)).foregroundStyle(IC.label)
             }
         }
@@ -4758,12 +4758,12 @@ private struct PerformanceInsightCard: View {
         let axisFrac = max(0.80, b.lowFrac, b.midFrac, b.highFrac) * 1.06
         VStack(alignment: .leading, spacing: 8) {   // 행 ↔ 점선 설명 간격 8 · 제목 ↔ 첫 행(저강도)은 아래 padding으로 14 — 제목 블록과 막대가 확실히 나뉘게
             VStack(alignment: .leading, spacing: 1) {
-                Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones"))
+                Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones", ja: "強度分布 · \(data.weeks)週 · 心拍ゾーン\(totalMin)分"))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
                     .lineLimit(2).minimumScaleFactor(0.8)
                     .fixedSize(horizontal: false, vertical: true)
                 if excluded > 0 {
-                    Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded"))
+                    Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded", ja: "心拍なし\(excluded)件を除外"))
                         .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
@@ -4818,7 +4818,7 @@ private struct PerformanceInsightCard: View {
             }
             .frame(height: Self.intensityRowH * 3 + Self.intensityRowGap * 2)
             // 참고선 설명 한 줄 — 막대 아래
-            Text(L.s("점선 - 문헌값 (지구력 종목)", "dashed - reference (endurance)"))
+            Text(L.s("점선 - 문헌값 (지구력 종목)", "dashed - reference (endurance)", ja: "点線 - 文献値(持久系競技)"))
             .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
             .lineLimit(1).minimumScaleFactor(0.7)
             .frame(maxWidth: .infinity, alignment: .trailing)   // 오른쪽 정렬 — 값 열(%)과 같은 끝선
@@ -4827,7 +4827,7 @@ private struct PerformanceInsightCard: View {
             let lowPct = Int((b.lowFrac * 100).rounded())
             Text(L.s(
                 "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도입니다.",
-                "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity."
+                "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity.", ja: "直近\(data.weeks)週の練習時間の\(lowPct)%が低強度です。"
             ))
             .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
             .fixedSize(horizontal: false, vertical: true)
@@ -4836,11 +4836,11 @@ private struct PerformanceInsightCard: View {
                 let w = data.easyStreak, atLeast = data.easyStreakAtLeast
                 let streakSuffix: String = {
                     guard w > 1 || (w == 1 && atLeast) else { return "" }
-                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row")
+                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row", ja: " · \(w)週\(atLeast ? "以上" : "")連続")
                 }()
                 Text(L.s(
                     "이지런으로 계획한 러닝 \(data.easyCount)회\(streakSuffix)",
-                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)"
+                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)", ja: "イージーランとして計画したラン \(data.easyCount)回\(streakSuffix)"
                 ))
                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
@@ -4880,17 +4880,17 @@ private struct PerformanceInsightCard: View {
             let sentence = load.sentence.map(sevenDayLoadSentence)
             if load.thisRunAU == nil {
                 // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
-                Text(L.s("오늘 강도 입력 전 — 입력하면 7일 부하에 반영됩니다", "Today's effort not rated — rate it to count toward the 7-day load"))
+                Text(L.s("오늘 강도 입력 전 — 입력하면 7일 부하에 반영됩니다", "Today's effort not rated — rate it to count toward the 7-day load", ja: "今日の強度は未入力 — 入力すると7日間の負荷に反映されます"))
                     .font(.system(size: 9)).foregroundStyle(Theme.caution.opacity(0.9))
                     .lineLimit(1).minimumScaleFactor(0.8)
             } else if ratioLabel != nil || sentence != nil {
-                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ")))
+                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ", ja: "、")))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
             Text(L.s("AU = 체감 강도 × 분 · 7일 합을 4주 평균과 비교합니다",
-                     "AU = perceived effort × minutes · 7-day sum vs 4-week average"))
+                     "AU = perceived effort × minutes · 7-day sum vs 4-week average", ja: "AU = 体感強度 × 分 · 7日間の合計を4週平均と比べます"))
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
@@ -4899,10 +4899,10 @@ private struct PerformanceInsightCard: View {
     /// "강도 부하 · 14일 (이 러닝 73 AU)" — 이 러닝 부하가 없으면 제목만.
     private func sevenDayLoadTitle(_ load: SevenDayLoad) -> String {
         let L = AppLanguage.shared
-        let base = L.s("강도 부하 · 14일", "Training load · 14d")
+        let base = L.s("강도 부하 · 14일", "Training load · 14d", ja: "強度負荷 · 14日")
         guard let t = load.thisRunAU else { return base }
         let au = Int(t.rounded()).formatted(.number.grouping(.automatic))
-        return L.s("\(base) (이 러닝 \(au) AU)", "\(base) (this run \(au) AU)")
+        return L.s("\(base) (이 러닝 \(au) AU)", "\(base) (this run \(au) AU)", ja: "\(base)(このラン \(au) AU)")
     }
 
     /// "4주 평균 대비 낮음" — 7일 부하 / 4주 평균 비율 라벨. 기준 없으면 nil.
@@ -4911,12 +4911,12 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         let t: String
         switch ac {
-        case .low:      t = L.s("낮음", "lower")
-        case .steady:   t = L.s("유지", "steady")
-        case .high:     t = L.s("높음", "higher")
-        case .veryHigh: t = L.s("크게 높음", "much higher")
+        case .low:      t = L.s("낮음", "lower", ja: "低い")
+        case .steady:   t = L.s("유지", "steady", ja: "横ばい")
+        case .high:     t = L.s("높음", "higher", ja: "高い")
+        case .veryHigh: t = L.s("크게 높음", "much higher", ja: "大きく高い")
         }
-        return L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)")
+        return L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)", ja: "4週平均比 \(t)")
     }
 
 
@@ -4926,10 +4926,10 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         switch kind {
         // 라벨 뒤에 붙는 짧은 방향 문구 — 반폭 열에서 한 줄에 들어가야 한다
-        case .monotony: return L.s("부하 편차 적음 — 강약 나누기", "little variation — split easy/hard")
-        case .veryHigh: return L.s("부하 크게 증가 중 — 회복 챙기기", "rising sharply — protect recovery")
-        case .high:     return L.s("부하 조금 높은 편", "slightly heavier than usual")
-        case .low:      return L.s("회복 방향으로 진행 중", "trending toward recovery")
+        case .monotony: return L.s("부하 편차 적음 — 강약 나누기", "little variation — split easy/hard", ja: "負荷の差が小さい — 強弱をつけましょう")
+        case .veryHigh: return L.s("부하 크게 증가 중 — 회복 챙기기", "rising sharply — protect recovery", ja: "負荷が大きく増加中 — 回復を優先")
+        case .high:     return L.s("부하 조금 높은 편", "slightly heavier than usual", ja: "負荷がやや高め")
+        case .low:      return L.s("회복 방향으로 진행 중", "trending toward recovery", ja: "回復方向に進行中")
         }
     }
 
@@ -4937,9 +4937,9 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         func au(_ v: Double) -> String { Int(v.rounded()).formatted(.number.grouping(.automatic)) }
         var parts: [String] = []
-        parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU"))
+        parts.append(L.s("7일 \(au(load.window.total)) AU", "7d \(au(load.window.total)) AU", ja: "7日 \(au(load.window.total)) AU"))
         if load.previousSevenAU > 0 {
-            parts.append(L.s("이전 7일 \(au(load.previousSevenAU)) AU", "prev 7d \(au(load.previousSevenAU)) AU"))
+            parts.append(L.s("이전 7일 \(au(load.previousSevenAU)) AU", "prev 7d \(au(load.previousSevenAU)) AU", ja: "前の7日 \(au(load.previousSevenAU)) AU"))
         }
         return parts.joined(separator: " · ")
     }
@@ -4958,7 +4958,7 @@ private struct PerformanceInsightCard: View {
     private var backfillingPlaceholder: some View {
         HStack(spacing: 6) {
             ProgressView().tint(IC.label).scaleEffect(0.7)
-            Text(AppLanguage.shared.s("훈련 유형 분석 중…", "Analyzing run types…"))
+            Text(AppLanguage.shared.s("훈련 유형 분석 중…", "Analyzing run types…", ja: "練習タイプを分析中…"))
                 .font(.system(size: 10)).foregroundStyle(IC.label)
         }
     }
@@ -4972,13 +4972,13 @@ private struct PerformanceInsightCard: View {
                 let avg = Int((work.reduce(0, +) / Double(work.count)).rounded())
                 let avgStr = String(format: "%d'%02d\"", avg / 60, avg % 60)
                 return L.s("운동 구간 \(work.count)회 평균 \(avgStr) · 회복 포함 전체 \(overall)",
-                           "\(work.count) work reps avg \(avgStr) · \(overall) overall incl. recovery")
+                           "\(work.count) work reps avg \(avgStr) · \(overall) overall incl. recovery", ja: "本練習\(work.count)本の平均 \(avgStr) · 回復込みの全体 \(overall)")
             }
         }
         for cat: InsightCategory in [.efficiency, .endurance, .load, .cardio] {
             guard let m = insights.first(where: { $0.category == cat })?.message else { continue }
             if cat == .cardio && (age == nil || isMale == nil) {
-                return L.s("애플 건강 앱에서 나이와 성별 입력 필요합니다.", "Enter age & gender in Apple Health.")
+                return L.s("애플 건강 앱에서 나이와 성별 입력 필요합니다.", "Enter age & gender in Apple Health.", ja: "ヘルスケアで年齢と性別の入力が必要です。")
             }
             return m
         }
@@ -5127,7 +5127,7 @@ private struct PerformanceInsightCard: View {
             Image(systemName: "heart.circle.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(Color(hex: "30D158"))
-            Text(L.s("심박이 공백 전 수준으로 돌아왔습니다", "Your HR is back to pre-break levels"))
+            Text(L.s("심박이 공백 전 수준으로 돌아왔습니다", "Your HR is back to pre-break levels", ja: "心拍がブランク前の水準に戻りました"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color(hex: "30D158"))
             Spacer()
@@ -5148,18 +5148,18 @@ private struct PerformanceInsightCard: View {
                 .foregroundStyle(blue)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
-                Text(L.s("\(ri.gapDays)일 만의 러닝입니다", "First run in \(ri.gapDays) days"))
+                Text(L.s("\(ri.gapDays)일 만의 러닝입니다", "First run in \(ri.gapDays) days", ja: "\(ri.gapDays)日ぶりのランです"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 if let pre = ri.preGapHR, let today = ri.todayHR {
                     let base = L.s("공백 전 같은 페이스에서 심박 \(Int(pre.rounded()))이었는데 오늘은 \(Int(today.rounded()))입니다",
-                                   "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))")
+                                   "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))", ja: "ブランク前は同じペースで心拍\(Int(pre.rounded()))でしたが、今日は\(Int(today.rounded()))です")
                     let heatSuffix: String = {
                         guard let m = heatHRModel, m.explains(tempC: activity.temperatureC) else { return "" }
                         let n = Int(m.delta(activity.temperatureC).rounded())
                         return m.isFallback
-                            ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat")
-                            : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat")
+                            ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat", ja: " · 暑さで+\(n)bpmほど")
+                            : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat", ja: " · 暑さで+\(n)bpm")
                     }()
                     Text(base + heatSuffix)
                         .font(.system(size: 12))
@@ -5167,7 +5167,7 @@ private struct PerformanceInsightCard: View {
                 }
                 if ri.gapDays >= 28 {
                     Text(L.s("체력이 돌아오는 데 보통 공백만큼의 시간이 걸립니다. 2~3주에 걸쳐 천천히 올려도 괜찮습니다",
-                             "Fitness takes about as long as the break to return. Build back gradually over 2–3 weeks."))
+                             "Fitness takes about as long as the break to return. Build back gradually over 2–3 weeks.", ja: "体力が戻るには通常ブランクと同じくらいの時間がかかります。2~3週間かけてゆっくり上げても大丈夫です"))
                         .font(.system(size: 11))
                         .foregroundStyle(Color.white.opacity(0.40))
                         .padding(.top, 2)
@@ -5285,26 +5285,26 @@ private struct RaceInsightCard: View {
 
             // ── KPI row
             HStack(spacing: 0) {
-                KPICell(label: L.s("시간", "Time"), value: activity.formattedDuration)
+                KPICell(label: L.s("시간", "Time", ja: "時間"), value: activity.formattedDuration)
                 kpiSep
-                KPICell(label: L.s("페이스", "Pace"),
+                KPICell(label: L.s("페이스", "Pace", ja: "ペース"),
                         value: activity.formattedPace ?? "--'--\"")
                 kpiSep
                 if let hr = activity.avgHeartRate {
                     let maxHR = estimatedMaxHR
                     let pct = maxHR > 0 ? Int((Double(hr) / Double(maxHR) * 100).rounded()) : 0
-                    KPICell(label: L.s("심박", "HR"),
+                    KPICell(label: L.s("심박", "HR", ja: "心拍"),
                             value: "\(hr)", unit: "bpm", color: IC.hrRed,
                             context: maxHR > 0 ? "max \(pct)%" : nil)
                 } else {
-                    KPICell(label: L.s("심박", "HR"), value: "--", color: .secondary)
+                    KPICell(label: L.s("심박", "HR", ja: "心拍"), value: "--", color: .secondary)
                 }
                 kpiSep
                 if let cad = detail?.avgCadence {
-                    KPICell(label: L.s("케이던스", "Cadence"),
+                    KPICell(label: L.s("케이던스", "Cadence", ja: "ケイデンス"),
                             value: "\(cad)", unit: "spm", color: IC.cadCyan)
                 } else {
-                    KPICell(label: L.s("케이던스", "Cadence"), value: "--", color: .secondary)
+                    KPICell(label: L.s("케이던스", "Cadence", ja: "ケイデンス"), value: "--", color: .secondary)
                 }
             }
 
@@ -5313,7 +5313,7 @@ private struct RaceInsightCard: View {
             if fe != .noData {
                 Color.white.opacity(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L.s("폼 유지력", "Form Endurance"))
+                    Text(L.s("폼 유지력", "Form Endurance", ja: "フォーム維持力"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.5))
                     formEnduranceRow(fe)
@@ -5325,7 +5325,7 @@ private struct RaceInsightCard: View {
             if let late = lateDiagnosis {
                 Color.white.opacity(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L.s("제한 요인", "Limiting Factor"))
+                    Text(L.s("제한 요인", "Limiting Factor", ja: "制限要因"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.5))
                     lateDiagnosisRow(late)
@@ -5333,7 +5333,7 @@ private struct RaceInsightCard: View {
             } else if limitingFactor != .noData {
                 Color.white.opacity(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L.s("제한 요인", "Limiting Factor"))
+                    Text(L.s("제한 요인", "Limiting Factor", ja: "制限要因"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.5))
                     limitingFactorRow(limitingFactor)
@@ -5382,28 +5382,28 @@ private struct RaceInsightCard: View {
             switch fe {
             case .held where formEnduranceInfo(detail).byPaceTrend:
                 return (L.s("후반까지 폼이 유지됐습니다 — 느려진 속도로 설명되는 만큼만 변했습니다",
-                            "Form held — changes match the slowdown"), IC.green)
+                            "Form held — changes match the slowdown", ja: "後半までフォームが保たれました — 遅くなった速度で説明できる分だけ変化しました"), IC.green)
             case .held:
                 return (L.s("후반까지 폼이 유지됐습니다 — 중반보다 무거워지지 않았습니다",
-                            "Form held to the finish — no heavier than mid-race"), IC.green)
+                            "Form held to the finish — no heavier than mid-race", ja: "後半までフォームが保たれました — 中盤より重くなりませんでした"), IC.green)
             case .collapsed:
                 let names = formEnduranceInfo(detail).metrics.map { m -> String in
                     switch m {
-                    case .cadence:       return L.s("케이던스", "cadence")
-                    case .stride:        return L.s("보폭", "stride")
-                    case .groundContact: return L.s("지면접촉", "ground contact")
-                    case .verticalOsc:   return L.s("수직진폭", "vertical oscillation")
+                    case .cadence:       return L.s("케이던스", "cadence", ja: "ケイデンス")
+                    case .stride:        return L.s("보폭", "stride", ja: "ストライド")
+                    case .groundContact: return L.s("지면접촉", "ground contact", ja: "接地時間")
+                    case .verticalOsc:   return L.s("수직진폭", "vertical oscillation", ja: "上下動")
                     }
                 }.joined(separator: "·")
                 if formEnduranceInfo(detail).byPaceTrend {
                     return (L.s("후반에 폼이 무거워졌습니다 — 느려진 속도로 설명되는 것보다 \(names) 지표가 더 나빠졌습니다",
-                                "Form got heavier late — \(names) worsened more than the slowdown explains"), Color(hex: "FF9A3C"))
+                                "Form got heavier late — \(names) worsened more than the slowdown explains", ja: "後半にフォームが重くなりました — 遅くなった速度で説明できる以上に\(names)の指標が悪化しました"), Color(hex: "FF9A3C"))
                 }
                 return (L.s("후반에 폼이 무거워졌습니다 — \(names) 지표가 그 페이스의 평소 범위를 벗어났습니다",
-                            "Form got heavier late — \(names) left the usual range for that pace"), Color(hex: "FF9A3C"))
+                            "Form got heavier late — \(names) left the usual range for that pace", ja: "後半にフォームが重くなりました — \(names)の指標がそのペースの普段の範囲を外れました"), Color(hex: "FF9A3C"))
             case .mid:
                 return (L.s("폼이 일부 흔들렸지만 붕괴 수준은 아니었습니다",
-                            "Form wobbled slightly but didn't fully collapse"), Color.white.opacity(0.7))
+                            "Form wobbled slightly but didn't fully collapse", ja: "フォームが一部ぶれましたが、崩れるほどではありませんでした"), Color.white.opacity(0.7))
             case .undetermined:
                 let info = formEnduranceInfo(detail)
                 let pct: String = {
@@ -5412,11 +5412,11 @@ private struct RaceInsightCard: View {
                 }()
                 if info.hasBreaks {
                     return (L.s("걷거나 멈춘 km가 섞여 후반 폼을 중반과 비교할 수 없습니다",
-                                "Walked or stopped kilometres make late form incomparable to mid-race"),
+                                "Walked or stopped kilometres make late form incomparable to mid-race", ja: "歩いたり止まったりしたkmが混ざっているため、後半のフォームを中盤と比べられません"),
                             Color.white.opacity(0.7))
                 }
                 return (L.s("후반 페이스가 \(pct)% 달라져 폼 변화를 속도 변화와 구분할 수 없습니다",
-                            "Late pace changed \(pct)%, so form changes can't be separated from speed"),
+                            "Late pace changed \(pct)%, so form changes can't be separated from speed", ja: "後半のペースが\(pct)%変わったため、フォームの変化を速度の変化と区別できません"),
                         Color.white.opacity(0.7))
             case .noData:
                 return ("", .clear)
@@ -5448,22 +5448,22 @@ private struct RaceInsightCard: View {
             case .cardio:
                 return ("lungs.fill",
                         L.s("심폐 제한 — 심박이 최대에 가까웠고 폼은 유지됐습니다. 심폐가 먼저 한계에 닿은 레이스입니다",
-                            "Cardio-limited — HR near max but form held. Your cardiovascular system hit the ceiling first"),
+                            "Cardio-limited — HR near max but form held. Your cardiovascular system hit the ceiling first", ja: "心肺が制限 — 心拍は最大近くでフォームは保たれました。心肺が先に限界に達したレースです"),
                         IC.hrRed)
             case .endurance:
                 return ("figure.run",
                         L.s("지구력 제한 — 심박 여유가 있었지만 폼이 무너졌습니다. 근육 지구력이 먼저 소진됐습니다",
-                            "Endurance-limited — HR had headroom but form collapsed. Muscular endurance gave out first"),
+                            "Endurance-limited — HR had headroom but form collapsed. Muscular endurance gave out first", ja: "持久力が制限 — 心拍に余裕はありましたがフォームが崩れました。筋持久力が先に尽きました"),
                         Color(hex: "FF9A3C"))
             case .balanced:
                 return ("arrow.left.arrow.right",
                         L.s("심폐·지구력 동시 한계 — 심박도 높고 폼도 무너졌습니다. 두 시스템 모두 한계에 도달한 레이스입니다",
-                            "Both systems maxed — high HR and form breakdown. Cardio and endurance hit the wall together"),
+                            "Both systems maxed — high HR and form breakdown. Cardio and endurance hit the wall together", ja: "心肺・持久力が同時に限界 — 心拍も高くフォームも崩れました。両方が限界に達したレースです"),
                         Color(hex: "F5C542"))
             case .managed:
                 return ("checkmark.seal.fill",
                         L.s("잘 관리된 레이스 — 심박 여유가 있었고 폼도 유지됐습니다",
-                            "Well-managed effort — HR had room and form held throughout"),
+                            "Well-managed effort — HR had room and form held throughout", ja: "よく管理されたレース — 心拍に余裕があり、フォームも保たれました"),
                         IC.green)
             case .noData:
                 return ("", "", .clear)
@@ -5515,27 +5515,27 @@ private struct RaceInsightCard: View {
             case .held:
                 return ("checkmark.seal.fill",
                         L.s("끝까지 유지한 레이스 — 후반에도 심박 효율과 폼이 버텼습니다",
-                            "Held to the finish — HR efficiency and form lasted through the late stage"),
+                            "Held to the finish — HR efficiency and form lasted through the late stage", ja: "最後まで保ったレース — 後半も心拍効率とフォームが持ちこたえました"),
                         IC.green)
             case .cardio:
                 return ("lungs.fill",
                         L.s("심박이 먼저 — 후반에 같은 속도를 내는 데 심박이 더 들었습니다",
-                            "HR first — the late stage cost more heart rate for the same speed"),
+                            "HR first — the late stage cost more heart rate for the same speed", ja: "心拍が先 — 後半は同じ速度を出すのにより多くの心拍が必要でした"),
                         IC.hrRed)
             case .legs:
                 return ("figure.run",
                         L.s("다리가 먼저 — 심박은 버텼지만 후반 폼이 무거워졌습니다",
-                            "Legs first — HR held, but form got heavier late"),
+                            "Legs first — HR held, but form got heavier late", ja: "脚が先 — 心拍は持ちこたえましたが、後半のフォームが重くなりました"),
                         Color(hex: "FF9A3C"))
             case .energy:
                 return ("bolt.slash.fill",
                         L.s("후반 힘 빠짐 — 페이스와 심박이 함께 내려갔습니다. 에너지가 떨어졌을 가능성이 있습니다",
-                            "Ran low late — pace and HR dropped together. You may have run low on energy"),
+                            "Ran low late — pace and HR dropped together. You may have run low on energy", ja: "後半の失速 — ペースと心拍が一緒に下がりました。エネルギー切れの可能性があります"),
                         Color(hex: "F5C542"))
             case .combined:
                 return ("arrow.left.arrow.right",
                         L.s("다리·심박 함께 — 후반에 심박도 더 들고 폼도 무거워졌습니다",
-                            "Legs and HR together — late stage cost more HR and form got heavier"),
+                            "Legs and HR together — late stage cost more HR and form got heavier", ja: "脚と心拍の両方 — 後半は心拍も多く必要になり、フォームも重くなりました"),
                         Color(hex: "F5C542"))
             }
         }()
@@ -5561,12 +5561,12 @@ private struct RaceInsightCard: View {
         case .endurance:
             return L.s(
                 "거리만 늘리기보다 편한 롱런을 꾸준히 쌓고 근력·점프 운동을 주 2회 넣으면 감속 지점을 뒤로 밀 수 있습니다.",
-                "Rather than just adding distance, steady easy long runs plus strength and jump work twice a week can push your fade point back."
+                "Rather than just adding distance, steady easy long runs plus strength and jump work twice a week can push your fade point back.", ja: "距離を伸ばすだけでなく、楽なロング走を継続し、筋力・ジャンプ系トレーニングを週2回入れると、失速地点を後ろに延ばせます。"
             )
         case .cardio:
             return L.s(
                 "폼이 끝까지 버텼으니 다음엔 조금 더 공격적인 목표 페이스를 잡아봐도 좋겠습니다.",
-                "Your form held to the end — you can afford to set a slightly more aggressive goal pace next time."
+                "Your form held to the end — you can afford to set a slightly more aggressive goal pace next time.", ja: "フォームが最後まで持ったので、次はもう少し攻めた目標ペースを設定してもよさそうです。"
             )
         case .balanced, .managed, .noData:
             return nil
@@ -5584,17 +5584,17 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let showRaceGroup = !cmp.sameRace.isEmpty || !visibleQuestions.isEmpty
         return VStack(alignment: .leading, spacing: 6) {
-            Text(L.s("같은 대회 · 같은 거리", "Same Race · Same Distance"))
+            Text(L.s("같은 대회 · 같은 거리", "Same Race · Same Distance", ja: "同じレース · 同じ距離"))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.5))
             if showRaceGroup {
-                comparisonGroupLabel(L.s("같은 대회", "Same race"))
+                comparisonGroupLabel(L.s("같은 대회", "Same race", ja: "同じレース"))
                 comparisonRow(cmp.today)
                 ForEach(cmp.sameRace) { comparisonRow($0) }
                 ForEach(visibleQuestions) { questionRow($0) }
             }
             if !cmp.sameDistance.isEmpty {
-                comparisonGroupLabel(L.s("같은 거리", "Same distance"))
+                comparisonGroupLabel(L.s("같은 거리", "Same distance", ja: "同じ距離"))
                 if !showRaceGroup { comparisonRow(cmp.today) }
                 ForEach(cmp.sameDistance) { comparisonRow($0) }
             }
@@ -5629,7 +5629,7 @@ private struct RaceInsightCard: View {
                 .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.85))
                 .lineLimit(1)
                 .layoutPriority(1)
-            Text(row.delta.map { RaceYearOverYear.deltaText($0) } ?? L.s("오늘", "Today"))
+            Text(row.delta.map { RaceYearOverYear.deltaText($0) } ?? L.s("오늘", "Today", ja: "今日"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.6))
                 .lineLimit(1)
@@ -5650,13 +5650,13 @@ private struct RaceInsightCard: View {
         let m = c.month ?? 0, d = c.day ?? 0
         return VStack(alignment: .leading, spacing: 2) {
             Text(L.s("\(String(q.year)) \(q.raceName) — \(m)월 \(d)일 러닝이 이 대회였나요?",
-                     "\(String(q.year)) \(q.raceName) — was your run on \(m)/\(d) this race?"))
+                     "\(String(q.year)) \(q.raceName) — was your run on \(m)/\(d) this race?", ja: "\(String(q.year)) \(q.raceName) — \(m)月\(d)日のランはこのレースでしたか?"))
                 .font(.system(size: 11))
                 .foregroundStyle(Color.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button { onAnswerRaceQuestion?(q, true) } label: {
-                    Text(L.s("맞습니다", "Yes"))
+                    Text(L.s("맞습니다", "Yes", ja: "はい"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -5668,7 +5668,7 @@ private struct RaceInsightCard: View {
                 }
                 .buttonStyle(.plain)
                 Button { onAnswerRaceQuestion?(q, false) } label: {
-                    Text(L.s("아니요", "No"))
+                    Text(L.s("아니요", "No", ja: "いいえ"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.8))
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -5703,18 +5703,18 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         var parts: [String] = []
         if let a = m.cadence, let b = l.cadence {
-            parts.append(L.s("케이던스 \(Int(a.rounded()))→\(Int(b.rounded()))", "cadence \(Int(a.rounded()))→\(Int(b.rounded()))"))
+            parts.append(L.s("케이던스 \(Int(a.rounded()))→\(Int(b.rounded()))", "cadence \(Int(a.rounded()))→\(Int(b.rounded()))", ja: "ケイデンス \(Int(a.rounded()))→\(Int(b.rounded()))"))
         }
         if let a = m.stride, let b = l.stride {
             parts.append(L.s("보폭 \(String(format: "%.2f", a))→\(String(format: "%.2f", b))m",
-                             "stride \(String(format: "%.2f", a))→\(String(format: "%.2f", b)) m"))
+                             "stride \(String(format: "%.2f", a))→\(String(format: "%.2f", b)) m", ja: "ストライド \(String(format: "%.2f", a))→\(String(format: "%.2f", b))m"))
         }
         if let a = m.groundContact, let b = l.groundContact {
             parts.append(L.s("지면접촉 \(Int(a.rounded()))→\(Int(b.rounded()))ms",
-                             "ground contact \(Int(a.rounded()))→\(Int(b.rounded())) ms"))
+                             "ground contact \(Int(a.rounded()))→\(Int(b.rounded())) ms", ja: "接地時間 \(Int(a.rounded()))→\(Int(b.rounded()))ms"))
         }
         guard !parts.isEmpty else { return nil }
-        return L.s("중반 → 후반: ", "Mid → late: ") + parts.joined(separator: " · ")
+        return L.s("중반 → 후반: ", "Mid → late: ", ja: "中盤 → 後半: ") + parts.joined(separator: " · ")
     }
 
     private var limitingFactor: LimitFactor {
@@ -5741,15 +5741,15 @@ private struct RaceInsightCard: View {
         if gct < 230 {
             return L.s(
                 "대회에서는 평소보다 지면접촉이 짧아집니다. 집중이 잘 됐다는 신호입니다.",
-                "Ground contact tends to shorten in races. A sign your focus was dialed in."
+                "Ground contact tends to shorten in races. A sign your focus was dialed in.", ja: "レースでは普段より接地時間が短くなります。集中できていたサインです。"
             )
         }
         return nil
     }
 
     private func distanceDivision(km: Double) -> String {
-        if abs(km - 42.195) < 1.0  { return AppLanguage.shared.s("풀코스", "Full") }
-        if abs(km - 21.0975) < 0.5 { return AppLanguage.shared.s("하프", "Half") }
+        if abs(km - 42.195) < 1.0  { return AppLanguage.shared.s("풀코스", "Full", ja: "フル") }
+        if abs(km - 21.0975) < 0.5 { return AppLanguage.shared.s("하프", "Half", ja: "ハーフ") }
         if abs(km - 10) < 0.5      { return "10K" }
         if abs(km - 5) < 0.3       { return "5K" }
         return String(format: "%.0fkm", km)
@@ -5807,23 +5807,23 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let cal = Calendar.current
         VStack(alignment: .leading, spacing: 8) {
-            Text(L.s("거리별 폼 유지력 (전체 기록)", "Form by Distance (All Races)"))
+            Text(L.s("거리별 폼 유지력 (전체 기록)", "Form by Distance (All Races)", ja: "距離別のフォーム維持力(全記録)"))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.5))
             // 열 제목
             HStack(spacing: 6) {
-                Text(L.s("부문", "Dist."))
+                Text(L.s("부문", "Dist.", ja: "種目"))
                     .frame(width: 44, alignment: .leading)
-                Text(L.s("날짜", "Date"))
+                Text(L.s("날짜", "Date", ja: "日付"))
                     .frame(width: 44, alignment: .leading)
-                Text(L.s("케이던스", "Cadence"))
+                Text(L.s("케이던스", "Cadence", ja: "ケイデンス"))
                     .foregroundStyle(Theme.cadence.opacity(0.65))
                     .frame(width: 54, alignment: .leading)
-                Text(L.s("보폭", "Stride"))
+                Text(L.s("보폭", "Stride", ja: "ストライド"))
                     .foregroundStyle(Theme.strideLength.opacity(0.65))
                     .frame(width: 46, alignment: .leading)
                 Spacer()
-                Text(L.s("상태", "Status"))
+                Text(L.s("상태", "Status", ja: "状態"))
             }
             .font(.system(size: 9))
             .foregroundStyle(Color.white.opacity(0.4))
@@ -5880,9 +5880,9 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let (label, color): (String, Color) = {
             switch form {
-            case .held:      return (L.s("유지", "Held"),  IC.green)
-            case .mid:       return (L.s("중간", "Mid"),   Color(hex: "F5C542"))
-            case .collapsed: return (L.s("무거워짐", "Heavier"), Color(hex: "FF9A3C"))
+            case .held:      return (L.s("유지", "Held", ja: "横ばい"),  IC.green)
+            case .mid:       return (L.s("중간", "Mid", ja: "中強度"),   Color(hex: "F5C542"))
+            case .collapsed: return (L.s("무거워짐", "Heavier", ja: "重くなった"), Color(hex: "FF9A3C"))
             case .noData, .undetermined: return ("–",       Color.white.opacity(0.30))
             }
         }()
@@ -5914,13 +5914,13 @@ private struct RaceInsightCard: View {
 
         let noDataTail: String = (noData.isEmpty ? "" : " " + L.s(
             "\(names(noData))는 폼 데이터가 없어 확인할 수 없습니다.",
-            "No form data for \(names(noData)), so it can't be judged."))
+            "No form data for \(names(noData)), so it can't be judged.", ja: "\(names(noData))はフォームデータがないため確認できません。"))
             + (undet.filter(\.hasBreaks).isEmpty ? "" : " " + L.s(
             "\(names(undet.filter(\.hasBreaks)))는 걷거나 멈춘 구간이 섞여 폼을 판정할 수 없습니다.",
-            "\(names(undet.filter(\.hasBreaks))): walking or stops make form unjudgeable."))
+            "\(names(undet.filter(\.hasBreaks))): walking or stops make form unjudgeable.", ja: "\(names(undet.filter(\.hasBreaks)))は歩いたり止まったりした区間が混ざり、フォームを判定できません。"))
             + (undet.filter { !$0.hasBreaks }.isEmpty ? "" : " " + L.s(
             "\(names(undet.filter { !$0.hasBreaks }))는 후반 페이스 변화가 커서 폼을 판정할 수 없습니다.",
-            "\(names(undet.filter { !$0.hasBreaks })): late pace changed too much to judge form."))
+            "\(names(undet.filter { !$0.hasBreaks })): late pace changed too much to judge form.", ja: "\(names(undet.filter { !$0.hasBreaks }))は後半のペース変化が大きく、フォームを判定できません。"))
 
         // 열람 중 대회가 유지 쪽 + 심박 여유 → 유지가 쉬운 조건이었다는 사실을 함께 말한다
         let currentEasyHeld: Bool = {
@@ -5929,39 +5929,42 @@ private struct RaceInsightCard: View {
         }()
         let easyKo = currentEasyHeld ? "여유 있는 강도에서 " : ""
         let easyEn = currentEasyHeld ? " at a comfortable effort" : ""
+        let easyJa = currentEasyHeld ? "余裕のある強度で" : ""
         // 중간 판정이 섞였으면 "끝까지"라고 하지 않는다
         let heldVerbKo = held.allSatisfy { $0.form == .held } ? "폼이 끝까지 유지됐" : "폼이 대체로 유지됐"
         let heldVerbEn = held.allSatisfy { $0.form == .held } ? "held to the finish" : "mostly held"
+        let heldStemJa = held.allSatisfy { $0.form == .held } ? "フォームが最後まで保たれ" : "フォームがおおむね保たれ"
         // 무너진 대회가 모두 이 대회 뒤면 시점을 밝힌다
         let collAfter = !coll.isEmpty && coll.allSatisfy { $0.raceDate > activity.date }
         let afterKo = collAfter ? "이 대회 뒤 " : ""
         let afterEn = collAfter ? " after this race" : ""
+        let afterJa = collAfter ? "このレースの後の" : ""
 
         if !held.isEmpty && !coll.isEmpty {
             return L.s(
                 "\(names(held))는 \(easyKo)\(heldVerbKo)고, \(afterKo)\(names(coll))에서는 후반 폼이 무거워졌습니다.",
-                "Form \(heldVerbEn) in \(names(held))\(easyEn), but got heavier late in \(names(coll))\(afterEn)."
+                "Form \(heldVerbEn) in \(names(held))\(easyEn), but got heavier late in \(names(coll))\(afterEn).", ja: "\(names(held))では\(easyJa)\(heldStemJa)、\(afterJa)\(names(coll))では後半のフォームが重くなりました。"
             ) + noDataTail
         }
         if !coll.isEmpty {
             return L.s(
                 "\(afterKo)\(names(coll))에서 후반 폼이 무거워졌습니다.",
-                "Form got heavier late in \(names(coll))\(afterEn)."
+                "Form got heavier late in \(names(coll))\(afterEn).", ja: "\(afterJa)\(names(coll))で後半のフォームが重くなりました。"
             ) + noDataTail
         }
         // 전부 유지 — 데이터 미완성 행이 없을 때만 "더 긴 거리" 제안
         if held.count == 1 {
             return L.s("\(names(held))는 \(easyKo)\(heldVerbKo)습니다.",
-                       "Form \(heldVerbEn) in \(names(held))\(easyEn).") + noDataTail
+                       "Form \(heldVerbEn) in \(names(held))\(easyEn).", ja: "\(names(held))では\(easyJa)\(heldStemJa)ました。") + noDataTail
         }
         if noData.isEmpty && undet.isEmpty {
             return L.s(
                 "\(names(held)) 모두 \(heldVerbKo)습니다.",
-                "Form \(heldVerbEn) in all of \(names(held))."
+                "Form \(heldVerbEn) in all of \(names(held)).", ja: "\(names(held))のすべてで\(heldStemJa)ました。"
             )
         }
         return L.s("\(names(held)) 모두 \(heldVerbKo)습니다.",
-                   "Form \(heldVerbEn) in all of \(names(held)).") + noDataTail
+                   "Form \(heldVerbEn) in all of \(names(held)).", ja: "\(names(held))のすべてで\(heldStemJa)ました。") + noDataTail
     }
 }
 
@@ -6046,11 +6049,11 @@ struct InsightExportSheet: View {
                 shareBar
             }
             .background(Color(hex: "0D0D0F"))
-            .navigationTitle(AppLanguage.shared.s("인사이트 내보내기", "Export Insight"))
+            .navigationTitle(AppLanguage.shared.s("인사이트 내보내기", "Export Insight", ja: "インサイトを書き出す"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLanguage.shared.s("닫기", "Close")) { dismiss() }
+                    Button(AppLanguage.shared.s("닫기", "Close", ja: "閉じる")) { dismiss() }
                 }
             }
         }
@@ -6289,7 +6292,7 @@ struct InsightExportSheet: View {
                 } else {
                     Image(systemName: "square.and.arrow.up")
                 }
-                Text(AppLanguage.shared.s("공유하기", "Share"))
+                Text(AppLanguage.shared.s("공유하기", "Share", ja: "共有する"))
                     .font(.system(size: 16, weight: .semibold))
             }
             .foregroundStyle(.white)

@@ -10,11 +10,11 @@ struct EffortTypeBaselineCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L.s("유형별 평소 강도", "Usual effort by run type"))
+                Text(L.s("유형별 평소 강도", "Usual effort by run type", ja: "タイプ別の普段の強度"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(L.s("최근 8주 중앙값 · 3회 미만이면 12주", "8-week median · 12 weeks if under 3"))
+                Text(L.s("최근 8주 중앙값 · 3회 미만이면 12주", "8-week median · 12 weeks if under 3", ja: "直近8週の中央値 · 3回未満なら12週"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -45,7 +45,7 @@ struct EffortTypeBaselineCard: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(L.s("\(row.windowWeeks)주 \(row.count)회", "\(row.count) in \(row.windowWeeks)w"))
+            Text(L.s("\(row.windowWeeks)주 \(row.count)회", "\(row.count) in \(row.windowWeeks)w", ja: "\(row.windowWeeks)週で\(row.count)回"))
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
             if row.isUserBased {
@@ -53,7 +53,7 @@ struct EffortTypeBaselineCard: View {
                     Circle()
                         .fill(Theme.violet)
                         .frame(width: 4, height: 4)
-                    Text(L.s("내 입력", "Mine"))
+                    Text(L.s("내 입력", "Mine", ja: "自分の入力"))
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }

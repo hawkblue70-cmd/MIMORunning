@@ -13,11 +13,11 @@ enum Mood: String, CaseIterable, Codable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .fantastic: L.s("최고", "Great!")
-        case .great:     L.s("좋음", "Good")
-        case .okay:      L.s("보통", "Okay")
-        case .tough:     L.s("힘듦", "Tough")
-        case .terrible:  L.s("최악", "Bad")
+        case .fantastic: L.s("최고", "Great!", ja: "最高")
+        case .great:     L.s("좋음", "Good", ja: "良い")
+        case .okay:      L.s("보통", "Okay", ja: "普通")
+        case .tough:     L.s("힘듦", "Tough", ja: "きつい")
+        case .terrible:  L.s("최악", "Bad", ja: "最悪")
         }
     }
 

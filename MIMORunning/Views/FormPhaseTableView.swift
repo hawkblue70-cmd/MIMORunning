@@ -15,12 +15,12 @@ struct FormPhaseTableView: View {
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 5 * scale, verticalSpacing: (compact ? 3 : 5) * scale) {
             GridRow {
-                headerCell(L.s("구간", "Phase"))
-                headerCell(L.s("페이스", "Pace")).gridColumnAlignment(.trailing)
-                headerCell(L.s("심박", "HR")).gridColumnAlignment(.trailing)
-                headerCell(L.s("케이던스", "Cadence")).gridColumnAlignment(.trailing)
-                headerCell(L.s("보폭", "Stride")).gridColumnAlignment(.trailing)
-                headerCell(L.s("지면접촉", "GCT")).gridColumnAlignment(.trailing)
+                headerCell(L.s("구간", "Phase", ja: "区間"))
+                headerCell(L.s("페이스", "Pace", ja: "ペース")).gridColumnAlignment(.trailing)
+                headerCell(L.s("심박", "HR", ja: "心拍")).gridColumnAlignment(.trailing)
+                headerCell(L.s("케이던스", "Cadence", ja: "ケイデンス")).gridColumnAlignment(.trailing)
+                headerCell(L.s("보폭", "Stride", ja: "ストライド")).gridColumnAlignment(.trailing)
+                headerCell(L.s("지면접촉", "GCT", ja: "接地時間")).gridColumnAlignment(.trailing)
             }
             row(ko: "초반", en: "Early", stats: result.phases.early, signals: result.signals.early)
             row(ko: "중반", en: "Mid", stats: result.phases.mid, signals: result.signals.mid)

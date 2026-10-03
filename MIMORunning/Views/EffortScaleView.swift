@@ -48,7 +48,7 @@ struct EffortScaleView: View {
             Image(systemName: "gauge.with.dots.needle.33percent")
                 .font(.system(size: 11))
                 .foregroundStyle(shownValue != nil ? Theme.violet : .secondary)
-            Text(L.s("운동 강도", "Effort"))
+            Text(L.s("운동 강도", "Effort", ja: "運動強度"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(shownValue != nil ? .white : .secondary)
             Spacer()
@@ -60,7 +60,7 @@ struct EffortScaleView: View {
                     .animation(.snappy, value: shownValue)
                 sourceBadge
             } else {
-                Text(L.s("오늘 얼마나 힘들었나요?", "How hard was it?"))
+                Text(L.s("오늘 얼마나 힘들었나요?", "How hard was it?", ja: "今日はどれくらいきつかったですか?"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -72,7 +72,7 @@ struct EffortScaleView: View {
         switch resolved?.source {
         case .user:
             HStack(spacing: 6) {
-                badge(L.s("내 입력", "Mine"), tint: Theme.violet)
+                badge(L.s("내 입력", "Mine", ja: "自分の入力"), tint: Theme.violet)
                 if let a = appleValue {
                     // 내 입력과 Apple 값을 나란히 — 탭하면 Apple 값으로 되돌린다
                     Button(action: onResetToApple) {
@@ -85,13 +85,13 @@ struct EffortScaleView: View {
                         .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(L.s("Apple 값 \(a)으로 되돌리기", "Reset to Apple value \(a)"))
+                    .accessibilityLabel(L.s("Apple 값 \(a)으로 되돌리기", "Reset to Apple value \(a)", ja: "Appleの値\(a)に戻す"))
                 }
             }
         case .appleManual, .appleEstimated:
             Button { editing = true } label: {
                 HStack(spacing: 3) {
-                    badge(resolved?.source == .appleManual ? L.s("Apple 입력", "Apple") : L.s("Apple 추정", "Apple est."),
+                    badge(resolved?.source == .appleManual ? L.s("Apple 입력", "Apple", ja: "Apple入力") : L.s("Apple 추정", "Apple est.", ja: "Apple推定"),
                           tint: .secondary)
                     if !editing {
                         Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.secondary)
@@ -153,9 +153,9 @@ struct EffortScaleView: View {
         .frame(height: 28)
         .opacity(isEditable ? 1 : 0.85)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L.s("운동 강도 막대", "Effort scale"))
-        .accessibilityValue(shownValue.map { "\($0), \(EffortBand(value: $0).label)" } ?? L.s("미입력", "Not set"))
-        .accessibilityHint(isEditable ? "" : L.s("Apple 값입니다. 배지를 눌러 수정할 수 있습니다.", "Apple value. Activate the badge to edit."))
+        .accessibilityLabel(L.s("운동 강도 막대", "Effort scale", ja: "運動強度バー"))
+        .accessibilityValue(shownValue.map { "\($0), \(EffortBand(value: $0).label)" } ?? L.s("미입력", "Not set", ja: "未入力"))
+        .accessibilityHint(isEditable ? "" : L.s("Apple 값입니다. 배지를 눌러 수정할 수 있습니다.", "Apple value. Activate the badge to edit.", ja: "Appleの値です。バッジをタップすると変更できます。"))
         .accessibilityAdjustableAction { dir in
             guard isEditable else { return }
             let cur = shownValue ?? 5

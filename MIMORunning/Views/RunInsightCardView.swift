@@ -6,16 +6,16 @@ extension InsightCategory {
     var localizedLabel: String {
         let L = AppLanguage.shared
         switch self {
-        case .cardio:          return L.s("심폐 컨디션",    "Cardio")
-        case .intensity:       return L.s("강도 · 페이스",  "Intensity")
-        case .form:            return L.s("주법",           "Form")
-        case .endurance:       return L.s("지구력 · 후반부","Endurance")
-        case .efficiency:      return L.s("심박 효율",      "Efficiency")
-        case .environment:     return L.s("환경",           "Environment")
-        case .load:            return L.s("훈련량",         "Load")
-        case .intervalQuality: return L.s("인터벌 수행",    "Intervals")
-        case .recovery:        return L.s("회복",           "Recovery")
-        case .fadeCause:       return L.s("후반 감속 원인", "Fade Cause")
+        case .cardio:          return L.s("심폐 컨디션",    "Cardio", ja: "心肺コンディション")
+        case .intensity:       return L.s("강도 · 페이스",  "Intensity", ja: "強度 · ペース")
+        case .form:            return L.s("주법",           "Form", ja: "走法")
+        case .endurance:       return L.s("지구력 · 후반부","Endurance", ja: "持久力 · 後半")
+        case .efficiency:      return L.s("심박 효율",      "Efficiency", ja: "心拍効率")
+        case .environment:     return L.s("환경",           "Environment", ja: "環境")
+        case .load:            return L.s("훈련량",         "Load", ja: "練習量")
+        case .intervalQuality: return L.s("인터벌 수행",    "Intervals", ja: "インターバルの出来")
+        case .recovery:        return L.s("회복",           "Recovery", ja: "回復")
+        case .fadeCause:       return L.s("후반 감속 원인", "Fade Cause", ja: "後半失速の原因")
         }
     }
 }

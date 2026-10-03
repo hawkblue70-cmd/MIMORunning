@@ -77,59 +77,59 @@ struct RunMetricItem: Identifiable {
                      isMale: Bool?) -> [RunMetricItem] {
         let L = AppLanguage.shared
         var list: [RunMetricItem] = [
-            RunMetricItem(kind: .distance, icon: "ruler", label: L.s("거리", "Dist."),
+            RunMetricItem(kind: .distance, icon: "ruler", label: L.s("거리", "Dist.", ja: "距離"),
                           value: activity.formattedDistance, color: .white),
-            RunMetricItem(kind: .time, icon: "clock", label: L.s("시간", "Time"),
+            RunMetricItem(kind: .time, icon: "clock", label: L.s("시간", "Time", ja: "時間"),
                           value: activity.formattedDuration, color: Theme.time),
         ]
         if let pace = activity.formattedPace {
-            list.append(RunMetricItem(kind: .pace, icon: "timer", label: L.s("페이스", "Pace"),
+            list.append(RunMetricItem(kind: .pace, icon: "timer", label: L.s("페이스", "Pace", ja: "ペース"),
                                       value: pace, color: Theme.pace))
         }
         if let hr = activity.avgHeartRate {
-            list.append(RunMetricItem(kind: .heartRate, icon: "heart.fill", label: L.s("평균 심박", "Avg HR"),
+            list.append(RunMetricItem(kind: .heartRate, icon: "heart.fill", label: L.s("평균 심박", "Avg HR", ja: "平均心拍"),
                                       value: "\(hr) bpm", color: Theme.heartRate))
         }
         if activity.type == .running {
             if let cadence = detail?.avgCadence {
-                list.append(RunMetricItem(kind: .cadence, icon: "figure.run", label: L.s("케이던스", "Cadence"),
+                list.append(RunMetricItem(kind: .cadence, icon: "figure.run", label: L.s("케이던스", "Cadence", ja: "ケイデンス"),
                                           value: "\(cadence) spm", color: .white, trendMetric: .cadence))
             }
             if let power = detail?.avgPower {
-                list.append(RunMetricItem(kind: .power, icon: "bolt.fill", label: L.s("파워", "Power"),
+                list.append(RunMetricItem(kind: .power, icon: "bolt.fill", label: L.s("파워", "Power", ja: "パワー"),
                                           value: "\(power) W", color: Theme.power, trendMetric: .power))
             }
             if let gct = detail?.avgGroundContactTime {
-                list.append(RunMetricItem(kind: .form, icon: "stopwatch", label: L.s("지면접촉", "Gnd Contact"),
+                list.append(RunMetricItem(kind: .form, icon: "stopwatch", label: L.s("지면접촉", "Gnd Contact", ja: "接地時間"),
                                           value: "\(Int(gct.rounded())) ms", color: Theme.runningForm,
                                           trendMetric: .groundContactTime))
             }
             if let stride = detail?.avgStrideLength {
-                list.append(RunMetricItem(kind: .form, icon: "arrow.left.and.right", label: L.s("보폭", "Stride"),
+                list.append(RunMetricItem(kind: .form, icon: "arrow.left.and.right", label: L.s("보폭", "Stride", ja: "ストライド"),
                                           value: String(format: "%.2f m", stride), color: Theme.runningForm,
                                           trendMetric: .strideLength))
             }
             if let vo = detail?.avgVerticalOscillation {
-                list.append(RunMetricItem(kind: .form, icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc."),
+                list.append(RunMetricItem(kind: .form, icon: "arrow.up.and.down", label: L.s("수직 진폭", "Vert. Osc.", ja: "上下動"),
                                           value: String(format: "%.1f cm", vo), color: Theme.runningForm,
                                           trendMetric: .verticalOscillation))
             }
             if let vo2 = detail?.vo2Max {
                 let rating = CardioFitnessClassifier.rating(vo2: vo2, age: age, isMale: isMale)
-                let note = rating.map { L.s("현재 추정 · \($0)", "Curr. Est. · \($0)") } ?? L.s("현재 추정", "Curr. Est.")
+                let note = rating.map { L.s("현재 추정 · \($0)", "Curr. Est. · \($0)", ja: "現在の推定 · \($0)") } ?? L.s("현재 추정", "Curr. Est.", ja: "現在の推定")
                 list.append(RunMetricItem(kind: .cardio, icon: "lungs.fill",
-                                          label: L.s("유산소 피트니스", "Cardio Fitness"),
+                                          label: L.s("유산소 피트니스", "Cardio Fitness", ja: "心肺フィットネス"),
                                           value: String(format: "%.1f mL/kg·min", vo2),
                                           color: Theme.elevation, note: note,
                                           trendMetric: .vo2Max, compactValue: true))
             }
         }
         if let cal = activity.calories {
-            list.append(RunMetricItem(kind: .calories, icon: "flame.fill", label: L.s("칼로리", "Cals"),
+            list.append(RunMetricItem(kind: .calories, icon: "flame.fill", label: L.s("칼로리", "Cals", ja: "カロリー"),
                                       value: String(format: "%.0f kcal", cal), color: Theme.calories))
         }
         if let elev = detail?.elevationGain {
-            list.append(RunMetricItem(kind: .elevation, icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain"),
+            list.append(RunMetricItem(kind: .elevation, icon: "arrow.up.right", label: L.s("고도 획득", "Elev. Gain", ja: "獲得標高"),
                                       value: String(format: "%.0f m", elev), color: Theme.elevation))
         }
         return list

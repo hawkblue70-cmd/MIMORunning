@@ -107,16 +107,16 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
     var shortLabel: String {
         let L = AppLanguage.shared
         switch self {
-        case .heartRate:    return L.s("심박",    "HR")
-        case .pace:         return L.s("페이스",  "Pace")
-        case .cadence:      return L.s("케이던스","Cadence")
-        case .elevation:    return L.s("고도 획득", "Elev. Gain")
-        case .power:        return L.s("파워",    "Power")
-        case .groundContact: return L.s("지면접촉", "Contact")
-        case .strideLength: return L.s("보폭",    "Stride")
-        case .verticalOsc:  return L.s("진폭",    "Vert.Osc")
-        case .aerobic:      return L.s("유산소",  "Aerobic")
-        case .calories:     return L.s("칼로리",  "kcal")
+        case .heartRate:    return L.s("심박",    "HR", ja: "心拍")
+        case .pace:         return L.s("페이스",  "Pace", ja: "ペース")
+        case .cadence:      return L.s("케이던스","Cadence", ja: "ケイデンス")
+        case .elevation:    return L.s("고도 획득", "Elev. Gain", ja: "獲得標高")
+        case .power:        return L.s("파워",    "Power", ja: "パワー")
+        case .groundContact: return L.s("지면접촉", "Contact", ja: "接地時間")
+        case .strideLength: return L.s("보폭",    "Stride", ja: "ストライド")
+        case .verticalOsc:  return L.s("진폭",    "Vert.Osc", ja: "上下動")
+        case .aerobic:      return L.s("유산소",  "Aerobic", ja: "有酸素")
+        case .calories:     return L.s("칼로리",  "kcal", ja: "カロリー")
         }
     }
 

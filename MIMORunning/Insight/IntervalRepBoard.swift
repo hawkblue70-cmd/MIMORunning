@@ -133,13 +133,13 @@ struct IntervalRepBoard: Equatable {
         if let d = uniformDistanceM {
             return "\(reps.count) × \(Self.distanceLabel(d))"
         }
-        return L.s("인터벌 \(reps.count)회", "\(reps.count) intervals")
+        return L.s("인터벌 \(reps.count)회", "\(reps.count) intervals", ja: "インターバル\(reps.count)本")
     }
 
     var footerText: String? {
         guard let avg = averagePaceSecPerKm else { return nil }
         let L = AppLanguage.shared
-        return L.s("평균 \(Self.paceText(avg))", "avg \(Self.paceText(avg))")
+        return L.s("평균 \(Self.paceText(avg))", "avg \(Self.paceText(avg))", ja: "平均 \(Self.paceText(avg))")
     }
 
     static func distanceLabel(_ m: Double) -> String {

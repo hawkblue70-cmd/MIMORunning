@@ -24,15 +24,15 @@ enum DetailPanel: String, CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .map:                  L.s("경로",     "Route")
-        case .combined:             L.s("종합",     "Combined")
-        case .heartRate:            L.s("심박수",   "HR")
-        case .cadence:              L.s("케이던스", "Cadence")
-        case .groundContact:        L.s("지면접촉","Gnd Contact")
-        case .strideLength:         L.s("보폭",     "Stride")
-        case .power:                L.s("파워",     "Power")
-        case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.")
-        case .elevation:            L.s("고도",     "Elevation")
+        case .map:                  L.s("경로",     "Route", ja: "ルート")
+        case .combined:             L.s("종합",     "Combined", ja: "総合")
+        case .heartRate:            L.s("심박수",   "HR", ja: "心拍数")
+        case .cadence:              L.s("케이던스", "Cadence", ja: "ケイデンス")
+        case .groundContact:        L.s("지면접촉","Gnd Contact", ja: "接地時間")
+        case .strideLength:         L.s("보폭",     "Stride", ja: "ストライド")
+        case .power:                L.s("파워",     "Power", ja: "パワー")
+        case .verticalOscillation:  L.s("수직진폭", "Vert. Osc.", ja: "上下動")
+        case .elevation:            L.s("고도",     "Elevation", ja: "標高")
         }
     }
 
@@ -117,10 +117,10 @@ struct ActivityDetailView: View {
                                            typeOf: manager.workoutTypeLookup(), excluding: activity.id)
         let L = AppLanguage.shared
         guard let m = s.median else {
-            return s.count > 0 ? L.s("\(t.koreanLabel) 평소 강도 — 아직 \(s.count)회(3회부터 계산)", "\(t.koreanLabel) usual effort — \(s.count) so far (needs 3)") : nil
+            return s.count > 0 ? L.s("\(t.koreanLabel) 평소 강도 — 아직 \(s.count)회(3회부터 계산)", "\(t.koreanLabel) usual effort — \(s.count) so far (needs 3)", ja: "\(t.koreanLabel)の普段の強度 — まだ\(s.count)回(3回から計算)") : nil
         }
-        let src = s.isUserBased ? L.s("내 입력 기준", "from my ratings") : L.s("Apple 값 포함", "incl. Apple")
-        return L.s("\(t.koreanLabel) 평소 \(m) · \(s.windowWeeks)주 \(s.count)회 · \(src)", "\(t.koreanLabel) usual \(m) · \(s.count) in \(s.windowWeeks)w · \(src)")
+        let src = s.isUserBased ? L.s("내 입력 기준", "from my ratings", ja: "自分の入力基準") : L.s("Apple 값 포함", "incl. Apple", ja: "Appleの値を含む")
+        return L.s("\(t.koreanLabel) 평소 \(m) · \(s.windowWeeks)주 \(s.count)회 · \(src)", "\(t.koreanLabel) usual \(m) · \(s.count) in \(s.windowWeeks)w · \(src)", ja: "\(t.koreanLabel)の普段 \(m) · \(s.windowWeeks)週で\(s.count)回 · \(src)")
     }
     @State private var runSegmentSource: RunSegmentSource = .none
     @State private var runFadeStartKm: Double? = nil
@@ -461,7 +461,7 @@ struct ActivityDetailView: View {
                             raceDetector.resetDismissed(activityID: activity.id)
                             Task { await runRaceAssessment() }
                         } label: {
-                            Label(AppLanguage.shared.s("대회 기록 추가", "Add Race Record"), systemImage: "flag.checkered")
+                            Label(AppLanguage.shared.s("대회 기록 추가", "Add Race Record", ja: "レース記録を追加"), systemImage: "flag.checkered")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity)
@@ -493,7 +493,7 @@ struct ActivityDetailView: View {
                     } else if isComputingZones {
                         HStack(spacing: 8) {
                             ProgressView().scaleEffect(0.7)
-                            Text(AppLanguage.shared.s("심박 존 계산 중…", "Computing zones…"))
+                            Text(AppLanguage.shared.s("심박 존 계산 중…", "Computing zones…", ja: "心拍ゾーンを計算中…"))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -505,7 +505,7 @@ struct ActivityDetailView: View {
                                 .font(.caption).foregroundStyle(Theme.violet)
                             Text(AppLanguage.shared.s(
                                 "정확한 존 계산을 위해 건강 앱에 생년월일을 입력하거나, '나' 탭에서 나이를 설정해 주세요.",
-                                "For accurate HR zones, add your date of birth in the Health app or set your age in the Me tab."))
+                                "For accurate HR zones, add your date of birth in the Health app or set your age in the Me tab.", ja: "正確なゾーン計算のため、ヘルスケアに生年月日を入力するか、「マイ」タブで年齢を設定してください。"))
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -528,7 +528,7 @@ struct ActivityDetailView: View {
             }
         }
         // 시스템 inline 제목 — 화면 가운데 고정(직접 그린 principal 제목은 좌우 버튼 폭 차이로 왼쪽으로 밀렸다)
-        .navigationTitle(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run") : activity.type.label)
+        .navigationTitle(activity.type == .running ? AppLanguage.shared.s("오늘의 러닝", "Today's Run", ja: "今日のラン") : activity.type.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -536,7 +536,7 @@ struct ActivityDetailView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "rectangle.stack.fill")
                             .font(.system(size: 12, weight: .semibold))
-                        Text(AppLanguage.shared.s("카드 만들기", "Create Card"))
+                        Text(AppLanguage.shared.s("카드 만들기", "Create Card", ja: "カードを作る"))
                             .font(.system(size: 13, weight: .semibold))
                     }
                     .foregroundStyle(.white)
@@ -1358,7 +1358,7 @@ struct ActivityDetailView: View {
                         )
                         .padding(.horizontal, 16)
                     } else {
-                        panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route"))
+                        panelPlaceholder(icon: "map.fill", message: AppLanguage.shared.s("경로 없음", "No Route", ja: "ルートなし"))
                     }
                 } else {
                     ZStack {
@@ -1398,28 +1398,28 @@ struct ActivityDetailView: View {
             if let profile = detail?.altitudeProfile, !profile.isEmpty {
                 ElevationPanelChart(profile: profile)
             } else {
-                panelPlaceholder(icon: "mountain.2.fill", message: AppLanguage.shared.s("고도 데이터 없음", "No Elevation Data"))
+                panelPlaceholder(icon: "mountain.2.fill", message: AppLanguage.shared.s("고도 데이터 없음", "No Elevation Data", ja: "標高データなし"))
             }
         case .cadence:
-            seriesPanel(icon: "figure.run", label: AppLanguage.shared.s("케이던스", "Cadence"), unit: "spm",
+            seriesPanel(icon: "figure.run", label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"), unit: "spm",
                         color: Theme.cadence, format: "%.0f", useRangeBar: false,
                         validMin: 130,
                         overrideAvg: detail?.avgCadence.map { Double($0) },
                         available: detail?.avgCadence != nil)
         case .power:
-            seriesPanel(icon: "bolt.fill", label: AppLanguage.shared.s("파워", "Power"), unit: "W",
+            seriesPanel(icon: "bolt.fill", label: AppLanguage.shared.s("파워", "Power", ja: "パワー"), unit: "W",
                         color: Theme.power, format: "%.0f", useRangeBar: true,
                         available: detail?.avgPower != nil)
         case .groundContact:
-            seriesPanel(icon: "stopwatch", label: AppLanguage.shared.s("지면접촉", "Gnd Contact"), unit: "ms",
+            seriesPanel(icon: "stopwatch", label: AppLanguage.shared.s("지면접촉", "Gnd Contact", ja: "接地時間"), unit: "ms",
                         color: Theme.runningForm, format: "%.0f", useRangeBar: true,
                         available: detail?.avgGroundContactTime != nil)
         case .strideLength:
-            seriesPanel(icon: "arrow.left.and.right", label: AppLanguage.shared.s("보폭", "Stride"), unit: "m",
+            seriesPanel(icon: "arrow.left.and.right", label: AppLanguage.shared.s("보폭", "Stride", ja: "ストライド"), unit: "m",
                         color: Theme.runningForm, format: "%.2f", useRangeBar: true,
                         available: detail?.avgStrideLength != nil)
         case .verticalOscillation:
-            seriesPanel(icon: "arrow.up.and.down", label: AppLanguage.shared.s("수직 진폭", "Vert. Osc."), unit: "cm",
+            seriesPanel(icon: "arrow.up.and.down", label: AppLanguage.shared.s("수직 진폭", "Vert. Osc.", ja: "上下動"), unit: "cm",
                         color: Theme.runningForm, format: "%.1f", useRangeBar: true,
                         available: detail?.avgVerticalOscillation != nil)
         }
@@ -1466,7 +1466,7 @@ struct ActivityDetailView: View {
                     .foregroundStyle(Theme.heartRate.opacity(0.7))
             }
             Text(L.s("이 운동의 상세 심박 기록이 없습니다",
-                     "No detailed HR data for this workout"))
+                     "No detailed HR data for this workout", ja: "このワークアウトの詳細な心拍記録はありません"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -1480,11 +1480,11 @@ struct ActivityDetailView: View {
                              validMin: Double = 0, overrideAvg: Double? = nil,
                              available: Bool) -> some View {
         if !available {
-            panelPlaceholder(icon: icon, message: AppLanguage.shared.s("\(label) 없음", "No \(label)"))
+            panelPlaceholder(icon: icon, message: AppLanguage.shared.s("\(label) 없음", "No \(label)", ja: "\(label)なし"))
         } else if isLoadingPanelSeries {
             ProgressView().tint(color)
         } else if panelSeriesData.isEmpty {
-            panelPlaceholder(icon: "chart.xyaxis.line", message: AppLanguage.shared.s("데이터 없음", "No Data"))
+            panelPlaceholder(icon: "chart.xyaxis.line", message: AppLanguage.shared.s("데이터 없음", "No Data", ja: "データなし"))
         } else {
             MetricBarPanelChart(samples: panelSeriesData, color: color,
                                 unit: unit, format: format, useRangeBar: useRangeBar,
@@ -1549,7 +1549,7 @@ struct ActivityDetailView: View {
                     .foregroundStyle(.white)
             }
             Spacer()
-            exportChip(title: AppLanguage.shared.s("차트 내보내기", "Export Chart")) {
+            exportChip(title: AppLanguage.shared.s("차트 내보내기", "Export Chart", ja: "チャートを書き出す")) {
                 showChartShare = true
             }
         }
@@ -1561,12 +1561,12 @@ struct ActivityDetailView: View {
     /// 구간은 구간 기록에, 인터벌은 인터벌 섹션에 각자 내보내기가 있다.
     private var detailPanelsHeader: some View {
         HStack {
-            Text(AppLanguage.shared.s("오늘의 러닝 상세 데이터", "Today's Run Details"))
+            Text(AppLanguage.shared.s("오늘의 러닝 상세 데이터", "Today's Run Details", ja: "今日のランの詳細データ"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
             Spacer()
             if isAvailable(.map) {
-                exportChip(title: AppLanguage.shared.s("경로 내보내기", "Export Route")) {
+                exportChip(title: AppLanguage.shared.s("경로 내보내기", "Export Route", ja: "ルートを書き出す")) {
                     showRouteShareCard = true
                 }
             }
@@ -1656,7 +1656,7 @@ private struct DetailHeader: View {
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Theme.violet.opacity(0.35), lineWidth: 1))
                     if let revoke = onRaceRevoke {
-                        Button(AppLanguage.shared.s("이 대회 아닙니다", "Not a Race"), action: revoke)
+                        Button(AppLanguage.shared.s("이 대회 아닙니다", "Not a Race", ja: "このレースではありません"), action: revoke)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
@@ -1688,10 +1688,10 @@ private struct InsightCard: View {
     private var showsComparison: Bool { insight?.theme == .raceDay && comparisonLine != nil }
 
     private var displayDetail: String {
-        guard let ins = insight else { return AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…") }
+        guard let ins = insight else { return AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…", ja: "インサイトを分析中") }
         if showsComparison, let line = comparisonLine { return line }
         if ins.theme == .adverseCondition, let e = effortValue {
-            return ins.detail + AppLanguage.shared.s(" · 체감 강도 \(e)", " · effort \(e)/10")
+            return ins.detail + AppLanguage.shared.s(" · 체감 강도 \(e)", " · effort \(e)/10", ja: " · 体感強度 \(e)")
         }
         return ins.detail
     }
@@ -1738,7 +1738,7 @@ private struct InsightCard: View {
                         icon: "bed.double.fill",
                         label: AppLanguage.shared.s(
                             "수면 \(slp.chipLabel)",
-                            "Sleep \(slp.chipLabel)"
+                            "Sleep \(slp.chipLabel)", ja: "睡眠 \(slp.chipLabel)"
                         ),
                         color: slp.isInsufficient ? Theme.time : .secondary
                     )
@@ -1757,7 +1757,7 @@ private struct InsightCard: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(AppLanguage.shared.s("오늘의 인사이트", "Today's Insight"))
+                        Text(AppLanguage.shared.s("오늘의 인사이트", "Today's Insight", ja: "今日のインサイト"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violetText)
                         Spacer()
@@ -1765,7 +1765,7 @@ private struct InsightCard: View {
                             .font(.caption)
                             .foregroundStyle(Theme.violetText)
                     }
-                    Text((usesHeadline ? headline?.title : nil) ?? insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run"))
+                    Text((usesHeadline ? headline?.title : nil) ?? insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
@@ -1783,7 +1783,7 @@ private struct InsightCard: View {
                     }
                     if let race = confirmedRace {
                         let division = showsComparison ? " · " + InsightEngine.raceDistanceDivision(km: race.distanceKm) : ""
-                        Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)\(division)", "Race · \(race.raceName)\(division)"),
+                        Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)\(division)", "Race · \(race.raceName)\(division)", ja: "レース · \(race.raceName)\(division)"),
                               systemImage: "flag.checkered")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violet)
@@ -1794,7 +1794,7 @@ private struct InsightCard: View {
                             .overlay(Capsule().stroke(Theme.violet.opacity(0.3), lineWidth: 1))
                     }
                     if let hill = hillMatch {
-                        Label(AppLanguage.shared.s("\(hill.spot.name) · 언덕", "\(hill.spot.name) · Hill"),
+                        Label(AppLanguage.shared.s("\(hill.spot.name) · 언덕", "\(hill.spot.name) · Hill", ja: "\(hill.spot.name) · 坂"),
                               systemImage: "mountain.2.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color(hex: "FFC74D"))
@@ -1868,8 +1868,8 @@ private struct MiniMeUpdateButton: View {
                     Image(systemName: miniMeStore.image == nil ? "sparkles" : "arrow.clockwise")
                         .font(.system(size: 10, weight: .semibold))
                     Text(miniMeStore.image == nil
-                         ? AppLanguage.shared.s("이 사진으로 미니미 만들기", "Create Mini-Me from photo")
-                         : AppLanguage.shared.s("이 사진으로 미니미 업데이트", "Update Mini-Me from photo"))
+                         ? AppLanguage.shared.s("이 사진으로 미니미 만들기", "Create Mini-Me from photo", ja: "この写真でミニミーを作る")
+                         : AppLanguage.shared.s("이 사진으로 미니미 업데이트", "Update Mini-Me from photo", ja: "この写真でミニミーを更新"))
                         .font(.caption.weight(.medium))
                 }
                 .foregroundStyle(Theme.violetText)
@@ -2199,11 +2199,11 @@ private struct IntervalSegmentsSection: View {
         guard let raw else { return nil }
         let L = AppLanguage.shared
         switch raw {
-        case "준비운동": return L.s("준비운동", "Warmup")
-        case "운동":     return L.s("운동",     "Work")
-        case "회복":     return L.s("회복",     "Recovery")
-        case "정리운동": return L.s("정리운동", "Cooldown")
-        case "구간":     return L.s("구간",     "Interval")
+        case "준비운동": return L.s("준비운동", "Warmup", ja: "ウォームアップ")
+        case "운동":     return L.s("운동",     "Work", ja: "本練習")
+        case "회복":     return L.s("회복",     "Recovery", ja: "リカバリー")
+        case "정리운동": return L.s("정리운동", "Cooldown", ja: "クールダウン")
+        case "구간":     return L.s("구간",     "Interval", ja: "区間")
         default:         return raw
         }
     }
@@ -2235,21 +2235,21 @@ private struct IntervalSegmentsSection: View {
             let label = dist >= 1000
                 ? (dist % 1000 == 0 ? "\(dist / 1000)km" : String(format: "%.1fkm", Double(dist) / 1000))
                 : "\(dist)m"
-            return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)")
+            return AppLanguage.shared.s("\(label)×\(cnt)회", "\(label)×\(cnt)", ja: "\(label)×\(cnt)本")
         }
         let label = dominant >= 1000
             ? (dominant % 1000 == 0 ? "\(dominant / 1000)km" : String(format: "%.1fkm", Double(dominant) / 1000))
             : "\(dominant)m"
-        return AppLanguage.shared.s("\(label)×\(workSegs.count)회", "\(label)×\(workSegs.count)")
+        return AppLanguage.shared.s("\(label)×\(workSegs.count)회", "\(label)×\(workSegs.count)", ja: "\(label)×\(workSegs.count)本")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 DetailSectionHeader(
-                    title: AppLanguage.shared.s("인터벌 구간", "Interval Reps"),
+                    title: AppLanguage.shared.s("인터벌 구간", "Interval Reps", ja: "インターバル区間"),
                     subtitle: {
-                        let base = AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps")
+                        let base = AppLanguage.shared.s("\(segments.count)개 구간", "\(segments.count) reps", ja: "\(segments.count)区間")
                         if let s = workSummaryText { return "\(base) (\(s))" }
                         return base
                     }()
@@ -2260,7 +2260,7 @@ private struct IntervalSegmentsSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.caption.weight(.semibold))
-                            Text(AppLanguage.shared.s("공유", "Share"))
+                            Text(AppLanguage.shared.s("공유", "Share", ja: "共有"))
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(Theme.violetText)
@@ -2276,16 +2276,16 @@ private struct IntervalSegmentsSection: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
                         if hasLabels {
-                            Text(AppLanguage.shared.s("구간", "Rep")).frame(width: 56, alignment: .leading)
+                            Text(AppLanguage.shared.s("구간", "Rep", ja: "区間")).frame(width: 56, alignment: .leading)
                         } else {
                             Text("#").frame(width: 20, alignment: .leading)
                         }
-                        if hasDist { Text(AppLanguage.shared.s("거리", "Dist.")).frame(width: 60, alignment: .trailing) }
+                        if hasDist { Text(AppLanguage.shared.s("거리", "Dist.", ja: "距離")).frame(width: 60, alignment: .trailing) }
                         Spacer(minLength: 8)
-                        Text(AppLanguage.shared.s("페이스", "Pace")).frame(width: 70, alignment: .trailing)
-                        Text(AppLanguage.shared.s("시간", "Time")).frame(width: 50, alignment: .trailing)
-                        if hasHR { Text(AppLanguage.shared.s("심박", "HR")).frame(width: 44, alignment: .trailing) }
-                        if hasCadence { Text(AppLanguage.shared.s("케이던스", "Cad.")).frame(width: 50, alignment: .trailing) }
+                        Text(AppLanguage.shared.s("페이스", "Pace", ja: "ペース")).frame(width: 70, alignment: .trailing)
+                        Text(AppLanguage.shared.s("시간", "Time", ja: "時間")).frame(width: 50, alignment: .trailing)
+                        if hasHR { Text(AppLanguage.shared.s("심박", "HR", ja: "心拍")).frame(width: 44, alignment: .trailing) }
+                        if hasCadence { Text(AppLanguage.shared.s("케이던스", "Cad.", ja: "ケイデンス")).frame(width: 50, alignment: .trailing) }
                     }
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -2419,16 +2419,16 @@ private struct SplitsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits"),
-                               subtitle: AppLanguage.shared.s("\(splits.count)개 구간 내보내기", "Export \(splits.count) splits"))
+            DetailSectionHeader(title: AppLanguage.shared.s("구간 기록", "Splits", ja: "スプリット"),
+                               subtitle: AppLanguage.shared.s("\(splits.count)개 구간 내보내기", "Export \(splits.count) splits", ja: "\(splits.count)区間を書き出す"))
             if activity != nil {
                 // "내보내기"는 제목 줄(○개 구간 내보내기)에 한 번만 — 버튼은 무엇을 내보내는지만 적어 한 줄에 셋
                 HStack(spacing: 8) {
-                    exportButton(title: AppLanguage.shared.s("구간 기록", "Splits"),
+                    exportButton(title: AppLanguage.shared.s("구간 기록", "Splits", ja: "スプリット"),
                                  variant: .splitsOnly)
-                    exportButton(title: AppLanguage.shared.s("구간 및 러닝 데이터", "+ Run Data"),
+                    exportButton(title: AppLanguage.shared.s("구간 및 러닝 데이터", "+ Run Data", ja: "スプリットとランデータ"),
                                  variant: .runData)
-                    exportButton(title: AppLanguage.shared.s("구간 및 심박영역", "+ HR Zones"),
+                    exportButton(title: AppLanguage.shared.s("구간 및 심박영역", "+ HR Zones", ja: "スプリットと心拍ゾーン"),
                                  variant: .hrZones)
                 }
             }
@@ -2572,7 +2572,7 @@ private struct SplitBarRow: View {
                 // ③ 한 줄: 최고 · 페이스 · 심박 · 존 · 케이던스 · 파워
                 HStack(spacing: 4) {
                     if isFastest {
-                        Text(AppLanguage.shared.s("최고", "Best"))
+                        Text(AppLanguage.shared.s("최고", "Best", ja: "最速"))
                             .font(.system(size: 7, weight: .bold))
                             .foregroundStyle(Self.gold)
                             .padding(.horizontal, 3)
@@ -2703,6 +2703,12 @@ private struct SplitsHighlightCard: View {
             // 이지런의 완만한 네거티브 스플릿은 "밀어붙임"이 아니라 몸이 풀린 흐름
             let tailKo = isEasy ? " — 편하게 몸이 풀렸습니다." : " — 끝까지 밀어붙였습니다."
             let tailEn = isEasy ? " — eased into it." : " — you pushed through."
+            if L.isJapanese {
+                let tailJa = isEasy ? " — 楽に体がほぐれました。" : " — 最後まで押し切りました。"
+                return Text("後半が前半より").foregroundStyle(Color.white)
+                    + Text("\(diff)秒速く").foregroundStyle(g)
+                    + Text(tailJa).foregroundStyle(Color.white)
+            }
             return L.isEnglish
                 ? Text("Second half ").foregroundStyle(Color.white)
                   + Text("\(diff)s faster").foregroundStyle(g)
@@ -2711,6 +2717,11 @@ private struct SplitsHighlightCard: View {
                   + Text("\(diff)초 더 빠르게").foregroundStyle(g)
                   + Text(tailKo).foregroundStyle(Color.white)
         case .consistency(let spread):
+            if L.isJapanese {
+                return Text("ペースのばらつきはわずか").foregroundStyle(Color.white)
+                    + Text("\(spread)秒").foregroundStyle(g)
+                    + Text("、ぶれませんでした。").foregroundStyle(Color.white)
+            }
             return L.isEnglish
                 ? Text("Pace deviation only ").foregroundStyle(Color.white)
                   + Text("\(spread)s").foregroundStyle(g)
@@ -2719,6 +2730,11 @@ private struct SplitsHighlightCard: View {
                   + Text("\(spread)초").foregroundStyle(g)
                   + Text(", 흔들림 없었습니다.").foregroundStyle(Color.white)
         case .recentBest(let n):
+            if L.isJapanese {
+                return Text("直近\(n)回で").foregroundStyle(Color.white)
+                    + Text("最も速い平均ペース").foregroundStyle(g)
+                    + Text("です。").foregroundStyle(Color.white)
+            }
             return L.isEnglish
                 ? Text("Fastest avg pace in your last ").foregroundStyle(Color.white)
                   + Text("\(n) runs").foregroundStyle(g)
@@ -2730,6 +2746,12 @@ private struct SplitsHighlightCard: View {
             // 이지런이면 "힘이 남았다"보다 편하게 마무리한 쪽으로
             let tailKo = isEasy ? " — 여유 있게 마무리했습니다." : " — 끝까지 힘이 남았습니다."
             let tailEn = isEasy ? " — an easy, strong finish." : " — you still had gas in the tank."
+            if L.isJapanese {
+                let tailJa = isEasy ? " — 余裕を持って締めくくりました。" : " — 最後まで力が残っていました。"
+                return Text("最後の\(km)kmが").foregroundStyle(Color.white)
+                    + Text("一番速かったです").foregroundStyle(g)
+                    + Text(tailJa).foregroundStyle(Color.white)
+            }
             return L.isEnglish
                 ? Text("Your last km (\(km)km) was ").foregroundStyle(Color.white)
                   + Text("the fastest").foregroundStyle(g)
@@ -2738,7 +2760,7 @@ private struct SplitsHighlightCard: View {
                   + Text("가장 빨랐습니다").foregroundStyle(g)
                   + Text(tailKo).foregroundStyle(Color.white)
         case .fallback:
-            return Text(L.s("완주했습니다.", "Finished."))
+            return Text(L.s("완주했습니다.", "Finished.", ja: "完走しました。"))
                 .foregroundStyle(Color.secondary)
         }
     }
@@ -2755,13 +2777,13 @@ private struct SplitsHighlightCard: View {
 
             HStack(spacing: 8) {
                 // 페이스 숫자는 페이스 색(청록) — 보라는 브랜드 색
-                SplitChip(label: AppLanguage.shared.s("평균 페이스", "Avg Pace"), value: formatPace(avgPaceSeconds), color: Theme.pace)
-                SplitChip(label: AppLanguage.shared.s("페이스 편차", "Deviation"),
-                          value: AppLanguage.shared.s("±\(Int(paceSpread.rounded()))초", "±\(Int(paceSpread.rounded()))s"),
+                SplitChip(label: AppLanguage.shared.s("평균 페이스", "Avg Pace", ja: "平均ペース"), value: formatPace(avgPaceSeconds), color: Theme.pace)
+                SplitChip(label: AppLanguage.shared.s("페이스 편차", "Deviation", ja: "ペースのばらつき"),
+                          value: AppLanguage.shared.s("±\(Int(paceSpread.rounded()))초", "±\(Int(paceSpread.rounded()))s", ja: "±\(Int(paceSpread.rounded()))秒"),
                           color: Theme.pace)
                 if let fastest = fastestSplit {
-                    let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : AppLanguage.shared.s("마지막", "Last")
-                    SplitChip(label: AppLanguage.shared.s("최고 구간", "Best Split"), value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
+                    let km = fastest.distanceM >= 990 ? "\(fastest.id)km" : AppLanguage.shared.s("마지막", "Last", ja: "最後")
+                    SplitChip(label: AppLanguage.shared.s("최고 구간", "Best Split", ja: "最速区間"), value: "\(km) · \(fastest.formattedPace)", color: Self.gold)
                 }
             }
         }
@@ -2827,8 +2849,8 @@ private struct HRZonesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DetailSectionHeader(title: AppLanguage.shared.s("심박 영역", "HR Zones"),
-                               subtitle: AppLanguage.shared.s("존별 운동 시간", "Time per zone"))
+            DetailSectionHeader(title: AppLanguage.shared.s("심박 영역", "HR Zones", ja: "心拍ゾーン"),
+                               subtitle: AppLanguage.shared.s("존별 운동 시간", "Time per zone", ja: "ゾーン別の運動時間"))
 
             VStack(spacing: 0) {
                 ForEach(Array(zones.enumerated()), id: \.element.id) { idx, zone in
@@ -2842,7 +2864,7 @@ private struct HRZonesSection: View {
                         }
                         HStack(spacing: 8) {
                             // Zone label
-                            Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)"))
+                            Text(AppLanguage.shared.s("영역 \(zone.id)", "Z\(zone.id)", ja: "ゾーン\(zone.id)"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(hasTime ? color : color.opacity(0.45))
                                 .frame(width: 44, alignment: .leading)
@@ -2891,10 +2913,10 @@ private struct HRZonesSection: View {
                     .frame(height: 0.5)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(AppLanguage.shared.s("각각의 심박수 영역에 머무르는 예상 시간입니다.", "Estimated time spent in each heart rate zone."))
+                    Text(AppLanguage.shared.s("각각의 심박수 영역에 머무르는 예상 시간입니다.", "Estimated time spent in each heart rate zone.", ja: "各心拍ゾーンに滞在した推定時間です。"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
-                    Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 휴식 시 심박수(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values."))
+                    Text(AppLanguage.shared.s("Karvonen(심박 예비율) 공식 기반 · 최근 30일 최소 휴식 시 심박수(RHR) + 나이별 최대심박(MHR) 추정 적용. 개인 체력 및 측정 조건에 따라 실제 영역과 다를 수 있습니다.", "Based on Karvonen (HRR) formula · Uses lowest resting HR over last 30 days + age-estimated max HR. Zones may differ from actual values.", ja: "Karvonen(心拍予備率)式に基づく · 直近30日の最低安静時心拍(RHR)+年齢別の推定最大心拍(MHR)を使用。体力や計測条件により実際のゾーンと異なる場合があります。"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
@@ -3008,14 +3030,14 @@ private struct StorySection: View {
                 effortCard
             }
             HStack {
-                Label(AppLanguage.shared.s("오늘의 러닝 일기", "Running Journal"), systemImage: "quote.bubble")
+                Label(AppLanguage.shared.s("오늘의 러닝 일기", "Running Journal", ja: "今日のラン日記"), systemImage: "quote.bubble")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     showEditor = true
                 } label: {
-                    Label(hasJournal ? AppLanguage.shared.s("편집", "Edit") : AppLanguage.shared.s("추가", "Add"),
+                    Label(hasJournal ? AppLanguage.shared.s("편집", "Edit", ja: "編集") : AppLanguage.shared.s("추가", "Add", ja: "追加"),
                           systemImage: hasJournal ? "pencil" : "plus")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Theme.violetText)
@@ -3039,9 +3061,9 @@ private struct StorySection: View {
                 assignShoe(nil)
             } label: {
                 if selectedShoe == nil {
-                    Label(AppLanguage.shared.s("없음", "None"), systemImage: "checkmark")
+                    Label(AppLanguage.shared.s("없음", "None", ja: "なし"), systemImage: "checkmark")
                 } else {
-                    Text(AppLanguage.shared.s("없음", "None"))
+                    Text(AppLanguage.shared.s("없음", "None", ja: "なし"))
                 }
             }
             ForEach(shoes) { shoe in
@@ -3060,7 +3082,7 @@ private struct StorySection: View {
                 Image(systemName: "shoe.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(selectedShoe != nil ? Theme.violet : .secondary)
-                Text(selectedShoe?.displayName ?? AppLanguage.shared.s("신발 선택", "Select Shoe"))
+                Text(selectedShoe?.displayName ?? AppLanguage.shared.s("신발 선택", "Select Shoe", ja: "シューズを選択"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(selectedShoe != nil ? .white : .secondary)
                 Spacer()
@@ -3224,7 +3246,7 @@ private struct OneLinerListDisplay: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
                         .swipeActions(edge: .trailing, allowsFullSwipe: group.entries.count == 1) {
                             Button(role: .destructive) { requestDelete(group) } label: {
-                                Label(AppLanguage.shared.s("삭제", "Delete"), systemImage: "trash")
+                                Label(AppLanguage.shared.s("삭제", "Delete", ja: "削除"), systemImage: "trash")
                             }
                         }
                 }
@@ -3236,9 +3258,9 @@ private struct OneLinerListDisplay: View {
 
             if showUndo {
                 HStack(spacing: 0) {
-                    Text(AppLanguage.shared.s("삭제됨  ·  ", "Deleted  ·  "))
+                    Text(AppLanguage.shared.s("삭제됨  ·  ", "Deleted  ·  ", ja: "削除済み  ·  "))
                         .foregroundStyle(.white)
-                    Button(AppLanguage.shared.s("되돌리기", "Undo")) { undoDelete() }
+                    Button(AppLanguage.shared.s("되돌리기", "Undo", ja: "元に戻す")) { undoDelete() }
                         .foregroundStyle(Theme.violet)
                 }
                 .font(.subheadline.weight(.medium))
@@ -3253,22 +3275,22 @@ private struct OneLinerListDisplay: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .animation(.easeInOut(duration: 0.2), value: showUndo)
         .alert(
-            AppLanguage.shared.s("문구 삭제", "Delete One-Liner"),
+            AppLanguage.shared.s("문구 삭제", "Delete One-Liner", ja: "テキストを削除"),
             isPresented: Binding(
                 get: { groupToConfirm != nil },
                 set: { if !$0 { groupToConfirm = nil } }
             ),
             presenting: groupToConfirm
         ) { group in
-            Button(AppLanguage.shared.s("모두 삭제", "Delete All"), role: .destructive) {
+            Button(AppLanguage.shared.s("모두 삭제", "Delete All", ja: "すべて削除"), role: .destructive) {
                 commitDelete(group)
             }
-            Button(AppLanguage.shared.s("취소", "Cancel"), role: .cancel) {}
+            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
         } message: { group in
             let n = group.entries.count
             Text(AppLanguage.shared.s(
                 "사진 \(n)장에 적용된 문구입니다. 모두 삭제할까요?",
-                "Applied to \(n) photos. Delete all?"
+                "Applied to \(n) photos. Delete all?", ja: "写真\(n)枚に適用されたテキストです。すべて削除しますか?"
             ))
         }
     }
@@ -3333,12 +3355,12 @@ private struct OneLinerGroupRow: View {
 
                 // 2장 이상 사진에 적용된 경우 병기
                 if group.photoCount >= 2 {
-                    Text(AppLanguage.shared.s("사진 \(group.photoCount)장", "\(group.photoCount) photos"))
+                    Text(AppLanguage.shared.s("사진 \(group.photoCount)장", "\(group.photoCount) photos", ja: "写真\(group.photoCount)枚"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 if mediaDeleted {
-                    Text(AppLanguage.shared.s("원본이 삭제되었습니다", "Original deleted"))
+                    Text(AppLanguage.shared.s("원본이 삭제되었습니다", "Original deleted", ja: "元の写真は削除されました"))
                         .font(.caption2)
                         .foregroundStyle(.orange.opacity(0.8))
                 }
@@ -3381,14 +3403,14 @@ private struct StoryEditorSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle(AppLanguage.shared.s("러닝 일기", "Running Journal"))
+            .navigationTitle(AppLanguage.shared.s("러닝 일기", "Running Journal", ja: "ラン日記"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("취소", "Cancel")) { dismiss() }.foregroundStyle(.secondary)
+                    Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル")) { dismiss() }.foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(AppLanguage.shared.s("저장", "Save")) { save(); dismiss() }
+                    Button(AppLanguage.shared.s("저장", "Save", ja: "保存")) { save(); dismiss() }
                         .fontWeight(.semibold)
                         .foregroundStyle(Theme.violet)
                 }
@@ -3400,10 +3422,10 @@ private struct StoryEditorSheet: View {
 
     private var memoField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(AppLanguage.shared.s("한줄 메모", "Note"))
+            Text(AppLanguage.shared.s("한줄 메모", "Note", ja: "ひとことメモ"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            TextField(AppLanguage.shared.s("오늘의 러닝은...", "How was today's run?"), text: $memo, axis: .vertical)
+            TextField(AppLanguage.shared.s("오늘의 러닝은...", "How was today's run?", ja: "今日のランは..."), text: $memo, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(14)
                 .background(Theme.cardBackground)
@@ -3415,7 +3437,7 @@ private struct StoryEditorSheet: View {
     private var photoSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(AppLanguage.shared.s("사진", "Photos"))
+                Text(AppLanguage.shared.s("사진", "Photos", ja: "写真"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -3460,7 +3482,7 @@ private struct StoryEditorSheet: View {
                     photoLibrary: .shared()
                 ) {
                     Label(
-                        photoImages.isEmpty ? AppLanguage.shared.s("사진 추가", "Add Photo") : AppLanguage.shared.s("더 추가", "Add More"),
+                        photoImages.isEmpty ? AppLanguage.shared.s("사진 추가", "Add Photo", ja: "写真を追加") : AppLanguage.shared.s("더 추가", "Add More", ja: "さらに追加"),
                         systemImage: photoImages.isEmpty ? "photo.badge.plus" : "plus.square"
                     )
                     .font(.subheadline.weight(.medium))
@@ -3586,7 +3608,7 @@ private struct RaceDetectionBanner: View {
     @ViewBuilder
     private func weakSuggestionContent(suggestion: RaceSuggestion) -> some View {
         HStack {
-            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?"), systemImage: "flag.checkered")
+            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?", ja: "この記録はレースでしたか?"), systemImage: "flag.checkered")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.violet)
             Spacer()
@@ -3603,12 +3625,12 @@ private struct RaceDetectionBanner: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             HStack(spacing: 10) {
-                confirmButton(race: suggestion.primary, label: AppLanguage.shared.s("예, 맞습니다", "Yes, this one"))
-                denyButton(label: AppLanguage.shared.s("아니요", "No"))
+                confirmButton(race: suggestion.primary, label: AppLanguage.shared.s("예, 맞습니다", "Yes, this one", ja: "はい、そうです"))
+                denyButton(label: AppLanguage.shared.s("아니요", "No", ja: "いいえ"))
             }
         } else {
             // Multiple candidates — vertical pick list (up to 4 shown)
-            Text(AppLanguage.shared.s("후보 대회를 선택하거나 직접 입력하세요", "Select a race or enter manually"))
+            Text(AppLanguage.shared.s("후보 대회를 선택하거나 직접 입력하세요", "Select a race or enter manually", ja: "候補のレースを選ぶか、直接入力してください"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             VStack(spacing: 6) {
@@ -3643,7 +3665,7 @@ private struct RaceDetectionBanner: View {
             }
             HStack(spacing: 10) {
                 Button { showManualSheet = true } label: {
-                    Text(AppLanguage.shared.s("직접 입력", "Enter Manually"))
+                    Text(AppLanguage.shared.s("직접 입력", "Enter Manually", ja: "直接入力"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.violet)
                         .frame(maxWidth: .infinity)
@@ -3652,7 +3674,7 @@ private struct RaceDetectionBanner: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
-                denyButton(label: AppLanguage.shared.s("아니요", "No"))
+                denyButton(label: AppLanguage.shared.s("아니요", "No", ja: "いいえ"))
             }
         }
     }
@@ -3660,12 +3682,12 @@ private struct RaceDetectionBanner: View {
     @ViewBuilder
     private func manualPromptContent() -> some View {
         HStack {
-            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?"), systemImage: "flag.checkered")
+            Label(AppLanguage.shared.s("이 기록 대회였나요?", "Was this a race?", ja: "この記録はレースでしたか?"), systemImage: "flag.checkered")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white)
             Spacer()
             Button { showManualSheet = true } label: {
-                Text(AppLanguage.shared.s("대회 입력", "Enter Race"))
+                Text(AppLanguage.shared.s("대회 입력", "Enter Race", ja: "レースを入力"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.violet)
                     .padding(.horizontal, 10)
@@ -3748,10 +3770,10 @@ private struct ManualRaceSheet: View {
                 Theme.background.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(AppLanguage.shared.s("대회 이름", "Race Name"))
+                        Text(AppLanguage.shared.s("대회 이름", "Race Name", ja: "レース名"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        TextField(AppLanguage.shared.s("예: 춘천 마라톤", "e.g. Boston Marathon"), text: $raceName)
+                        TextField(AppLanguage.shared.s("예: 춘천 마라톤", "e.g. Boston Marathon", ja: "例: 東京マラソン"), text: $raceName)
                             .padding(14)
                             .background(Theme.cardBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -3761,7 +3783,7 @@ private struct ManualRaceSheet: View {
                         Image(systemName: "ruler")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(AppLanguage.shared.s("기록 거리: \(formattedDistance)", "Distance: \(formattedDistance)"))
+                        Text(AppLanguage.shared.s("기록 거리: \(formattedDistance)", "Distance: \(formattedDistance)", ja: "記録距離: \(formattedDistance)"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -3769,18 +3791,18 @@ private struct ManualRaceSheet: View {
                 }
                 .padding(16)
             }
-            .navigationTitle(AppLanguage.shared.s("대회 기록 추가", "Add Race Record"))
+            .navigationTitle(AppLanguage.shared.s("대회 기록 추가", "Add Race Record", ja: "レース記録を追加"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(AppLanguage.shared.s("취소", "Cancel")) {
+                    Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル")) {
                         onCancel()
                         dismiss()
                     }
                     .foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(AppLanguage.shared.s("저장", "Save")) {
+                    Button(AppLanguage.shared.s("저장", "Save", ja: "保存")) {
                         onSave(raceName)
                         dismiss()
                     }
@@ -4247,9 +4269,7 @@ struct HRSeriesPanelChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                 AxisValueLabel {
                     if let m = value.as(Double.self) {
-                        Text(AppLanguage.shared.isEnglish
-                             ? String(format: "%.0fm", m)
-                             : String(format: "%.0f분", m))
+                        Text(AppLanguage.shared.s(String(format: "%.0f분", m), String(format: "%.0fm", m), ja: String(format: "%.0f分", m)))
                             .font(compact ? .system(size: 8 * labelScale) : .caption2)
                             .foregroundStyle(Color.white.opacity(compact ? 0.75 : 0.6))
                     }
@@ -4380,9 +4400,7 @@ struct MetricBarPanelChart: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
                     AxisValueLabel {
                         if let m = value.as(Double.self) {
-                            Text(AppLanguage.shared.isEnglish
-                                 ? String(format: "%.0fm", m)
-                                 : String(format: "%.0f분", m))
+                            Text(AppLanguage.shared.s(String(format: "%.0f분", m), String(format: "%.0fm", m), ja: String(format: "%.0f分", m)))
                                 .font(compact ? .system(size: 8) : .caption2)
                                 .foregroundStyle(.white.opacity(0.6))
                         }
@@ -4656,16 +4674,16 @@ struct IntervalPanelChart: View {
                     Color.clear.frame(width: typeW)
                     Color.clear.frame(width: maxBarW, height: 1)
                     HStack(spacing: 0) {
-                        Text(L.s("페이스", "Pace"))
+                        Text(L.s("페이스", "Pace", ja: "ペース"))
                             .lineLimit(1).minimumScaleFactor(0.6)
                             .frame(width: paceW, alignment: .trailing)
                         Color.clear.frame(width: dotW)
-                        Text(L.s("심박수", "HR"))
+                        Text(L.s("심박수", "HR", ja: "心拍数"))
                             .lineLimit(1).minimumScaleFactor(0.75)
                             .frame(width: hrW, alignment: .trailing)
                         if hasCadence {
                             Color.clear.frame(width: dotW)
-                            Text(L.s("케이던스", "Cad"))
+                            Text(L.s("케이던스", "Cad", ja: "ケイデンス"))
                                 .lineLimit(1).minimumScaleFactor(0.75)
                                 .frame(width: cadW, alignment: .trailing)
                         }
@@ -4754,7 +4772,7 @@ private struct InlineTrendChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(AppLanguage.shared.s("이번 달 · \(data.count)개 기록", "This month · \(data.count) records"))
+            Text(AppLanguage.shared.s("이번 달 · \(data.count)개 기록", "This month · \(data.count) records", ja: "今月 · \(data.count)件の記録"))
                 .font(.caption2).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.top, 10)
             chart.padding(12)

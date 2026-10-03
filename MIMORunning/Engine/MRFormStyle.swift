@@ -513,14 +513,14 @@ struct MRFormObservationCard: View {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mrInk3)
-                Text(title ?? (isStable ? L.s("달리는 방식", "Running Style") : L.s("달리기 스타일 변화", "Running Style Shift")))
+                Text(title ?? (isStable ? L.s("달리는 방식", "Running Style", ja: "走り方") : L.s("달리기 스타일 변화", "Running Style Shift", ja: "走り方の変化")))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
                 } label: {
-                    Text(expanded ? L.s("접기", "Collapse") : L.s("근거", "Basis"))
+                    Text(expanded ? L.s("접기", "Collapse", ja: "閉じる") : L.s("근거", "Basis", ja: "根拠"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.violet)
                 }

@@ -270,9 +270,7 @@ struct OneLinerCard: View {
                                     let xp = CGFloat(frac)*cw
                                     var gp = Path(); gp.move(to: .init(x:xp,y:0)); gp.addLine(to: .init(x:xp,y:ch))
                                     ctx.stroke(gp, with: .color(Color.white.opacity(0.10)), lineWidth: 0.5)
-                                    let xTxt = AppLanguage.shared.isEnglish
-                                        ? String(format:"%.0fm",frac*hrdtMin)
-                                        : String(format:"%.0f분",frac*hrdtMin)
+                                    let xTxt = AppLanguage.shared.s(String(format: "%.0f분", frac*hrdtMin), String(format: "%.0fm", frac*hrdtMin), ja: String(format: "%.0f分", frac*hrdtMin))
                                     var anch: UnitPoint = .top
                                     if i == 0 { anch = .topLeading } else if i == xMarkN-1 { anch = .topTrailing }
                                     ctx.draw(Text(xTxt).font(axisFont).foregroundColor(axisColor),
@@ -378,9 +376,7 @@ struct OneLinerCard: View {
                                     let xp = CGFloat(frac)*cw
                                     var gp = Path(); gp.move(to: .init(x:xp,y:0)); gp.addLine(to: .init(x:xp,y:ch))
                                     ctx.stroke(gp, with: .color(Color.white.opacity(0.10)), lineWidth: 0.5)
-                                    let xTxt = AppLanguage.shared.isEnglish
-                                        ? String(format:"%.0fm",frac*hrdtMin4)
-                                        : String(format:"%.0f분",frac*hrdtMin4)
+                                    let xTxt = AppLanguage.shared.s(String(format: "%.0f분", frac*hrdtMin4), String(format: "%.0fm", frac*hrdtMin4), ja: String(format: "%.0f分", frac*hrdtMin4))
                                     var anch: UnitPoint = .top
                                     if i == 0 { anch = .topLeading } else if i == xMarkN-1 { anch = .topTrailing }
                                     ctx.draw(Text(xTxt).font(axisFont).foregroundColor(axisColor),
@@ -824,9 +820,7 @@ struct OneLinerCard: View {
                             let xp   = CGFloat(frac)*cw
                             var gp = Path(); gp.move(to: .init(x:xp,y:0)); gp.addLine(to: .init(x:xp,y:ch))
                             ctx.stroke(gp, with: .color(Color.white.opacity(0.10)), lineWidth: 0.5)
-                            let xTxt = AppLanguage.shared.isEnglish
-                                ? String(format:"%.0fm", frac*dtMin)
-                                : String(format:"%.0f분", frac*dtMin)
+                            let xTxt = AppLanguage.shared.s(String(format: "%.0f분", frac*dtMin), String(format: "%.0fm", frac*dtMin), ja: String(format: "%.0f分", frac*dtMin))
                             var anch: UnitPoint = .top
                             if i == 0 { anch = .topLeading } else if i == 3 { anch = .topTrailing }
                             ctx.draw(Text(xTxt).font(axisFont).foregroundColor(axisColor),

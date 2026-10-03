@@ -31,11 +31,11 @@ struct LateRunDurabilityCard: View {
     static func shortName(_ k: LateRunDiagnosis.Kind) -> String {
         let L = AppLanguage.shared
         switch k {
-        case .held:     return L.s("유지", "Held")
-        case .cardio:   return L.s("심박", "HR")
-        case .legs:     return L.s("다리", "Legs")
-        case .energy:   return L.s("힘 빠짐", "Low")
-        case .combined: return L.s("함께", "Both")
+        case .held:     return L.s("유지", "Held", ja: "維持")
+        case .cardio:   return L.s("심박", "HR", ja: "心拍")
+        case .legs:     return L.s("다리", "Legs", ja: "脚")
+        case .energy:   return L.s("힘 빠짐", "Low", ja: "失速")
+        case .combined: return L.s("함께", "Both", ja: "両方")
         }
     }
 
@@ -45,14 +45,14 @@ struct LateRunDurabilityCard: View {
     }
 
     static func shortName(_ p: LateRunPoint) -> String {
-        p.kind == .held && p.isFastFinish ? AppLanguage.shared.s("가속", "Faster") : shortName(p.kind)
+        p.kind == .held && p.isFastFinish ? AppLanguage.shared.s("가속", "Faster", ja: "加速") : shortName(p.kind)
     }
 
     var body: some View {
         let L = AppLanguage.shared
         if points.count >= 2 {
             VStack(alignment: .leading, spacing: 14) {
-                Text(L.s("후반 내구성", "Late-Run Durability"))
+                Text(L.s("후반 내구성", "Late-Run Durability", ja: "後半の耐久力"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.mrInk1)
 
@@ -69,7 +69,7 @@ struct LateRunDurabilityCard: View {
                 if chartPts.count >= 3 {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(L.s("최근 \(LateRunPoint.windowWeeks)주 · 후반에 같은 속도에 드는 심박 증가(중반 대비)",
-                                 "Last \(LateRunPoint.windowWeeks) weeks · extra HR for the same speed, late vs mid"))
+                                 "Last \(LateRunPoint.windowWeeks) weeks · extra HR for the same speed, late vs mid", ja: "直近\(LateRunPoint.windowWeeks)週 · 後半に同じ速度で必要な心拍の増加(中盤比)"))
                             .font(.system(size: 10))
                             .foregroundStyle(Color.mrInk3)
                         chart(chartPts)
@@ -84,7 +84,7 @@ struct LateRunDurabilityCard: View {
                 }
 
                 Text(L.s("최근 \(LateRunPoint.windowWeeks)주 60분 이상 러닝 \(points.count)회 · 연습은 걸었거나 멈춘 뒤 페이스가 이어지지 않은 러닝 제외(대회는 포함) · 인터벌·템포·짧은 빌드업 제외 · 5% 아래면 후반까지 유지 · 가속 = 후반 10초/km 이상 빨라짐(차트 제외)",
-                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · training runs with walking or a stop that broke the pace excluded (races included) · excl. intervals, tempo, short build-ups · under 5% = held · Faster = late 10+ s/km quicker (not charted)"))
+                         "Last \(LateRunPoint.windowWeeks) weeks · \(points.count) runs over 60 min · training runs with walking or a stop that broke the pace excluded (races included) · excl. intervals, tempo, short build-ups · under 5% = held · Faster = late 10+ s/km quicker (not charted)", ja: "直近\(LateRunPoint.windowWeeks)週の60分以上のラン\(points.count)回 · 練習は歩いたり止まったりしてペースが途切れたランを除外(レースは含む) · インターバル・テンポ・短いビルドアップを除外 · 5%未満なら後半まで維持 · 加速 = 後半10秒/km以上速くなった(チャート対象外)"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.mrInk3)
                     .fixedSize(horizontal: false, vertical: true)

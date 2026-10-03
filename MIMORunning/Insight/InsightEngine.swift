@@ -257,12 +257,12 @@ struct InsightEngine {
             let L = AppLanguage.shared
             let title: String
             if base.theme == .recordImproved {
-                title = L.s("기록을 깬 인터벌", "PR Interval")
+                title = L.s("기록을 깬 인터벌", "PR Interval", ja: "記録を破ったインターバル")
             } else {
                 title = pick(
-                    [L.s("차오르는 인터벌", "Surging Intervals"),
-                     L.s("스피드를 깨운 인터벌", "Speed Awakened"),
-                     L.s("호흡을 끌어올린 인터벌", "Breath-Pushing Intervals")],
+                    [L.s("차오르는 인터벌", "Surging Intervals", ja: "上がっていくインターバル"),
+                     L.s("스피드를 깨운 인터벌", "Speed Awakened", ja: "スピードを目覚めさせたインターバル"),
+                     L.s("호흡을 끌어올린 인터벌", "Breath-Pushing Intervals", ja: "呼吸を引き上げたインターバル")],
                     date: activity.date
                 )
             }
@@ -279,15 +279,15 @@ struct InsightEngine {
             let title: String
             let detail: String
             if base.theme == .recordImproved {
-                title = L.s("기록을 쓴 롱런", "PR Long Run")
+                title = L.s("기록을 쓴 롱런", "PR Long Run", ja: "記録を出したロング走")
                 detail = base.detail
             } else if base.theme == .distanceExpanded {
-                title = L.s("멀리 나아간 롱런", "Distance Expanded")
+                title = L.s("멀리 나아간 롱런", "Distance Expanded", ja: "遠くまで進んだロング走")
                 detail = base.detail
             } else {
-                title = pick([L.s("멀리 나아간 롱런", "Going the Distance"),
-                              L.s("지구력을 쌓은 롱런", "Building Endurance")], date: activity.date)
-                detail = L.s("장거리 완주 \(activity.formattedDistance)", "Long run complete: \(activity.formattedDistance)")
+                title = pick([L.s("멀리 나아간 롱런", "Going the Distance", ja: "遠くまで進んだロング走"),
+                              L.s("지구력을 쌓은 롱런", "Building Endurance", ja: "持久力を積んだロング走")], date: activity.date)
+                detail = L.s("장거리 완주 \(activity.formattedDistance)", "Long run complete: \(activity.formattedDistance)", ja: "長距離を完走 \(activity.formattedDistance)")
             }
             return InsightResult(theme: base.theme, title: title, detail: detail)
 
@@ -299,8 +299,8 @@ struct InsightEngine {
                   base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             return InsightResult(theme: .recovery,
-                                 title: L.s("숨을 고른 이지런", "Easy Does It"),
-                                 detail: L.s("낮은 강도로 다음 훈련을 준비", "Low effort, prepping for the next session"))
+                                 title: L.s("숨을 고른 이지런", "Easy Does It", ja: "息を整えたイージーラン"),
+                                 detail: L.s("낮은 강도로 다음 훈련을 준비", "Low effort, prepping for the next session", ja: "低い強度で次の練習に備える"))
 
         case .tempo:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
@@ -311,14 +311,14 @@ struct InsightEngine {
             let L = AppLanguage.shared
             let title: String
             if base.theme == .recordImproved {
-                title = L.s("기록을 깬 템포", "PR Tempo")
+                title = L.s("기록을 깬 템포", "PR Tempo", ja: "記録を破ったテンポ走")
             } else {
-                title = pick([L.s("리듬을 탄 템포", "In the Groove"),
-                              L.s("임계점을 밀어붙인 템포", "Pushing the Threshold")], date: activity.date)
+                title = pick([L.s("리듬을 탄 템포", "In the Groove", ja: "リズムに乗ったテンポ走"),
+                              L.s("임계점을 밀어붙인 템포", "Pushing the Threshold", ja: "閾値を押し上げたテンポ走")], date: activity.date)
             }
             let detail = base.theme == .recordImproved
                 ? base.detail
-                : L.s("균일하게 밀어붙인 \(activity.formattedDistance)", "Steady effort for \(activity.formattedDistance)")
+                : L.s("균일하게 밀어붙인 \(activity.formattedDistance)", "Steady effort for \(activity.formattedDistance)", ja: "均一に押し切った\(activity.formattedDistance)")
             return InsightResult(theme: base.theme, title: title, detail: detail)
 
         case .buildUp:
@@ -329,14 +329,14 @@ struct InsightEngine {
                   base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title = base.theme == .recordImproved
-                ? L.s("기록을 쓴 빌드업", "PR Build-Up")
-                : pick([L.s("후반이 가장 빨랐던 빌드업", "Fastest at the Finish"),
-                        L.s("끝으로 갈수록 강해진 러닝", "Getting Stronger"),
-                        L.s("마지막을 위해 달린 빌드업", "Saving the Best for Last")],
+                ? L.s("기록을 쓴 빌드업", "PR Build-Up", ja: "記録を出したビルドアップ")
+                : pick([L.s("후반이 가장 빨랐던 빌드업", "Fastest at the Finish", ja: "後半が一番速かったビルドアップ"),
+                        L.s("끝으로 갈수록 강해진 러닝", "Getting Stronger", ja: "終盤ほど強くなったラン"),
+                        L.s("마지막을 위해 달린 빌드업", "Saving the Best for Last", ja: "最後のために走ったビルドアップ")],
                        date: activity.date)
             let detail = base.theme == .recordImproved
                 ? base.detail
-                : L.s("후반이 가장 빨랐습니다 — 빌드업의 정석", "Last splits your fastest — textbook buildup")
+                : L.s("후반이 가장 빨랐습니다 — 빌드업의 정석", "Last splits your fastest — textbook buildup", ja: "後半が一番速かったです — ビルドアップの王道")
             return InsightResult(theme: base.theme, title: title, detail: detail)
 
         case .lsd:
@@ -346,13 +346,13 @@ struct InsightEngine {
                   base.theme != .rarityFact, base.theme != .milestone,
                   base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
-            let title = pick([L.s("느리게 길게 간 LSD", "Long Slow Distance"),
-                              L.s("유산소 엔진을 키운 LSD", "Aerobic Engine Builder"),
-                              L.s("천천히 멀리 간 러닝", "Slow and Far")],
+            let title = pick([L.s("느리게 길게 간 LSD", "Long Slow Distance", ja: "ゆっくり長く走ったLSD"),
+                              L.s("유산소 엔진을 키운 LSD", "Aerobic Engine Builder", ja: "有酸素エンジンを育てたLSD"),
+                              L.s("천천히 멀리 간 러닝", "Slow and Far", ja: "ゆっくり遠くまで走ったラン")],
                              date: activity.date)
             return InsightResult(theme: base.theme, title: title,
                                  detail: L.s("느리게 길게, 유산소 엔진을 키운 시간 \(activity.formattedDistance)",
-                                             "Slow and steady for \(activity.formattedDistance) — building the aerobic base"))
+                                             "Slow and steady for \(activity.formattedDistance) — building the aerobic base", ja: "ゆっくり長く、有酸素エンジンを育てた時間 \(activity.formattedDistance)"))
 
         case .distanceRun:
             guard base.theme != .firstAchievement, base.theme != .adverseCondition,
@@ -362,15 +362,15 @@ struct InsightEngine {
                   base.theme != .subThreshold else { return base }
             let L = AppLanguage.shared
             let title = base.theme == .recordImproved
-                ? L.s("기록을 쓴 거리주", "PR Distance Run")
-                : pick([L.s("레이스처럼 달린 거리주", "Race-Intent Distance Run"),
-                        L.s("목표 페이스로 달린 거리주", "Goal-Pace Distance Run"),
-                        L.s("강도 있게 달린 거리주", "Quality Distance Run")],
+                ? L.s("기록을 쓴 거리주", "PR Distance Run", ja: "記録を出した距離走")
+                : pick([L.s("레이스처럼 달린 거리주", "Race-Intent Distance Run", ja: "レースのように走った距離走"),
+                        L.s("목표 페이스로 달린 거리주", "Goal-Pace Distance Run", ja: "目標ペースで走った距離走"),
+                        L.s("강도 있게 달린 거리주", "Quality Distance Run", ja: "強度をもって走った距離走")],
                        date: activity.date)
             let detail = base.theme == .recordImproved
                 ? base.detail
                 : L.s("긴 거리를 페이스 잡아 완주 — \(activity.formattedDistance)",
-                      "\(activity.formattedDistance) with race intent — well executed")
+                      "\(activity.formattedDistance) with race intent — well executed", ja: "長い距離をペースを保って完走 — \(activity.formattedDistance)")
             return InsightResult(theme: base.theme, title: title, detail: detail)
 
         case .race:
@@ -419,18 +419,18 @@ struct InsightEngine {
             let avgDist = dists.isEmpty ? nil : dists.reduce(0, +) / Double(dists.count)
             let distStr = avgDist.map { recognizedDistLabel($0) }
             switch (distStr, fastestStr) {
-            case let (d?, f?): return L.s("\(d)×\(workSteps.count), 최고 \(f)", "\(d)×\(workSteps.count), best \(f)")
-            case let (nil, f?): return L.s("\(workSteps.count)개 구간, 최고 \(f)", "\(workSteps.count) reps, best \(f)")
+            case let (d?, f?): return L.s("\(d)×\(workSteps.count), 최고 \(f)", "\(d)×\(workSteps.count), best \(f)", ja: "\(d)×\(workSteps.count)、最速 \(f)")
+            case let (nil, f?): return L.s("\(workSteps.count)개 구간, 최고 \(f)", "\(workSteps.count) reps, best \(f)", ja: "\(workSteps.count)本、最速 \(f)")
             case let (d?, nil): return "\(d)×\(workSteps.count)"
-            default:            return L.s("\(workSteps.count)개 인터벌 구간", "\(workSteps.count) interval reps")
+            default:            return L.s("\(workSteps.count)개 인터벌 구간", "\(workSteps.count) interval reps", ja: "インターバル\(workSteps.count)本")
             }
         }
         // fallback: fast km splits
         let fullSplits = splits.filter { $0.distanceM >= 900 }
         if let fastest = fullSplits.min(by: { $0.paceSecPerKm < $1.paceSecPerKm }) {
-            return L.s("\(fullSplits.count)개 구간, 최고 \(fastest.formattedPace)", "\(fullSplits.count) splits, best \(fastest.formattedPace)")
+            return L.s("\(fullSplits.count)개 구간, 최고 \(fastest.formattedPace)", "\(fullSplits.count) splits, best \(fastest.formattedPace)", ja: "\(fullSplits.count)区間、最速 \(fastest.formattedPace)")
         }
-        return L.s("인터벌 훈련으로 속도 자극", "Speed work complete")
+        return L.s("인터벌 훈련으로 속도 자극", "Speed work complete", ja: "インターバルでスピードに刺激")
     }
 
     // MARK: - Return gap
@@ -444,9 +444,9 @@ struct InsightEngine {
         let gap = cal.dateComponents([.day], from: lastRun.date, to: activity.date).day ?? 0
         guard gap >= 14 else { return nil }
         let L = AppLanguage.shared
-        let detail = L.s("\(gap)일 만에 다시 나섰습니다", "Back out after \(gap) days")
+        let detail = L.s("\(gap)일 만에 다시 나섰습니다", "Back out after \(gap) days", ja: "\(gap)日ぶりに再び走りました")
         return InsightResult(theme: .returnGap,
-                             title: L.s("다시 시작한 러닝", "Back on the Run"),
+                             title: L.s("다시 시작한 러닝", "Back on the Run", ja: "再び始めたラン"),
                              detail: detail)
     }
 
@@ -456,11 +456,11 @@ struct InsightEngine {
         let L = AppLanguage.shared
         let km = rm.distanceKm
         let title: String
-        if abs(km - 42.195) < 1.0       { title = L.s("마라톤 완주 러닝", "Marathon Finish") }
-        else if abs(km - 21.0975) < 0.5 { title = L.s("하프 완주 러닝",  "Half Marathon Finish") }
-        else if abs(km - 10) < 0.5      { title = L.s("10K 대회 러닝",   "10K Race") }
-        else if abs(km - 5) < 0.3       { title = L.s("5K 대회 러닝",    "5K Race") }
-        else                             { title = L.s("대회 러닝",       "Race Day") }
+        if abs(km - 42.195) < 1.0       { title = L.s("마라톤 완주 러닝", "Marathon Finish", ja: "マラソン完走のラン") }
+        else if abs(km - 21.0975) < 0.5 { title = L.s("하프 완주 러닝",  "Half Marathon Finish", ja: "ハーフ完走のラン") }
+        else if abs(km - 10) < 0.5      { title = L.s("10K 대회 러닝",   "10K Race", ja: "10Kレースのラン") }
+        else if abs(km - 5) < 0.3       { title = L.s("5K 대회 러닝",    "5K Race", ja: "5Kレースのラン") }
+        else                             { title = L.s("대회 러닝",       "Race Day", ja: "レースのラン") }
         // 대회명과 실제 거리 부문을 함께 표기 — 이름이 거리와 다를 때(예: "서울하프마라톤 10K 부문") 부문 명시
         let division = raceDistanceDivision(km: km)
         let detail = "\(rm.raceName) · \(division)"
@@ -470,8 +470,8 @@ struct InsightEngine {
     /// 거리(km)를 부문 라벨로 변환. "10K" / "하프" / "풀" / "5K" / "Xkm"
     static func raceDistanceDivision(km: Double) -> String {
         let L = AppLanguage.shared
-        if abs(km - 42.195) < 1.0       { return L.s("풀코스",  "Full") }
-        if abs(km - 21.0975) < 0.5      { return L.s("하프",    "Half") }
+        if abs(km - 42.195) < 1.0       { return L.s("풀코스",  "Full", ja: "フル") }
+        if abs(km - 21.0975) < 0.5      { return L.s("하프",    "Half", ja: "ハーフ") }
         if abs(km - 10) < 0.5           { return "10K" }
         if abs(km - 5) < 0.3            { return "5K" }
         return String(format: "%.0fkm", km)
@@ -486,24 +486,24 @@ struct InsightEngine {
     ) -> InsightResult? {
         let L = AppLanguage.shared
         let km = a.distance / 1000
-        let milestones: [(Double, String, String)] = [
-            (42.2, "풀코스 마라톤", "Full Marathon"),
-            (21.1, "하프 마라톤",  "Half Marathon"),
-            (10.0, "10K",         "10K"),
-            (5.0,  "5K",          "5K"),
-            (3.0,  "3K",          "3K")
+        let milestones: [(Double, String, String, String)] = [
+            (42.2, "풀코스 마라톤", "Full Marathon", "フルマラソン"),
+            (21.1, "하프 마라톤",  "Half Marathon", "ハーフマラソン"),
+            (10.0, "10K",         "10K",           "10K"),
+            (5.0,  "5K",          "5K",            "5K"),
+            (3.0,  "3K",          "3K",            "3K")
         ]
-        for (threshold, koLabel, enLabel) in milestones {
+        for (threshold, koLabel, enLabel, jaLabel) in milestones {
             guard km >= threshold else { continue }
             if !prior.contains(where: { $0.distance / 1000 >= threshold }) {
-                let label = L.s(koLabel, enLabel)
+                let label = L.s(koLabel, enLabel, ja: jaLabel)
                 let detail: String
                 if let race = raceMatch, race.isConfirmed {
-                    detail = L.s("\(race.raceName) · 생애 첫 \(label) 완주", "\(race.raceName) · First ever \(label) finish")
+                    detail = L.s("\(race.raceName) · 생애 첫 \(label) 완주", "\(race.raceName) · First ever \(label) finish", ja: "\(race.raceName) · 生涯初の\(label)完走")
                 } else {
-                    detail = L.s("생애 첫 \(label) 완주", "First ever \(label) finish")
+                    detail = L.s("생애 첫 \(label) 완주", "First ever \(label) finish", ja: "生涯初の\(label)完走")
                 }
-                return InsightResult(theme: .firstAchievement, title: L.s("문을 연 러닝", "Breaking Through"), detail: detail)
+                return InsightResult(theme: .firstAchievement, title: L.s("문을 연 러닝", "Breaking Through", ja: "扉を開いたラン"), detail: detail)
             }
             break
         }
@@ -524,12 +524,12 @@ struct InsightEngine {
         let (title, detail): (String, String) = {
             switch level {
             case .advanced, .elite:
-                return (L.s("효율의 러닝", "Efficiency Run"),
-                        L.s("동일 거리 페이스 갱신 — 꾸준히 나아지고 있습니다", "PR on same distance — steady improvement"))
+                return (L.s("효율의 러닝", "Efficiency Run", ja: "効率のラン"),
+                        L.s("동일 거리 페이스 갱신 — 꾸준히 나아지고 있습니다", "PR on same distance — steady improvement", ja: "同じ距離のペースを更新 — 着実に伸びています"))
             default:
-                return (L.s("페이스가 자란 러닝", "Growing Pace"),
+                return (L.s("페이스가 자란 러닝", "Growing Pace", ja: "ペースが伸びたラン"),
                         L.s("최근 동일 거리 중 가장 빠른 페이스 \(a.formattedPace ?? "")",
-                            "Fastest pace on this distance recently: \(a.formattedPace ?? "")"))
+                            "Fastest pace on this distance recently: \(a.formattedPace ?? "")", ja: "最近の同じ距離で最速のペース \(a.formattedPace ?? "")"))
             }
         }()
         return InsightResult(theme: .recordImproved, title: title, detail: detail)
@@ -545,15 +545,15 @@ struct InsightEngine {
 
         let weekStart = weekCalendar.date(from: weekCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.date)) ?? .distantPast   // 이번 주 = 월요일 시작
         let priorThisWeek = prior.filter { $0.date >= weekStart }
-        let distanceTitles = [L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
-                              L.s("낯선 거리를 만난 날", "Into New Distance"),
-                              L.s("거리의 문을 연 러닝", "Opening New Distance")]
+        let distanceTitles = [L.s("경계를 넓힌 러닝", "Expanding Boundaries", ja: "境界を広げたラン"),
+                              L.s("낯선 거리를 만난 날", "Into New Distance", ja: "未知の距離に出会った日"),
+                              L.s("거리의 문을 연 러닝", "Opening New Distance", ja: "距離の扉を開いたラン")]
         if !priorThisWeek.isEmpty, let maxWeek = priorThisWeek.map(\.distance).max(),
            a.distance > maxWeek {
             let idx = titleIdx(for: "distanceExpanded", poolSize: 3, activity: a)
             return InsightResult(theme: .distanceExpanded,
                                  title: distanceTitles[idx],
-                                 detail: L.s("이번 주 최장 거리 \(a.formattedDistance)", "Longest run this week: \(a.formattedDistance)"))
+                                 detail: L.s("이번 주 최장 거리 \(a.formattedDistance)", "Longest run this week: \(a.formattedDistance)", ja: "今週の最長距離 \(a.formattedDistance)"))
         }
 
         let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: a.date)) ?? .distantPast
@@ -563,7 +563,7 @@ struct InsightEngine {
         let idx = titleIdx(for: "distanceExpanded", poolSize: 3, activity: a)
         return InsightResult(theme: .distanceExpanded,
                              title: distanceTitles[idx],
-                             detail: L.s("이번 달 최장 거리 \(a.formattedDistance)", "Longest run this month: \(a.formattedDistance)"))
+                             detail: L.s("이번 달 최장 거리 \(a.formattedDistance)", "Longest run this month: \(a.formattedDistance)", ja: "今月の最長距離 \(a.formattedDistance)"))
     }
 
     /// Consecutive-weeks streak ≥ threshold, or ≥ N runs this week
@@ -599,14 +599,14 @@ struct InsightEngine {
             }
         }
         let L = AppLanguage.shared
-        let consistentTitles = [L.s("꾸준함이 쌓이는 러닝", "Building Consistency"),
-                                L.s("쌓이는 러닝", "Stacking Up"),
-                                L.s("이어지는 러닝", "Keeping It Going")]
+        let consistentTitles = [L.s("꾸준함이 쌓이는 러닝", "Building Consistency", ja: "継続が積み重なるラン"),
+                                L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン"),
+                                L.s("이어지는 러닝", "Keeping It Going", ja: "続いていくラン")]
         if streak >= streakThreshold {
             let idx = titleIdx(for: "consistent", poolSize: 3, activity: a)
             return InsightResult(theme: .consistent,
                                  title: consistentTitles[idx],
-                                 detail: L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row"))
+                                 detail: L.s("\(streak)주 연속 러닝", "\(streak) weeks in a row", ja: "\(streak)週連続のラン"))
         }
 
         let thisWeekStart = cal.date(
@@ -618,7 +618,7 @@ struct InsightEngine {
             let idx = titleIdx(for: "consistent", poolSize: 3, activity: a)
             return InsightResult(theme: .consistent,
                                  title: consistentTitles[idx],
-                                 detail: L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week"))
+                                 detail: L.s("이번 주 \(thisWeekCount)번째 러닝", "Run #\(thisWeekCount) this week", ja: "今週\(thisWeekCount)回目のラン"))
         }
         return nil
     }
@@ -644,9 +644,9 @@ struct InsightEngine {
         }
         let L = AppLanguage.shared
         let detail = level >= .advanced
-            ? L.s("의도적인 회복 — 다음 퀄리티 훈련을 위한 투자", "Intentional recovery — investing in your next quality session")
-            : L.s("몸을 돌보는 여유로운 페이스", "Taking care of your body, easy pace")
-        return InsightResult(theme: .recovery, title: L.s("숨 고르는 러닝", "Easy Does It"), detail: detail)
+            ? L.s("의도적인 회복 — 다음 퀄리티 훈련을 위한 투자", "Intentional recovery — investing in your next quality session", ja: "意図的な回復 — 次のポイント練習への投資")
+            : L.s("몸을 돌보는 여유로운 페이스", "Taking care of your body, easy pace", ja: "体をいたわるゆとりのあるペース")
+        return InsightResult(theme: .recovery, title: L.s("숨 고르는 러닝", "Easy Does It", ja: "息を整えるラン"), detail: detail)
     }
 
     private static func adverseCondition(_ a: Activity, _ condition: ActivityCondition?) -> InsightResult? {
@@ -656,22 +656,22 @@ struct InsightEngine {
         if let w = cond.weather, w.isAdverse {
             if w.isRainy {
                 return InsightResult(theme: .adverseCondition,
-                                     title: L.s("빗속을 달린 러닝", "Running in the Rain"),
-                                     detail: L.s("비와 함께 — 해낸 것 자체가 성취", "Through the rain — showing up is the achievement"))
+                                     title: L.s("빗속을 달린 러닝", "Running in the Rain", ja: "雨の中を走ったラン"),
+                                     detail: L.s("비와 함께 — 해낸 것 자체가 성취", "Through the rain — showing up is the achievement", ja: "雨とともに — やり遂げたこと自体が成果"))
             }
             if w.isHot {
                 return InsightResult(theme: .adverseCondition,
-                                     title: L.s("궂은 날의 완주", "Finishing Through It"),
-                                     detail: L.s("\(w.formattedTemp) 더위에도 끝까지", "\(w.formattedTemp) heat, but you finished"))
+                                     title: L.s("궂은 날의 완주", "Finishing Through It", ja: "悪天候の日の完走"),
+                                     detail: L.s("\(w.formattedTemp) 더위에도 끝까지", "\(w.formattedTemp) heat, but you finished", ja: "\(w.formattedTemp)の暑さでも最後まで"))
             }
             if w.isCold {
                 return InsightResult(theme: .adverseCondition,
-                                     title: L.s("궂은 날의 완주", "Finishing Through It"),
-                                     detail: L.s("\(w.formattedTemp) — 나오는 것만으로도 반", "\(w.formattedTemp) — getting out was half the battle"))
+                                     title: L.s("궂은 날의 완주", "Finishing Through It", ja: "悪天候の日の完走"),
+                                     detail: L.s("\(w.formattedTemp) — 나오는 것만으로도 반", "\(w.formattedTemp) — getting out was half the battle", ja: "\(w.formattedTemp) — 外に出るだけで半分達成"))
             }
             return InsightResult(theme: .adverseCondition,
-                                 title: L.s("바람을 가른 러닝", "Into the Wind"),
-                                 detail: L.s("강풍 속에서도 멈추지 않았습니다", "Strong winds, but you didn't stop"))
+                                 title: L.s("바람을 가른 러닝", "Into the Wind", ja: "風を切ったラン"),
+                                 detail: L.s("강풍 속에서도 멈추지 않았습니다", "Strong winds, but you didn't stop", ja: "強風の中でも止まりませんでした"))
         }
         return nil
     }
@@ -770,13 +770,13 @@ struct InsightEngine {
         #endif
         let distLabel = String(format: "%.1fkm", a.distance / 1000)
         let heatSuffix = (comparable && heatHR.explains(tempC: a.temperatureC))
-            ? L.s(" (기온 감안)", " (heat-adjusted)")
+            ? L.s(" (기온 감안)", " (heat-adjusted)", ja: " (気温を考慮)")
             : ""
         return InsightResult(
             theme: .safety,
-            title: L.s("\(distLabel) 러닝", "\(distLabel) Run"),
+            title: L.s("\(distLabel) 러닝", "\(distLabel) Run", ja: "\(distLabel)ラン"),
             detail: L.s("같은 페이스대에서 평소보다 약 \(excess)bpm 높았습니다. 충분한 회복을 챙기세요\(heatSuffix)",
-                        "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today\(heatSuffix)")
+                        "Avg ~\(excess) bpm above your baseline at this pace. Prioritize recovery today\(heatSuffix)", ja: "同じペース帯で普段より約\(excess)bpm高かったです。十分に回復してください\(heatSuffix)")
         )
     }
 
@@ -797,8 +797,8 @@ struct InsightEngine {
         //   같은 주제를 근거 없이 두 번 말하게 된다.
         //   인사이트는 관찰만 한다.
         let title = isLong
-            ? L.s("더운 날 장거리 완주", "Long Run in the Heat — Done")
-            : L.s("더운 날 완주", "Finished in the Heat")
+            ? L.s("더운 날 장거리 완주", "Long Run in the Heat — Done", ja: "暑い日の長距離完走")
+            : L.s("더운 날 완주", "Finished in the Heat", ja: "暑い日の完走")
 
         // 기온 비교: 현재 기온 vs 예년 이맘때(±10일 중앙값)
         let detail: String
@@ -809,19 +809,19 @@ struct InsightEngine {
                 let diff = Int((tempC - base).rounded())
                 let sign = diff > 0 ? "+" : ""
                 let ending = diff > 0
-                    ? L.s("높았습니다", "warmer than usual")
-                    : L.s("낮았습니다", "cooler than usual")
+                    ? L.s("높았습니다", "warmer than usual", ja: "高かったです")
+                    : L.s("낮았습니다", "cooler than usual", ja: "低かったです")
                 detail = L.s(
                     "\(tempInt)°C · 예년 이맘때보다 \(sign)\(diff)도 \(ending)",
-                    "\(tempInt)°C — \(sign)\(diff)° \(ending)"
+                    "\(tempInt)°C — \(sign)\(diff)° \(ending)", ja: "\(tempInt)°C · 例年のこの時期より\(sign)\(diff)度\(ending)"
                 )
             } else {
-                detail = L.s("\(tempInt)°C에서 완주", "Finished at \(tempInt)°C")
+                detail = L.s("\(tempInt)°C에서 완주", "Finished at \(tempInt)°C", ja: "\(tempInt)°Cで完走")
             }
         } else {
             detail = L.s(
                 "더운 환경에서도 예정한 거리를 소화했습니다",
-                "You covered your distance despite the heat"
+                "You covered your distance despite the heat", ja: "暑い環境でも予定の距離をこなしました"
             )
         }
         return InsightResult(theme: .safety, title: title, detail: detail)
@@ -884,13 +884,13 @@ struct InsightEngine {
                 if paceVar <= 0.04 && hrDrop >= 0.05 && rawDrop >= 0.05 {
                     let bpm = Int((avgHR - hr).rounded())
                     let heatSuffix = (comparable && heatHR.explains(tempC: a.temperatureC))
-                        ? L.s(" (기온 감안)", " (heat-adjusted)")
+                        ? L.s(" (기온 감안)", " (heat-adjusted)", ja: " (気温を考慮)")
                         : ""
                     return InsightResult(
                         theme: .tradeoff,
-                        title: L.s("심폐가 단단해지는 러닝", "Efficiency Rising"),
+                        title: L.s("심폐가 단단해지는 러닝", "Efficiency Rising", ja: "心肺が強くなっていくラン"),
                         detail: L.s("같은 페이스, 평균 심박 \(bpm)bpm 감소\(heatSuffix)",
-                                    "Same pace, avg HR down \(bpm) bpm\(heatSuffix)")
+                                    "Same pace, avg HR down \(bpm) bpm\(heatSuffix)", ja: "同じペースで平均心拍\(bpm)bpm低下\(heatSuffix)")
                     )
                 }
             }
@@ -900,9 +900,9 @@ struct InsightEngine {
         if currentPace > avgPriorPace * 1.08 && a.distance > avgPriorDist * 1.20 {
             return InsightResult(
                 theme: .tradeoff,
-                title: L.s("지구력을 쌓는 러닝", "Endurance Buildup"),
+                title: L.s("지구력을 쌓는 러닝", "Endurance Buildup", ja: "持久力を積むラン"),
                 detail: L.s("더 멀리 \(a.formattedDistance) — 페이스는 거리를 위해 양보",
-                            "\(a.formattedDistance) — pace yielded to distance")
+                            "\(a.formattedDistance) — pace yielded to distance", ja: "より遠くへ \(a.formattedDistance) — ペースは距離のために譲りました")
             )
         }
 
@@ -916,9 +916,9 @@ struct InsightEngine {
                     if avgCadence < 162 {
                         return InsightResult(
                             theme: .tradeoff,
-                            title: L.s("보폭이 자라는 러닝", "Stride Growing"),
+                            title: L.s("보폭이 자라는 러닝", "Stride Growing", ja: "ストライドが伸びていくラン"),
                             detail: L.s("보폭 \(String(format: "%.2f", strideM))m · 케이던스를 내주고 거리를 얻는 중",
-                                        "Stride \(String(format: "%.2f", strideM)) m · trading cadence for stride")
+                                        "Stride \(String(format: "%.2f", strideM)) m · trading cadence for stride", ja: "ストライド \(String(format: "%.2f", strideM))m · ケイデンスを譲って距離を得ています")
                         )
                     }
                 }
@@ -929,9 +929,9 @@ struct InsightEngine {
                currentPace > avgPriorPace * 1.06, vertOsc <= 7.5 {
                 return InsightResult(
                     theme: .tradeoff,
-                    title: L.s("폼이 다듬어지는 러닝", "Form Refinement"),
+                    title: L.s("폼이 다듬어지는 러닝", "Form Refinement", ja: "フォームが磨かれていくラン"),
                     detail: L.s("수직 진폭 \(String(format: "%.1f", vertOsc))cm — 에너지 손실 최소화 중",
-                                "Vert. osc. \(String(format: "%.1f", vertOsc)) cm — cutting energy loss")
+                                "Vert. osc. \(String(format: "%.1f", vertOsc)) cm — cutting energy loss", ja: "上下動 \(String(format: "%.1f", vertOsc))cm — エネルギーロスを最小化中")
                 )
             }
         }
@@ -941,9 +941,9 @@ struct InsightEngine {
            currentPace < avgPriorPace * 0.95, hr > avgHR * 1.05 {
             return InsightResult(
                 theme: .tradeoff,
-                title: L.s("스피드의 정당한 대가", "Speed Worth Paying For"),
+                title: L.s("스피드의 정당한 대가", "Speed Worth Paying For", ja: "スピードの正当な対価"),
                 detail: L.s("페이스 \(a.formattedPace ?? "") — 심박이 그 값을 지불",
-                            "Pace \(a.formattedPace ?? "") — HR paid the price")
+                            "Pace \(a.formattedPace ?? "") — HR paid the price", ja: "ペース \(a.formattedPace ?? "") — 心拍がその対価を払いました")
             )
         }
 
@@ -986,8 +986,8 @@ struct InsightEngine {
                 if thisAvg < prevAvg * 0.97 {
                     return InsightResult(
                         theme: .periodPositive,
-                        title: L.s("밀도가 높아진 러닝", "Quality Over Quantity"),
-                        detail: L.s("횟수는 줄었지만 이달 평균 페이스 향상", "Fewer runs, better avg pace this month")
+                        title: L.s("밀도가 높아진 러닝", "Quality Over Quantity", ja: "密度が高まったラン"),
+                        detail: L.s("횟수는 줄었지만 이달 평균 페이스 향상", "Fewer runs, better avg pace this month", ja: "回数は減りましたが今月の平均ペースが向上")
                     )
                 }
             }
@@ -998,9 +998,9 @@ struct InsightEngine {
         if a.distance > prevMonthMaxDist {
             return InsightResult(
                 theme: .periodPositive,
-                title: L.s("집중된 달의 러닝", "Peak Run of the Month"),
+                title: L.s("집중된 달의 러닝", "Peak Run of the Month", ja: "集中した月のラン"),
                 detail: L.s("이달 최고 거리 \(a.formattedDistance) — 적게 뛰어도 깊게",
-                            "Best run this month: \(a.formattedDistance)")
+                            "Best run this month: \(a.formattedDistance)", ja: "今月の最長距離 \(a.formattedDistance) — 少なくても深く")
             )
         }
 
@@ -1014,8 +1014,8 @@ struct InsightEngine {
         if allWeekStarts.count >= weeksElapsed {
             return InsightResult(
                 theme: .periodPositive,
-                title: L.s("꾸준히 이어가는 러닝", "Steady Every Week"),
-                detail: L.s("달리기 횟수는 적어도 매주 빠지지 않았습니다", "Fewer runs, but every week still counted")
+                title: L.s("꾸준히 이어가는 러닝", "Steady Every Week", ja: "着実に続けるラン"),
+                detail: L.s("달리기 횟수는 적어도 매주 빠지지 않았습니다", "Fewer runs, but every week still counted", ja: "回数は少なくても毎週欠かさず走りました")
             )
         }
 
@@ -1028,8 +1028,8 @@ struct InsightEngine {
                 if priorTotal < m && currentTotal >= m {
                     return InsightResult(
                         theme: .periodPositive,
-                        title: L.s("이정표를 넘은 러닝", "Milestone Reached"),
-                        detail: L.s("누적 \(km)km 돌파", "Lifetime total: \(km) km")
+                        title: L.s("이정표를 넘은 러닝", "Milestone Reached", ja: "節目を越えたラン"),
+                        detail: L.s("누적 \(km)km 돌파", "Lifetime total: \(km) km", ja: "累計\(km)km突破")
                     )
                 }
             }
@@ -1043,16 +1043,16 @@ struct InsightEngine {
         if prev4to8Dist > 0 && recent4Dist < prev4to8Dist * 0.70 {
             return InsightResult(
                 theme: .periodPositive,
-                title: L.s("부하를 내린 러닝", "Down Week Done Right"),
-                detail: L.s("고부하 이후 몸을 가다듬는 회복 블록", "Post-load recovery block — intentional, not accidental")
+                title: L.s("부하를 내린 러닝", "Down Week Done Right", ja: "負荷を下げたラン"),
+                detail: L.s("고부하 이후 몸을 가다듬는 회복 블록", "Post-load recovery block — intentional, not accidental", ja: "高負荷の後に体を整える回復ブロック")
             )
         }
 
         // Fallback — showing up in a lighter month is itself a positive
         return InsightResult(
             theme: .periodPositive,
-            title: L.s("쉬운 달에도 이어가는 러닝", "Keeping the Base"),
-            detail: L.s("쉬운 달에도 나선 것 자체가 이미 자산", "Showing up in a lighter month still builds the base")
+            title: L.s("쉬운 달에도 이어가는 러닝", "Keeping the Base", ja: "軽めの月にも続けるラン"),
+            detail: L.s("쉬운 달에도 나선 것 자체가 이미 자산", "Showing up in a lighter month still builds the base", ja: "軽めの月にも走り出したこと自体がすでに財産")
         )
     }
 
@@ -1060,32 +1060,32 @@ struct InsightEngine {
         let L = AppLanguage.shared
         if prior.isEmpty {
             return InsightResult(theme: .default,
-                                 title: L.s("시작이 전부인 러닝", "The First Step"),
-                                 detail: L.s("첫 걸음, 가장 어렵고 가장 값진 순간", "The first step is the hardest — and most valuable"))
+                                 title: L.s("시작이 전부인 러닝", "The First Step", ja: "始まりがすべてのラン"),
+                                 detail: L.s("첫 걸음, 가장 어렵고 가장 값진 순간", "The first step is the hardest — and most valuable", ja: "最初の一歩、一番難しく一番価値のある瞬間"))
         }
         let total = prior.count + 1
         if total % 10 == 0 {
             return InsightResult(theme: .default,
-                                 title: L.s("자산 축적 러닝", "Banking Miles"),
-                                 detail: L.s("누적 \(total)번째 러닝 달성", "Run #\(total) — every one counts"))
+                                 title: L.s("자산 축적 러닝", "Banking Miles", ja: "財産を積み上げるラン"),
+                                 detail: L.s("누적 \(total)번째 러닝 달성", "Run #\(total) — every one counts", ja: "累計\(total)回目のランを達成"))
         }
         switch level {
         case .beginner:
             return InsightResult(theme: .default,
-                                 title: L.s("오늘도 나온 러닝", "Showing Up"),
-                                 detail: L.s("나서는 것 자체가 이미 절반", "Getting out the door is already half the battle"))
+                                 title: L.s("오늘도 나온 러닝", "Showing Up", ja: "今日も走り出したラン"),
+                                 detail: L.s("나서는 것 자체가 이미 절반", "Getting out the door is already half the battle", ja: "走り出すこと自体がすでに半分"))
         case .novice:
             return InsightResult(theme: .default,
-                                 title: L.s("쌓이는 러닝", "Stacking Up"),
-                                 detail: L.s("오늘도 꾸준히 쌓아갑니다", "Steady progress, one run at a time"))
+                                 title: L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン"),
+                                 detail: L.s("오늘도 꾸준히 쌓아갑니다", "Steady progress, one run at a time", ja: "今日も着実に積み重ねています"))
         case .advanced, .elite:
             return InsightResult(theme: .default,
-                                 title: L.s("자산 축적 러닝", "Banking Miles"),
-                                 detail: L.s("꾸준한 훈련이 미래의 나를 만듭니다", "Consistent training builds the future you"))
+                                 title: L.s("자산 축적 러닝", "Banking Miles", ja: "財産を積み上げるラン"),
+                                 detail: L.s("꾸준한 훈련이 미래의 나를 만듭니다", "Consistent training builds the future you", ja: "継続した練習が未来の自分をつくります"))
         default:
             return InsightResult(theme: .default,
-                                 title: L.s("자산 축적 러닝", "Banking Miles"),
-                                 detail: L.s("오늘도 꾸준히 쌓아갑니다", "Steady progress, one run at a time"))
+                                 title: L.s("자산 축적 러닝", "Banking Miles", ja: "財産を積み上げるラン"),
+                                 detail: L.s("오늘도 꾸준히 쌓아갑니다", "Steady progress, one run at a time", ja: "今日も着実に積み重ねています"))
         }
     }
 
@@ -1164,12 +1164,12 @@ struct InsightEngine {
         if priorEasy.isEmpty {
             guard priorPaces.count >= 15 else { return nil }
             let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
-            let titles = [L.s("기록 중 첫 이지런", "First Easy Run on Record"),
-                          L.s("처음 가져본 이지 페이스", "First Easy Pace"),
-                          L.s("첫 여유 페이스 러닝", "First Easy-Pace Run")]
-            let details = [L.s("지금까지 기록 중 처음으로 여유 페이스를 유지했습니다", "First easy-paced run across all logged history"),
-                           L.s("기록 전체에서 처음 나온 이지 페이스입니다", "First time an easy pace appears in your history"),
-                           L.s("기록 중 이지 페이스는 이번이 처음입니다", "Your history shows no prior easy-pace run")]
+            let titles = [L.s("기록 중 첫 이지런", "First Easy Run on Record", ja: "記録上初のイージーラン"),
+                          L.s("처음 가져본 이지 페이스", "First Easy Pace", ja: "初めてのイージーペース"),
+                          L.s("첫 여유 페이스 러닝", "First Easy-Pace Run", ja: "初めてのゆとりペースのラン")]
+            let details = [L.s("지금까지 기록 중 처음으로 여유 페이스를 유지했습니다", "First easy-paced run across all logged history", ja: "これまでの記録で初めてゆとりのあるペースを保ちました"),
+                           L.s("기록 전체에서 처음 나온 이지 페이스입니다", "First time an easy pace appears in your history", ja: "全記録の中で初めてのイージーペースです"),
+                           L.s("기록 중 이지 페이스는 이번이 처음입니다", "Your history shows no prior easy-pace run", ja: "記録の中でイージーペースは今回が初めてです")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
 
@@ -1182,19 +1182,19 @@ struct InsightEngine {
             let titles: [String]
             let details: [String]
             if weeks >= 26 {
-                titles = [L.s("반년 만의 이지런", "Easy Run After 6 Months"),
-                          L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
-                          L.s("오랜만에 돌아온 여유 페이스", "Easy Pace Returns After a Long Break")]
-                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks"),
-                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago"),
-                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks")]
+                titles = [L.s("반년 만의 이지런", "Easy Run After 6 Months", ja: "半年ぶりのイージーラン"),
+                          L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks", ja: "\(weeks)週ぶりのイージーラン"),
+                          L.s("오랜만에 돌아온 여유 페이스", "Easy Pace Returns After a Long Break", ja: "久しぶりに戻ってきたゆとりのペース")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks", ja: "\(weeks)週ぶりにゆとりのあるペースを保ちました"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago", ja: "前回のイージーランは\(weeks)週前でした"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks", ja: "\(weeks)週ぶりのイージーペースです")]
             } else {
-                titles = [L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks"),
-                          L.s("오랜만의 여유 페이스", "Easy Pace After a While"),
-                          L.s("\(weeks)주 만에 찾은 이지 페이스", "Easy Pace After \(weeks) Weeks")]
-                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks"),
-                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago"),
-                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks")]
+                titles = [L.s("\(weeks)주 만의 이지런", "Easy Run After \(weeks) Weeks", ja: "\(weeks)週ぶりのイージーラン"),
+                          L.s("오랜만의 여유 페이스", "Easy Pace After a While", ja: "久しぶりのゆとりのペース"),
+                          L.s("\(weeks)주 만에 찾은 이지 페이스", "Easy Pace After \(weeks) Weeks", ja: "\(weeks)週ぶりに取り戻したイージーペース")]
+                details = [L.s("\(weeks)주 만에 여유 페이스를 유지했습니다", "Easy pace after \(weeks) weeks", ja: "\(weeks)週ぶりにゆとりのあるペースを保ちました"),
+                           L.s("마지막 이지런이 \(weeks)주 전이었습니다", "Your last easy run was \(weeks) weeks ago", ja: "前回のイージーランは\(weeks)週前でした"),
+                           L.s("\(weeks)주 만에 나온 이지 페이스입니다", "Easy pace after \(weeks) weeks", ja: "\(weeks)週ぶりのイージーペースです")]
             }
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
@@ -1206,19 +1206,19 @@ struct InsightEngine {
         // 직전 이지런 날짜를 같이 적는다 — 퍼포먼스 카드의 "4주 · 이지런 N회"와 기간이 달라
         // 같은 숫자가 다른 뜻으로 읽혔다("올해"라고 써도 눈에 안 들어온다). 날짜가 있으면 갈린다.
         let df = DateFormatter()
-        df.locale = Locale(identifier: L.isEnglish ? "en_US" : "ko_KR")
-        df.dateFormat = L.isEnglish ? "MMM d" : "M/d"
+        df.locale = L.locale
+        df.dateFormat = L.s("M/d", "MMM d", ja: "M/d")
         let lastEasyStr = df.string(from: lastEasy.date)
         let idx = titleIdx(for: "easyRarity", poolSize: 3, activity: a)
-        let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year"),
-                      L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year"),
-                      L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year")]
+        let titles = [L.s("올해 \(countThisYear)번째 이지런", "\(ordinalEn(countThisYear)) Easy Run This Year", ja: "今年\(countThisYear)回目のイージーラン"),
+                      L.s("올해 \(countThisYear)회의 이지런", "\(countThisYear) Easy Run(s) This Year", ja: "今年\(countThisYear)回のイージーラン"),
+                      L.s("이지런 — 올해 \(countThisYear)번", "Easy Run \(countThisYear) This Year", ja: "イージーラン — 今年\(countThisYear)回")]
         let details = [L.s("올해 들어 여유 페이스를 유지한 게 \(countThisYear)번입니다 · 직전 \(lastEasyStr)",
-                           "\(countThisYear) easy-pace run(s) this year · last on \(lastEasyStr)"),
+                           "\(countThisYear) easy-pace run(s) this year · last on \(lastEasyStr)", ja: "今年ゆとりのあるペースを保ったのは\(countThisYear)回です · 前回 \(lastEasyStr)"),
                        L.s("올해 이지런은 드물게 — 이번이 \(countThisYear)번째, 직전은 \(lastEasyStr)",
-                           "Easy runs are rare this year — number \(countThisYear), last on \(lastEasyStr)"),
+                           "Easy runs are rare this year — number \(countThisYear), last on \(lastEasyStr)", ja: "今年のイージーランはまれ — 今回が\(countThisYear)回目、前回は\(lastEasyStr)"),
                        L.s("올해 \(countThisYear)번째 이지런입니다 · 직전 \(lastEasyStr)",
-                           "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year · last on \(lastEasyStr)")]
+                           "\(countThisYear)\(ordinalSuffix(countThisYear)) easy run of the year · last on \(lastEasyStr)", ja: "今年\(countThisYear)回目のイージーランです · 前回 \(lastEasyStr)")]
         return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
     }
 
@@ -1245,22 +1245,22 @@ struct InsightEngine {
         let L = AppLanguage.shared
         if percentile >= 0.95 {
             let idx = titleIdx(for: "tempHot", poolSize: 3, activity: a)
-            let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs"),
-                          L.s("기온 상위 5%의 러닝", "Top 5% Heat Run"),
-                          L.s("뜨거운 날의 러닝", "Peak Heat Run")]
-            let details = [L.s("기록 중 가장 더운 날 축입니다 — 이 더위에 뛰어낸 게 맞습니다", "One of the hottest days in your running history — finishing counts"),
-                           L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this heat is rare across your \(n) recorded runs"),
-                           L.s("달린 날 중 가장 더운 상위 5%에 드는 날입니다", "Today ranks among the hottest 5% of your running days")]
+            let titles = [L.s("가장 더운 축의 러닝", "One of Your Hottest Runs", ja: "最も暑い部類のラン"),
+                          L.s("기온 상위 5%의 러닝", "Top 5% Heat Run", ja: "気温上位5%のラン"),
+                          L.s("뜨거운 날의 러닝", "Peak Heat Run", ja: "暑い日のラン")]
+            let details = [L.s("기록 중 가장 더운 날 축입니다 — 이 더위에 뛰어낸 게 맞습니다", "One of the hottest days in your running history — finishing counts", ja: "記録の中で最も暑い部類の日です — この暑さの中で走りきりました"),
+                           L.s("이 더위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this heat is rare across your \(n) recorded runs", ja: "この暑さで走ったのは\(n)回の記録の中でもまれです"),
+                           L.s("달린 날 중 가장 더운 상위 5%에 드는 날입니다", "Today ranks among the hottest 5% of your running days", ja: "走った日の中で最も暑い上位5%に入る日です")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         if percentile <= 0.05 {
             let idx = titleIdx(for: "tempCold", poolSize: 3, activity: a)
-            let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs"),
-                          L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run"),
-                          L.s("혹한 속 러닝", "Into the Cold")]
-            let details = [L.s("기록 중 가장 추운 날 축입니다 — 이 추위에 뛰어낸 게 맞습니다", "One of the coldest days in your running history — finishing counts"),
-                           L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this cold is rare across your \(n) recorded runs"),
-                           L.s("달린 날 중 가장 추운 하위 5%에 드는 날입니다", "Today ranks among the coldest 5% of your running days")]
+            let titles = [L.s("가장 추운 축의 러닝", "One of Your Coldest Runs", ja: "最も寒い部類のラン"),
+                          L.s("기온 하위 5%의 러닝", "Bottom 5% Cold Run", ja: "気温下位5%のラン"),
+                          L.s("혹한 속 러닝", "Into the Cold", ja: "厳しい寒さの中のラン")]
+            let details = [L.s("기록 중 가장 추운 날 축입니다 — 이 추위에 뛰어낸 게 맞습니다", "One of the coldest days in your running history — finishing counts", ja: "記録の中で最も寒い部類の日です — この寒さの中で走りきりました"),
+                           L.s("이 추위에 달린 건 \(n)번의 기록 중 드문 편입니다", "Running in this cold is rare across your \(n) recorded runs", ja: "この寒さで走ったのは\(n)回の記録の中でもまれです"),
+                           L.s("달린 날 중 가장 추운 하위 5%에 드는 날입니다", "Today ranks among the coldest 5% of your running days", ja: "走った日の中で最も寒い下位5%に入る日です")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         return nil
@@ -1277,18 +1277,19 @@ struct InsightEngine {
         }
         let slot = slotID(for: hour)
         let (koName, enName): (String, String) = [("새벽","dawn"),("오전","morning"),("낮","midday"),("저녁","evening"),("밤","night")][slot]
+        let jaName = ["早朝", "午前", "昼", "夕方", "夜"][slot]
 
         let sameSlot = prior.filter { slotID(for: cal.component(.hour, from: $0.date)) == slot && $0.date < a.date }
         let L = AppLanguage.shared
 
         if sameSlot.isEmpty {
             let idx = titleIdx(for: "timeFirst", poolSize: 3, activity: a)
-            let titles = [L.s("첫 \(koName) 러닝", "First \(enName.capitalized) Run"),
-                          L.s("\(koName)에 처음 달린 러닝", "Running at \(enName.capitalized) for the First Time"),
-                          L.s("\(koName) 러닝 첫 경험", "\(enName.capitalized) Run Debut")]
-            let details = [L.s("처음으로 \(koName)에 달렸습니다", "First time running in the \(enName)"),
-                           L.s("\(koName) 러닝 첫 기록 — 시간대의 문을 열었습니다", "First \(enName) run logged — a new window opens"),
-                           L.s("지금까지 \(koName)엔 달린 기록이 없었습니다", "No prior runs at this time of day")]
+            let titles = [L.s("첫 \(koName) 러닝", "First \(enName.capitalized) Run", ja: "初めての\(jaName)ラン"),
+                          L.s("\(koName)에 처음 달린 러닝", "Running at \(enName.capitalized) for the First Time", ja: "\(jaName)に初めて走ったラン"),
+                          L.s("\(koName) 러닝 첫 경험", "\(enName.capitalized) Run Debut", ja: "\(jaName)ランの初体験")]
+            let details = [L.s("처음으로 \(koName)에 달렸습니다", "First time running in the \(enName)", ja: "初めて\(jaName)に走りました"),
+                           L.s("\(koName) 러닝 첫 기록 — 시간대의 문을 열었습니다", "First \(enName) run logged — a new window opens", ja: "\(jaName)ランの初記録 — 新しい時間帯の扉を開きました"),
+                           L.s("지금까지 \(koName)엔 달린 기록이 없었습니다", "No prior runs at this time of day", ja: "これまで\(jaName)に走った記録はありませんでした")]
             return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
         }
         guard let lastVisit = sameSlot.max(by: { $0.date < $1.date }) else { return nil }
@@ -1297,12 +1298,12 @@ struct InsightEngine {
         let months = max(1, (days + 14) / 30)
 
         let idx = titleIdx(for: "timeReunion", poolSize: 3, activity: a)
-        let titles = [L.s("\(months)개월 만의 \(koName) 러닝", "\(enName.capitalized) Run After \(months) Months"),
-                      L.s("오랜만의 \(koName) 러닝", "Back to \(enName.capitalized) Running"),
-                      L.s("\(months)개월 만에 다시 \(koName)에", "Back at \(enName.capitalized) After \(months) Months")]
-        let details = [L.s("\(months)개월 만에 다시 \(koName)에 달렸습니다", "Back to \(enName) runs after \(months) months"),
-                       L.s("마지막 \(koName) 러닝이 \(days)일 전이었습니다", "Your last \(enName) run was \(days) days ago"),
-                       L.s("오래된 시간대로 돌아왔습니다 — \(months)개월 만", "Old time slot revisited — \(months) months later")]
+        let titles = [L.s("\(months)개월 만의 \(koName) 러닝", "\(enName.capitalized) Run After \(months) Months", ja: "\(months)か月ぶりの\(jaName)ラン"),
+                      L.s("오랜만의 \(koName) 러닝", "Back to \(enName.capitalized) Running", ja: "久しぶりの\(jaName)ラン"),
+                      L.s("\(months)개월 만에 다시 \(koName)에", "Back at \(enName.capitalized) After \(months) Months", ja: "\(months)か月ぶりに再び\(jaName)に")]
+        let details = [L.s("\(months)개월 만에 다시 \(koName)에 달렸습니다", "Back to \(enName) runs after \(months) months", ja: "\(months)か月ぶりに再び\(jaName)に走りました"),
+                       L.s("마지막 \(koName) 러닝이 \(days)일 전이었습니다", "Your last \(enName) run was \(days) days ago", ja: "前回の\(jaName)ランは\(days)日前でした"),
+                       L.s("오래된 시간대로 돌아왔습니다 — \(months)개월 만", "Old time slot revisited — \(months) months later", ja: "久しぶりの時間帯に戻りました — \(months)か月ぶり")]
         return InsightResult(theme: .rarityFact, title: titles[idx], detail: details[idx])
     }
 
@@ -1322,12 +1323,12 @@ struct InsightEngine {
         let km = nextMark
         let L = AppLanguage.shared
         let idx = titleIdx(for: "milestone", poolSize: 3, activity: a)
-        let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints"),
-                      L.s("\(km)km 이정표를 넘은 러닝", "Crossing \(km) km Total"),
-                      L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up")]
-        let details = [L.s("이 러닝으로 누적 \(km)km에 도달했습니다", "This run brought your total to \(km) km"),
-                       L.s("한 걸음 한 걸음 쌓아 \(km)km", "Step by step to \(km) km"),
-                       L.s("누적 \(Int(curKm))km — \(km)km 이정표 통과", "Lifetime: \(Int(curKm)) km, past the \(km) km mark")]
+        let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints", ja: "累計\(km)kmの足跡"),
+                      L.s("\(km)km 이정표를 넘은 러닝", "Crossing \(km) km Total", ja: "\(km)kmの節目を越えたラン"),
+                      L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up", ja: "\(km)kmが積み上がった日")]
+        let details = [L.s("이 러닝으로 누적 \(km)km에 도달했습니다", "This run brought your total to \(km) km", ja: "このランで累計\(km)kmに到達しました"),
+                       L.s("한 걸음 한 걸음 쌓아 \(km)km", "Step by step to \(km) km", ja: "一歩一歩積み重ねて\(km)km"),
+                       L.s("누적 \(Int(curKm))km — \(km)km 이정표 통과", "Lifetime: \(Int(curKm)) km, past the \(km) km mark", ja: "累計\(Int(curKm))km — \(km)kmの節目を通過")]
         return InsightResult(theme: .milestone, title: titles[idx], detail: details[idx])
     }
 
@@ -1360,15 +1361,15 @@ struct InsightEngine {
 
         let L = AppLanguage.shared
         let idx = titleIdx(for: "subThreshold", poolSize: 3, activity: a)
-        let titles = [L.s("절제가 빛난 인터벌", "Discipline in Every Rep"),
-                      L.s("흔들리지 않은 인터벌", "Steady Through the Sets"),
-                      L.s("페이스를 지켜낸 인터벌", "Pace Held Throughout")]
+        let titles = [L.s("절제가 빛난 인터벌", "Discipline in Every Rep", ja: "抑制が光ったインターバル"),
+                      L.s("흔들리지 않은 인터벌", "Steady Through the Sets", ja: "ぶれなかったインターバル"),
+                      L.s("페이스를 지켜낸 인터벌", "Pace Held Throughout", ja: "ペースを守り抜いたインターバル")]
         let details = [L.s("심장이 요동쳐도 페이스는 일정 — 절제된 서브T 인터벌",
-                           "HR surged but pace stayed true — textbook sub-threshold control"),
+                           "HR surged but pace stayed true — textbook sub-threshold control", ja: "心拍が揺れてもペースは一定 — 抑制の効いたサブスレッショルド・インターバル"),
                        L.s("모든 구간 고른 페이스 — 과부하 없이 훈련 목표 완수",
-                           "Even splits across all reps — goal met without overreach"),
+                           "Even splits across all reps — goal met without overreach", ja: "全区間で均等なペース — 過負荷なく練習目標を達成"),
                        L.s("빠르지만 무너지지 않은 인터벌 — 다음 훈련도 충전된 상태로",
-                           "Fast but controlled — you'll recover well for the next session")]
+                           "Fast but controlled — you'll recover well for the next session", ja: "速くても崩れなかったインターバル — 次の練習にも余力を残して")]
         return InsightResult(theme: .subThreshold, title: titles[idx], detail: details[idx])
     }
 
@@ -1385,21 +1386,21 @@ struct InsightEngine {
         let seed = Int((base.title.unicodeScalars.first?.value ?? 1) % 4)
         switch base.theme {
         case .recordImproved, .distanceExpanded, .adverseCondition, .tradeoff, .rarityFact, .milestone, .subThreshold:
-            let prefixes = [L.s("몸이 무거운 흐름 속에서도 ", "Through heavy legs — "),
-                            L.s("피로가 쌓이는 주간에도 ", "Even in a heavy week — "),
-                            L.s("힘든 흐름 속에서도 ", "Despite the fatigue — "),
-                            L.s("무거운 몸으로도 ", "Heavy legs and all — ")]
+            let prefixes = [L.s("몸이 무거운 흐름 속에서도 ", "Through heavy legs — ", ja: "体が重い流れの中でも "),
+                            L.s("피로가 쌓이는 주간에도 ", "Even in a heavy week — ", ja: "疲労がたまる週でも "),
+                            L.s("힘든 흐름 속에서도 ", "Despite the fatigue — ", ja: "きつい流れの中でも "),
+                            L.s("무거운 몸으로도 ", "Heavy legs and all — ", ja: "重い体でも ")]
             return InsightResult(theme: base.theme, workoutType: base.workoutType,
                                  title: base.title, detail: prefixes[seed] + base.detail)
         default:
             let replacements = [L.s("몸이 무거운 흐름 속에서도 완주한 러닝입니다.",
-                                    "A finish through heavy legs — that counts."),
+                                    "A finish through heavy legs — that counts.", ja: "体が重い流れの中でも完走したランです。"),
                                 L.s("피로가 쌓이는 주간에도 나섰습니다.",
-                                    "You showed up even in a heavy week."),
+                                    "You showed up even in a heavy week.", ja: "疲労がたまる週でも走り出しました。"),
                                 L.s("힘든 흐름 속에서도 달렸습니다.",
-                                    "Running through the fatigue takes its own strength."),
+                                    "Running through the fatigue takes its own strength.", ja: "きつい流れの中でも走りました。"),
                                 L.s("무거운 몸을 끌고 나온 것 자체가 이미 성취입니다.",
-                                    "Getting out the door with tired legs is its own win.")]
+                                    "Getting out the door with tired legs is its own win.", ja: "重い体を引きずって走り出したこと自体がすでに成果です。")]
             return InsightResult(theme: base.theme, workoutType: base.workoutType,
                                  title: base.title, detail: replacements[seed])
         }

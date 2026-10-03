@@ -27,10 +27,10 @@ enum EffortBand: CaseIterable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .easy:     L.s("쉬움", "Easy")
-        case .moderate: L.s("보통", "Moderate")
-        case .hard:     L.s("힘듦", "Hard")
-        case .allOut:   L.s("전력", "All Out")
+        case .easy:     L.s("쉬움", "Easy", ja: "楽")
+        case .moderate: L.s("보통", "Moderate", ja: "普通")
+        case .hard:     L.s("힘듦", "Hard", ja: "きつい")
+        case .allOut:   L.s("전력", "All Out", ja: "全力")
         }
     }
 }

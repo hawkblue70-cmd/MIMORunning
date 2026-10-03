@@ -49,8 +49,8 @@ enum FormNarrative {
         let strideClause: String?
         if slDev, !(cadDev && gctDev), let sl = i.slStr {
             strideClause = i.sl == .above
-                ? L.s("보폭이 \(sl)m로 평소보다 컸습니다.", "Stride was \(sl) m — longer than usual.")
-                : L.s("보폭이 \(sl)m로 평소보다 작았습니다.", "Stride was \(sl) m — shorter than usual.")
+                ? L.s("보폭이 \(sl)m로 평소보다 컸습니다.", "Stride was \(sl) m — longer than usual.", ja: "ストライドが\(sl)mで普段より大きかったです。")
+                : L.s("보폭이 \(sl)m로 평소보다 작았습니다.", "Stride was \(sl) m — shorter than usual.", ja: "ストライドが\(sl)mで普段より小さかったです。")
         } else {
             strideClause = nil
         }
@@ -60,9 +60,9 @@ enum FormNarrative {
         // 케이던스↑ + 보폭 범위 안 — 수직진폭까지 작았으면 같은 문장 안에서 함께 말한다(가벼운 쪽으로 같은 방향)
         let cadUpStrideInRange = i.vo == .below
             ? L.s("발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았습니다.",
-                  "Cadence was above your usual. Stride length was within your typical range, and vertical oscillation was lower than usual.")
+                  "Cadence was above your usual. Stride length was within your typical range, and vertical oscillation was lower than usual.", ja: "ピッチが普段より速かったです。ストライドは普段の範囲で、上下動は普段より小さかったです。")
             : L.s("발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였습니다.",
-                  "Cadence was above your usual. Stride length was within your typical range.")
+                  "Cadence was above your usual. Stride length was within your typical range.", ja: "ピッチが普段より速かったです。ストライドは普段の範囲でした。")
 
         // MARK: 1. 지면접촉
         if let g = i.gctStr {
@@ -72,56 +72,56 @@ enum FormNarrative {
                     case .general:
                         return withStride(L.s(
                             "평소 리듬대로 \(cadStr)spm을 유지했고, 지면접촉이 \(g)ms로 짧았습니다.",
-                            "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms."))
+                            "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms.", ja: "普段どおりのリズムで\(cadStr)spmを保ち、接地時間は\(g)msと短かったです。"))
                     case .easy:
                         return withStride(L.s(
                             "평소 리듬대로 \(cadStr)spm을 유지했고, 지면접촉이 \(g)ms로 짧았습니다. 가볍게 뛴 날입니다.",
-                            "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms. A light, easy day."))
+                            "Cadence held at your usual \(cadStr) spm, with ground contact short at \(g) ms. A light, easy day.", ja: "普段どおりのリズムで\(cadStr)spmを保ち、接地時間は\(g)msと短かったです。軽やかに走れた日です。"))
                     case .fast:
                         return withStride(L.s(
                             "평소 리듬 \(cadStr)spm에 지면접촉이 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
-                            "Your usual \(cadStr) spm with ground contact short at \(g) ms — form that suits a fast pace."))
+                            "Your usual \(cadStr) spm with ground contact short at \(g) ms — form that suits a fast pace.", ja: "普段のリズム\(cadStr)spmで、接地時間は\(g)msと短かったです。速いペースに合ったフォームです。"))
                     }
                 }
                 switch frame {
                 case .general:
                     return L.s("발걸음이 평소보다 빠르게 돌았습니다. 지면접촉이 \(g)ms로 짧았습니다.",
-                               "Cadence was faster than usual. Ground contact was short at \(g) ms.")
+                               "Cadence was faster than usual. Ground contact was short at \(g) ms.", ja: "ピッチが普段より速く回りました。接地時間は\(g)msと短かったです。")
                 case .easy:
                     if i.cad == .above {
                         return L.s("발걸음이 빠르게 돌고 지면접촉이 \(g)ms로 짧았습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.",
-                                   "Quick cadence with ground contact short at \(g) ms. On an easy day it's fine to relax the rhythm a little.")
+                                   "Quick cadence with ground contact short at \(g) ms. On an easy day it's fine to relax the rhythm a little.", ja: "ピッチが速く回り、接地時間は\(g)msと短かったです。楽な日はリズムを少し落としても大丈夫です。")
                     }
                     if i.cad == .below {
                         return L.s("발걸음은 평소보다 느렸지만 지면접촉이 \(g)ms로 짧았습니다. 편하게 뛴 날입니다.",
-                                   "Cadence was below your usual, but ground contact stayed short at \(g) ms. A relaxed day.")
+                                   "Cadence was below your usual, but ground contact stayed short at \(g) ms. A relaxed day.", ja: "ピッチは普段より遅めでしたが、接地時間は\(g)msと短かったです。楽に走れた日です。")
                     }
                     return L.s("지면접촉이 \(g)ms로 짧았습니다. 가볍게 뛴 날입니다.",
-                               "Ground contact was short at \(g) ms. A light, easy day.")
+                               "Ground contact was short at \(g) ms. A light, easy day.", ja: "接地時間は\(g)msと短かったです。軽やかに走れた日です。")
                 case .fast:
                     if i.cad == .above {
                         return L.s("발걸음이 빠르게 돌고 지면접촉도 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
-                                   "Quick cadence and ground contact short at \(g) ms — form that suits a fast pace.")
+                                   "Quick cadence and ground contact short at \(g) ms — form that suits a fast pace.", ja: "ピッチが速く回り、接地時間も\(g)msと短かったです。速いペースに合ったフォームです。")
                     }
                     if i.cad == .below {
                         return L.s("발걸음은 평소보다 느렸지만 지면접촉이 \(g)ms로 짧았습니다.",
-                                   "Cadence was below your usual, but ground contact stayed short at \(g) ms.")
+                                   "Cadence was below your usual, but ground contact stayed short at \(g) ms.", ja: "ピッチは普段より遅めでしたが、接地時間は\(g)msと短かったです。")
                     }
                     return L.s("지면접촉이 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
-                               "Ground contact was short at \(g) ms — form that suits a fast pace.")
+                               "Ground contact was short at \(g) ms — form that suits a fast pace.", ja: "接地時間は\(g)msと短かったです。速いペースに合ったフォームです。")
                 }
             }
             if i.gct == .above {
                 switch frame {
                 case .general:
                     return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다.",
-                                          "Ground contact was \(g) ms — longer than usual."))
+                                          "Ground contact was \(g) ms — longer than usual.", ja: "接地時間が\(g)msで普段より長かったです。"))
                 case .easy:
                     return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다. 회복이 덜 된 날일 수 있습니다.",
-                                          "Ground contact was \(g) ms — longer than usual. You may not have been fully recovered."))
+                                          "Ground contact was \(g) ms — longer than usual. You may not have been fully recovered.", ja: "接地時間が\(g)msで普段より長かったです。回復しきれていない日かもしれません。"))
                 case .fast:
                     return withStride(L.s("속도를 냈는데 지면접촉이 \(g)ms로 길었습니다. 다리가 무거운 날이었을 수 있습니다.",
-                                          "You pushed the pace, but ground contact ran long at \(g) ms. Your legs may have felt heavy."))
+                                          "You pushed the pace, but ground contact ran long at \(g) ms. Your legs may have felt heavy.", ja: "スピードを出したのに接地時間が\(g)msと長かったです。脚が重い日だったのかもしれません。"))
                 }
             }
         }
@@ -132,45 +132,45 @@ enum FormNarrative {
             case .general:
                 if i.sl == .below {
                     return L.s("케이던스와 보폭이 평소보다 조금 작았습니다.",
-                               "Cadence and stride were both a little below your usual.")
+                               "Cadence and stride were both a little below your usual.", ja: "ケイデンスとストライドが普段より少し小さかったです。")
                 }
                 let sfx = i.slStr.map { " \($0)m" } ?? ""
                 return L.s("발걸음이 평소보다 느렸습니다. 보폭\(sfx)으로 페이스를 만들었습니다.",
-                           "Cadence was below your usual. Stride\(sfx) carried the pace.")
+                           "Cadence was below your usual. Stride\(sfx) carried the pace.", ja: "ピッチが普段より遅かったです。ストライド\(sfx)でペースをつくりました。")
             case .easy:
                 if i.sl == .below {
                     return L.s("발걸음도 보폭도 평소보다 조금 작았습니다. 편하게 뛴 날입니다.",
-                               "Both cadence and stride were a little below your usual. A relaxed day.")
+                               "Both cadence and stride were a little below your usual. A relaxed day.", ja: "ピッチもストライドも普段より少し小さかったです。楽に走れた日です。")
                 }
                 return L.s("발걸음이 평소보다 느렸습니다. 편한 날엔 자연스러운 변화입니다.",
-                           "Cadence was below your usual — a natural change on an easy day.")
+                           "Cadence was below your usual — a natural change on an easy day.", ja: "ピッチが普段より遅かったです。楽な日には自然な変化です。")
             case .fast:
                 if i.sl == .above, let sl = i.slStr {
                     return L.s("보폭 \(sl)m로 속도를 냈습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.",
-                               "You made the pace with a \(sl) m stride. On fast days, turning your feet over a little quicker is easier on the body.")
+                               "You made the pace with a \(sl) m stride. On fast days, turning your feet over a little quicker is easier on the body.", ja: "ストライド\(sl)mでスピードを出しました。速い日はピッチを少し速く回すほうが負担が少ないです。")
                 }
                 if i.sl == .below {
                     return L.s("발걸음과 보폭이 모두 평소보다 작아 페이스가 덜 나온 날입니다.",
-                               "Both cadence and stride were below your usual, so the pace didn't quite come.")
+                               "Both cadence and stride were below your usual, so the pace didn't quite come.", ja: "ピッチとストライドがどちらも普段より小さく、ペースが出きらなかった日です。")
                 }
                 return L.s("발걸음이 평소보다 느렸습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.",
-                           "Cadence was below your usual. On fast days, turning your feet over a little quicker is easier on the body.")
+                           "Cadence was below your usual. On fast days, turning your feet over a little quicker is easier on the body.", ja: "ピッチが普段より遅かったです。速い日はピッチを少し速く回すほうが負担が少ないです。")
             }
         }
         if i.cad == .above {
             switch frame {
             case .general:
                 if i.sl == .inRange { return cadUpStrideInRange }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual."))
+                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             case .easy:
                 if i.sl == .below {
                     return L.s("잰걸음이었습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.",
-                               "Short, quick steps. On an easy day it's fine to relax the rhythm a little.")
+                               "Short, quick steps. On an easy day it's fine to relax the rhythm a little.", ja: "小刻みな走りでした。楽な日はリズムを少し落としても大丈夫です。")
                 }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual."))
+                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             case .fast:
                 if i.sl == .inRange { return cadUpStrideInRange }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual."))
+                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             }
         }
 
@@ -178,7 +178,7 @@ enum FormNarrative {
         //         (예전엔 일반 프레임이 이 분기를 건너뛰어 보폭 이탈을 "평소와 비슷한" 문장으로 덮었다)
         if let sc = strideClause {
             if frame == .general {
-                return L.s("케이던스 \(cadStr)spm은 평소 범위였고, ", "Cadence \(cadStr) spm was within your usual range. ") + sc
+                return L.s("케이던스 \(cadStr)spm은 평소 범위였고, ", "Cadence \(cadStr) spm was within your usual range. ", ja: "ケイデンス\(cadStr)spmは普段の範囲で、") + sc
             }
             return sc
         }
@@ -188,21 +188,21 @@ enum FormNarrative {
         case .general:
             return i.slStr.map {
                 L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 평소와 비슷한 \(paceStr) 페이스가 나왔습니다.",
-                    "Cadence \(cadStr) spm and stride \($0) m produced the usual \(paceStr) pace.")
+                    "Cadence \(cadStr) spm and stride \($0) m produced the usual \(paceStr) pace.", ja: "ケイデンス\(cadStr)spm、ストライド\($0)mで、普段と同じくらいの\(paceStr)のペースになりました。")
             } ?? L.s("케이던스 \(cadStr)spm으로 평소와 비슷하게 \(paceStr) 페이스를 달렸습니다.",
-                     "A cadence of \(cadStr) spm produced the usual \(paceStr) pace.")
+                     "A cadence of \(cadStr) spm produced the usual \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmで、普段と同じくらいの\(paceStr)のペースで走りました。")
         case .easy:
             return i.slStr.map {
                 L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 평소와 같은 편한 폼이었습니다.",
-                    "Cadence \(cadStr) spm and stride \($0) m — your usual relaxed form.")
+                    "Cadence \(cadStr) spm and stride \($0) m — your usual relaxed form.", ja: "ケイデンス\(cadStr)spm、ストライド\($0)mで、普段どおりの楽なフォームでした。")
             } ?? L.s("케이던스 \(cadStr)spm으로 평소와 같은 편한 폼이었습니다.",
-                     "Cadence \(cadStr) spm — your usual relaxed form.")
+                     "Cadence \(cadStr) spm — your usual relaxed form.", ja: "ケイデンス\(cadStr)spmで、普段どおりの楽なフォームでした。")
         case .fast:
             return i.slStr.map {
                 L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 평소와 같은 폼으로 \(paceStr) 페이스를 냈습니다.",
-                    "Cadence \(cadStr) spm and stride \($0) m — your usual form carried a \(paceStr) pace.")
+                    "Cadence \(cadStr) spm and stride \($0) m — your usual form carried a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spm、ストライド\($0)mの普段どおりのフォームで\(paceStr)のペースを出しました。")
             } ?? L.s("케이던스 \(cadStr)spm으로 평소와 같은 폼으로 \(paceStr) 페이스를 냈습니다.",
-                     "Cadence \(cadStr) spm — your usual form carried a \(paceStr) pace.")
+                     "Cadence \(cadStr) spm — your usual form carried a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmの普段どおりのフォームで\(paceStr)のペースを出しました。")
         }
     }
 }
@@ -254,31 +254,36 @@ extension FormNarrative {
         if allInRange || !anyBelow {
             if !allInRange, i.gct == .above {
                 return L.s("\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었습니다.",
-                           "Ground contact ran a bit longer than usual in this \(distKmStr) km run.")
+                           "Ground contact ran a bit longer than usual in this \(distKmStr) km run.", ja: "\(distKmStr)kmを走る間、接地時間が普段より少し長かったです。")
             }
             if i.hasPhaseSentence {
                 return L.s("\(distKmStr)km를 뛰면서 평균으로는 폼이 평소 범위 안이었습니다.",
-                           "On average your form stayed within the usual range across \(distKmStr) km.")
+                           "On average your form stayed within the usual range across \(distKmStr) km.", ja: "\(distKmStr)kmを走る間、平均ではフォームが普段の範囲内でした。")
             }
             return L.s("\(distKmStr)km를 뛰면서 폼이 평소 범위 그대로였습니다.",
-                       "Your form stayed within the usual range throughout \(distKmStr) km.")
+                       "Your form stayed within the usual range throughout \(distKmStr) km.", ja: "\(distKmStr)kmを走る間、フォームは普段の範囲のままでした。")
         }
 
         // 전반/후반 변화 구절 — (한국어 본문+어간, 영어 구절)
-        struct Clause { let koBody: String; let koStem: String; let en: String; let held: Bool }
+        struct Clause { let koBody: String; let koStem: String; let en: String; let held: Bool
+            /// 일본어 — jaBody+jaStem("ケイデンスは170→175spmに"+"上がり"), 모두 유지면 jaPlain("ケイデンス172spm")을 나열
+            var jaBody = ""; var jaStem = ""; var jaPlain = "" }
         var clauses: [Clause] = []
         if let fc = i.firstHalfCadence, let sc = i.secondHalfCadence {
             let d = sc - fc
             if d >= longDistanceCadenceDeltaSPM {
                 clauses.append(Clause(koBody: "케이던스는 \(fc)→\(sc)spm으로", koStem: "올라갔",
-                                      en: "cadence rose from \(fc) to \(sc) spm", held: false))
+                                      en: "cadence rose from \(fc) to \(sc) spm", held: false,
+                                      jaBody: "ケイデンスは\(fc)→\(sc)spmに", jaStem: "上がり"))
             } else if d <= -longDistanceCadenceDeltaSPM {
                 clauses.append(Clause(koBody: "케이던스는 \(fc)→\(sc)spm으로", koStem: "내려갔",
-                                      en: "cadence dropped from \(fc) to \(sc) spm", held: false))
+                                      en: "cadence dropped from \(fc) to \(sc) spm", held: false,
+                                      jaBody: "ケイデンスは\(fc)→\(sc)spmに", jaStem: "下がり"))
             } else {
                 let v = Int((Double(fc + sc) / 2).rounded())
                 clauses.append(Clause(koBody: "케이던스 \(v)spm", koStem: "유지했",
-                                      en: "cadence held at \(v) spm", held: true))
+                                      en: "cadence held at \(v) spm", held: true,
+                                      jaBody: "ケイデンスは\(v)spmを", jaStem: "保ち", jaPlain: "ケイデンス\(v)spm"))
             }
         }
         if let fs = i.firstHalfStride, let ss = i.secondHalfStride {
@@ -286,14 +291,17 @@ extension FormNarrative {
             let fsS = String(format: "%.2f", fs), ssS = String(format: "%.2f", ss)
             if d >= longDistanceStrideDeltaM {
                 clauses.append(Clause(koBody: "보폭은 \(fsS)→\(ssS)m로", koStem: "늘었",
-                                      en: "stride lengthened from \(fsS) to \(ssS) m", held: false))
+                                      en: "stride lengthened from \(fsS) to \(ssS) m", held: false,
+                                      jaBody: "ストライドは\(fsS)→\(ssS)mに", jaStem: "伸び"))
             } else if d <= -longDistanceStrideDeltaM {
                 clauses.append(Clause(koBody: "보폭은 \(fsS)→\(ssS)m로", koStem: "줄었",
-                                      en: "stride shortened from \(fsS) to \(ssS) m", held: false))
+                                      en: "stride shortened from \(fsS) to \(ssS) m", held: false,
+                                      jaBody: "ストライドは\(fsS)→\(ssS)mに", jaStem: "縮み"))
             } else {
                 let v = String(format: "%.2f", (fs + ss) / 2)
                 clauses.append(Clause(koBody: "보폭 \(v)m", koStem: "유지했",
-                                      en: "stride held at \(v) m", held: true))
+                                      en: "stride held at \(v) m", held: true,
+                                      jaBody: "ストライドは\(v)mを", jaStem: "保ち", jaPlain: "ストライド\(v)m"))
             }
         }
 
@@ -301,9 +309,9 @@ extension FormNarrative {
             // 스플릿 데이터 없음 — 전체 평균으로 서술
             return i.slStr.map {
                 L.s("케이던스 \(i.cadStr)spm, 보폭 \($0)m로 \(i.paceStr) 페이스를 달렸습니다.",
-                    "Cadence \(i.cadStr) spm and stride \($0) m for the \(i.paceStr) pace.")
+                    "Cadence \(i.cadStr) spm and stride \($0) m for the \(i.paceStr) pace.", ja: "ケイデンス\(i.cadStr)spm、ストライド\($0)mで\(i.paceStr)のペースで走りました。")
             } ?? L.s("케이던스 \(i.cadStr)spm으로 \(i.paceStr) 페이스를 달렸습니다.",
-                     "Cadence \(i.cadStr) spm for the \(i.paceStr) pace.")
+                     "Cadence \(i.cadStr) spm for the \(i.paceStr) pace.", ja: "ケイデンス\(i.cadStr)spmで\(i.paceStr)のペースで走りました。")
         }
 
         // 한국어 본문 조립
@@ -327,6 +335,11 @@ extension FormNarrative {
             }
             ko = parts.joined(separator: " ")
         }
+        let ja: String = allHeld
+            ? clauses.map(\.jaPlain).joined(separator: "、") + "を最後まで保ちました。"
+            : clauses.enumerated().map { idx, c in
+                c.jaBody + c.jaStem + (idx == clauses.count - 1 ? "ました。" : "、")
+            }.joined()
         let en: String = {
             let joined = clauses.map(\.en).joined(separator: " and ")
             return allHeld ? "\(joined) to the end." : "\(joined)."
@@ -337,10 +350,10 @@ extension FormNarrative {
            !i.hasDistanceInsight {
             let delta = String(format: "%.1f", i.distKm - typical)
             return L.s("평소보다 \(delta)km 긴 \(i.typeName)입니다. \(ko)",
-                       "This \(i.typeName) is \(delta) km longer than usual — \(en)")
+                       "This \(i.typeName) is \(delta) km longer than usual — \(en)", ja: "普段より\(delta)km長い\(i.typeName)です。\(ja)")
         }
         return L.s("\(distKmStr)km를 뛰면서 \(ko)",
-                   "Over \(distKmStr) km, \(en)")
+                   "Over \(distKmStr) km, \(en)", ja: "\(distKmStr)kmを走る間、\(ja)")
     }
 }
 
@@ -413,9 +426,9 @@ extension FormNarrative {
     static func hrSecondHalfRiseCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared
         if type == .buildUp {
-            return L.s("후반에 페이스를 올려 심박도 올랐습니다", "HR rose as the pace picked up in the 2nd half")
+            return L.s("후반에 페이스를 올려 심박도 올랐습니다", "HR rose as the pace picked up in the 2nd half", ja: "後半にペースを上げて心拍も上がりました")
         }
-        return L.s("후반에 심박이 올랐습니다", "HR climbed in the 2nd half")
+        return L.s("후반에 심박이 올랐습니다", "HR climbed in the 2nd half", ja: "後半に心拍が上がりました")
     }
 
     /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 변화가 작을 때(−5 < Δ < 8).
@@ -423,18 +436,18 @@ extension FormNarrative {
     static func hrSteadyCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared
         if type == .buildUp {
-            return L.s("페이스를 올린 만큼만 올랐습니다", "HR rose only as much as the pace")
+            return L.s("페이스를 올린 만큼만 올랐습니다", "HR rose only as much as the pace", ja: "ペースを上げた分だけ上がりました")
         }
-        return L.s("끝까지 안정적이었습니다", "Steady throughout")
+        return L.s("끝까지 안정적이었습니다", "Steady throughout", ja: "最後まで安定していました")
     }
 
     /// 심박존 도넛 캡션 — 4존 이상이 최다 구간일 때.
     static func highIntensityZoneCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared
         if isPlannedHighIntensity(type) {
-            return L.s("고강도 구간이 많았습니다 · 의도한 강도", "High-intensity effort · intended")
+            return L.s("고강도 구간이 많았습니다 · 의도한 강도", "High-intensity effort · intended", ja: "高強度域が多かったです · 意図した強度")
         }
-        return L.s("고강도 구간이 많았습니다", "High-intensity effort")
+        return L.s("고강도 구간이 많았습니다", "High-intensity effort", ja: "高強度域が多かったです")
     }
 
     /// 한 줄 요약 — 고강도 비율 40% 이상일 때.
@@ -442,19 +455,19 @@ extension FormNarrative {
         let L = AppLanguage.shared
         if isPlannedHighIntensity(type) {
             return L.s("고강도 구간이 많았습니다. 다음 러닝은 이지런으로 하세요.",
-                       "High-intensity run. Make the next run an easy one.")
+                       "High-intensity run. Make the next run an easy one.", ja: "高強度域が多かったです。次のランはイージーランにしてください。")
         }
         return L.s("고강도 구간이 많았습니다. 다음 러닝은 이지런으로 하세요.",
-                   "High-intensity run. Make the next run an easy one.")
+                   "High-intensity run. Make the next run an easy one.", ja: "高強度域が多かったです。次のランはイージーランにしてください。")
     }
 
     /// 후반까지 폼이 버텼을 때의 알약 문구(전·후반 GCT +10ms 미만 또는 케이던스 −2spm 미만).
     static func formHeldCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared
         if isPlannedFastFinish(type) {
-            return L.s("후반 가속에도 폼이 버텼습니다", "Form held through the fast finish")
+            return L.s("후반 가속에도 폼이 버텼습니다", "Form held through the fast finish", ja: "後半の加速でもフォームが持ちこたえました")
         }
-        return L.s("장거리인데 후반까지 폼이 버텼습니다", "Form held through the long run")
+        return L.s("장거리인데 후반까지 폼이 버텼습니다", "Form held through the long run", ja: "長距離でも後半までフォームが持ちこたえました")
     }
 
     /// 후반이 초반보다 이만큼(초/km) 이상 빨랐으면 범위 이탈의 원인을 페이스로 본다 — 종류가 후반 가속이 아니어도.
@@ -469,17 +482,17 @@ extension FormNarrative {
         let L = AppLanguage.shared
         if isPlannedFastFinish(type) || (lateFasterSec ?? 0) >= belowRangeLateFasterSec {
             if metric == .groundContact {
-                return L.s("후반 페이스가 빨라 범위 아래에 머무릅니다", "Faster late pace — contact stays below the range")
+                return L.s("후반 페이스가 빨라 범위 아래에 머무릅니다", "Faster late pace — contact stays below the range", ja: "後半のペースが速く、範囲の下にとどまります")
             }
-            return L.s("후반 페이스가 빨라 범위를 벗어났습니다", "Faster late pace — outside the range")
+            return L.s("후반 페이스가 빨라 범위를 벗어났습니다", "Faster late pace — outside the range", ja: "後半のペースが速く、範囲を外れました")
         }
         switch metric {
         case .groundContact:
-            return L.s("평소보다 짧게 유지됐습니다", "Contact stayed shorter than usual")
+            return L.s("평소보다 짧게 유지됐습니다", "Contact stayed shorter than usual", ja: "普段より短く保たれました")
         case .verticalOsc:
-            return L.s("평소보다 낮게 유지됐습니다", "Bounce stayed lower than usual")
+            return L.s("평소보다 낮게 유지됐습니다", "Bounce stayed lower than usual", ja: "普段より低く保たれました")
         case .cadence, .stride:
-            return L.s("장거리라 평소 범위 아래에 머무릅니다", "Long run — staying below normal range is natural")
+            return L.s("장거리라 평소 범위 아래에 머무릅니다", "Long run — staying below normal range is natural", ja: "長距離のため普段の範囲の下にとどまります")
         }
     }
 }

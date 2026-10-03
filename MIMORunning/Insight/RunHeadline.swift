@@ -15,10 +15,10 @@ struct RunHeadline: Equatable {
         var label: String? {
             let L = AppLanguage.shared
             switch self {
-            case .form:     return L.s("러닝폼", "Form")
-            case .distance: return L.s("거리 적응", "Distance")
-            case .heart:    return L.s("심박", "Heart rate")
-            case .load:     return L.s("훈련부하", "Training load")
+            case .form:     return L.s("러닝폼", "Form", ja: "ランニングフォーム")
+            case .distance: return L.s("거리 적응", "Distance", ja: "距離への適応")
+            case .heart:    return L.s("심박", "Heart rate", ja: "心拍")
+            case .load:     return L.s("훈련부하", "Training load", ja: "練習負荷")
             case .none:     return nil
             }
         }
@@ -92,66 +92,66 @@ struct RunHeadline: Equatable {
         }
         // 2 쉬어야 할 신호
         if i.acuteChronic == .high || i.acuteChronic == .veryHigh, let l = line(.load) {
-            out.append(Candidate(source: .restSignal, title: L.s("쌓이는 러닝", "Stacking Up"), fact: l.state, axis: .load))
+            out.append(Candidate(source: .restSignal, title: L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン"), fact: l.state, axis: .load))
         }
         if i.streakDays >= 4 && !planEasy {
-            out.append(Candidate(source: .restSignal, title: L.s("쌓이는 러닝", "Stacking Up"),
-                                 fact: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row"), axis: .load))
+            out.append(Candidate(source: .restSignal, title: L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン"),
+                                 fact: L.s("\(i.streakDays)일 연속", "\(i.streakDays) days in a row", ja: "\(i.streakDays)日連続"), axis: .load))
         }
         if let f = i.form, case .faded = f.late {
-            out.append(Candidate(source: .restSignal, title: L.s("끝까지 달린 러닝", "Ran It Out"),
+            out.append(Candidate(source: .restSignal, title: L.s("끝까지 달린 러닝", "Ran It Out", ja: "最後まで走りきったラン"),
                                  fact: FormPhase.shortState(f), axis: .form))
         }
         // 3 좋은 신호
         // 역치 상승 — 이 러닝이 들어가며 역치 페이스 추정이 문턱 이상 빨라졌다(좋은 신호 맨 앞)
         if let b = threshold?.beforePace, let a = threshold?.afterPace, b - a >= MR_THRESHOLD_IMPROVE_SEC {
-            out.append(Candidate(source: .goodSignal, title: L.s("역치를 밀어올린 러닝", "Raising the Threshold"),
+            out.append(Candidate(source: .goodSignal, title: L.s("역치를 밀어올린 러닝", "Raising the Threshold", ja: "閾値を押し上げたラン"),
                                  fact: L.s("역치 페이스 추정 \(mrFormatPace(b)) → \(mrFormatPace(a))",
-                                           "Threshold pace est. \(mrFormatPace(b)) → \(mrFormatPace(a))"),
+                                           "Threshold pace est. \(mrFormatPace(b)) → \(mrFormatPace(a))", ja: "推定閾値ペース \(mrFormatPace(b)) → \(mrFormatPace(a))"),
                                  axis: .none))
         }
         if let e = efficiency, e.category == .efficiency, e.tone == .good, let h = e.highlights.first {
-            out.append(Candidate(source: .goodSignal, title: L.s("가벼워진 러닝", "Lighter Run"),
-                                 fact: L.s("같은 페이스에 심박 \(h) 낮음", "HR \(h) lower at the same pace"), axis: .heart))
+            out.append(Candidate(source: .goodSignal, title: L.s("가벼워진 러닝", "Lighter Run", ja: "軽くなったラン"),
+                                 fact: L.s("같은 페이스에 심박 \(h) 낮음", "HR \(h) lower at the same pace", ja: "同じペースで心拍が\(h)低い"), axis: .heart))
         }
         if let f = i.form, f.late == .held {
-            out.append(Candidate(source: .goodSignal, title: L.s("끝까지 버틴 러닝", "Held to the End"),
-                                 fact: L.s("폼은 끝까지 평소 범위", "Form stayed in range to the end"), axis: .form,
+            out.append(Candidate(source: .goodSignal, title: L.s("끝까지 버틴 러닝", "Held to the End", ja: "最後まで持ちこたえたラン"),
+                                 fact: L.s("폼은 끝까지 평소 범위", "Form stayed in range to the end", ja: "フォームは最後まで普段の範囲"), axis: .form,
                                  titleEligible: i.distKm >= heldTitleMinKm))
         }
         if FormNarrative.isPlannedHighIntensity(i.workoutType), let l = line(.heart), l.tone == .good {
-            out.append(Candidate(source: .goodSignal, title: L.s("한계를 미는 러닝", "Pushing the Edge"), fact: l.state, axis: .heart))
+            out.append(Candidate(source: .goodSignal, title: L.s("한계를 미는 러닝", "Pushing the Edge", ja: "限界を押し広げるラン"), fact: l.state, axis: .heart))
         }
         if i.distanceRank == 1, let n = i.distanceSampleCount, n >= 5 {
-            out.append(Candidate(source: .goodSignal, title: L.s("경계를 넓힌 러닝", "Expanding Boundaries"),
-                                 fact: L.s("최근 \(n)회 중 가장 긴 거리", "Longest of your last \(n) runs"), axis: .distance))
+            out.append(Candidate(source: .goodSignal, title: L.s("경계를 넓힌 러닝", "Expanding Boundaries", ja: "境界を広げたラン"),
+                                 fact: L.s("최근 \(n)회 중 가장 긴 거리", "Longest of your last \(n) runs", ja: "直近\(n)回で最長の距離"), axis: .distance))
         }
         // 템포런의 역치 대비 — 두 번째 사실 전용(좋은 신호 맨 끝). 느리면 +, 빠르면 −
         if i.workoutType == .tempo, let gap = threshold?.tempoGapSec {
             let sec = Int(abs(gap).rounded())
             let sign = gap > 0 ? "+" : "−"
             let fact = abs(gap) < 1
-                ? L.s("본인 역치 페이스 그대로", "Right at your threshold pace")
-                : L.s("본인 역치 대비 \(sign)\(sec)초/km", "\(sign)\(sec)s/km vs your threshold")
+                ? L.s("본인 역치 페이스 그대로", "Right at your threshold pace", ja: "自分の閾値ペースどおり")
+                : L.s("본인 역치 대비 \(sign)\(sec)초/km", "\(sign)\(sec)s/km vs your threshold", ja: "自分の閾値比 \(sign)\(sec)秒/km")
             out.append(Candidate(source: .goodSignal, title: "", fact: fact, axis: .none, titleEligible: false))
         }
         // 4 가벼운 주의
         if let f = i.form, case .heavier = f.late {
-            out.append(Candidate(source: .mildCaution, title: L.s("끝까지 달린 러닝", "Ran It Out"),
+            out.append(Candidate(source: .mildCaution, title: L.s("끝까지 달린 러닝", "Ran It Out", ja: "最後まで走りきったラン"),
                                  fact: FormPhase.shortState(f), axis: .form))
         }
         if let l = line(.heart), l.tone == .neutral {
-            out.append(Candidate(source: .mildCaution, title: L.s("쌓이는 러닝", "Stacking Up"), fact: l.state, axis: .heart))
+            out.append(Candidate(source: .mildCaution, title: L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン"), fact: l.state, axis: .heart))
         }
         // 5 맥락
         if planEasy, let p = i.planPhase {
-            out.append(Candidate(source: .context, title: L.s("숨 고르는 러닝", "Catching Your Breath"),
-                                 fact: p == "테이퍼" ? L.s("대회 계획 테이퍼 주", "Race plan: taper week")
-                                                    : L.s("대회 계획 회복 주", "Race plan: recovery week"),
+            out.append(Candidate(source: .context, title: L.s("숨 고르는 러닝", "Catching Your Breath", ja: "息を整えるラン"),
+                                 fact: p == "테이퍼" ? L.s("대회 계획 테이퍼 주", "Race plan: taper week", ja: "レース計画: テーパー週")
+                                                    : L.s("대회 계획 회복 주", "Race plan: recovery week", ja: "レース計画: 回復週"),
                                  axis: .load))
         }
         if i.workoutType == .easy, let l = line(.heart), l.tone == .good {
-            out.append(Candidate(source: .context, title: L.s("숨 고르는 러닝", "Catching Your Breath"), fact: l.state, axis: .heart))
+            out.append(Candidate(source: .context, title: L.s("숨 고르는 러닝", "Catching Your Breath", ja: "息を整えるラン"), fact: l.state, axis: .heart))
         }
         if let ins = insight, ins.theme == .consistent {
             out.append(Candidate(source: .context, title: ins.title, fact: ins.detail, axis: .none))

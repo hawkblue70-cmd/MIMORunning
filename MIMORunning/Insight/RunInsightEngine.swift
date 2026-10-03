@@ -554,30 +554,30 @@ enum RunInsightEngine {
         let absDiff = Int(abs(diff).rounded())
         let countStr   = "\(workSegs.count)"
         let avgPaceStr = String(format: "%d'%02d\"", Int(mean.rounded()) / 60, Int(mean.rounded()) % 60)
-        let diffStr    = "\(absDiff)초"
+        let diffStr    = AppLanguage.shared.s("\(absDiff)초", "\(absDiff)s", ja: "\(absDiff)秒")
 
         let tone: InsightTone; let badge: String; let msg: String
         if absDiff <= 10 {
-            tone = .good; badge = L.s("일관적", "Consistent")
+            tone = .good; badge = L.s("일관적", "Consistent", ja: "安定")
             msg = L.s(
                 "\(countStr)회 반복 평균 \(avgPaceStr) — 첫 구간과 마지막 차이 \(diffStr)로 일관됐습니다.",
-                "\(countStr) reps at avg \(avgPaceStr) — only \(diffStr) between first and last. Consistent!"
+                "\(countStr) reps at avg \(avgPaceStr) — only \(diffStr) between first and last. Consistent!", ja: "\(countStr)本の平均 \(avgPaceStr) — 最初と最後の差は\(diffStr)で安定していました。"
             )
         } else if absDiff <= 20 {
-            tone = .neutral; badge = L.s("보통", "Moderate")
+            tone = .neutral; badge = L.s("보통", "Moderate", ja: "標準")
             msg = L.s(
                 "\(countStr)회 반복 평균 \(avgPaceStr) — 첫 구간과 마지막 차이 \(diffStr)입니다.",
-                "\(countStr) reps at avg \(avgPaceStr) — \(diffStr) between first and last rep."
+                "\(countStr) reps at avg \(avgPaceStr) — \(diffStr) between first and last rep.", ja: "\(countStr)本の平均 \(avgPaceStr) — 最初と最後の差は\(diffStr)です。"
             )
         } else {
-            tone = .caution; badge = L.s("참고", "Note")
+            tone = .caution; badge = L.s("참고", "Note", ja: "参考")
             msg = L.s(
                 "\(countStr)회 반복 평균 \(avgPaceStr) — 마지막 구간이 \(diffStr) 느려졌습니다. 세트 수나 강도 조정을 시도해 볼 수 있습니다.",
-                "\(countStr) reps at avg \(avgPaceStr) — last rep was \(diffStr) slower. Consider adjusting set count or intensity."
+                "\(countStr) reps at avg \(avgPaceStr) — last rep was \(diffStr) slower. Consider adjusting set count or intensity.", ja: "\(countStr)本の平均 \(avgPaceStr) — 最後の1本が\(diffStr)遅くなりました。本数や強度を調整してみるのも一案です。"
             )
         }
         return RunInsight(category: .intervalQuality, tone: tone, badge: badge,
-                          message: msg, highlights: [countStr + "회", avgPaceStr])
+                          message: msg, highlights: [AppLanguage.shared.s(countStr + "회", countStr, ja: countStr + "本"), avgPaceStr])
     }
 
     private static func intervalFadeInsight(workSegs: [RunSegment]) -> RunInsight? {
@@ -593,12 +593,12 @@ enum RunInsightEngine {
         let diffSec = Int((avgLast - avgFirst).rounded())
         guard diffSec > 10 else { return nil }  // < 10s 차이는 무시
 
-        let diffStr = "\(diffSec)초"
+        let diffStr = AppLanguage.shared.s("\(diffSec)초", "\(diffSec)s", ja: "\(diffSec)秒")
         let msg = L.s(
             "마지막 2구간이 앞부분보다 평균 \(diffStr) 느려졌습니다. 세트 수나 회복 시간 조정을 시도해 볼 수 있습니다.",
-            "Last 2 reps averaged \(diffStr) slower than earlier reps. Consider adjusting set count or recovery time."
+            "Last 2 reps averaged \(diffStr) slower than earlier reps. Consider adjusting set count or recovery time.", ja: "最後の2本が前半より平均\(diffStr)遅くなりました。本数や回復時間を調整してみるのも一案です。"
         )
-        return RunInsight(category: .intervalQuality, tone: .caution, badge: L.s("후반 처짐", "Late Fade"),
+        return RunInsight(category: .intervalQuality, tone: .caution, badge: L.s("후반 처짐", "Late Fade", ja: "後半の失速"),
                           message: msg, highlights: [diffStr])
     }
 
@@ -622,10 +622,10 @@ enum RunInsightEngine {
         let avgDrop = hrDrops.reduce(0, +) / hrDrops.count
         let dropStr = "\(avgDrop)"
         let tone: InsightTone = avgDrop >= 20 ? .good : .neutral
-        let badge = tone == .good ? L.s("회복 우수", "Good Recovery") : L.s("회복 능력", "Recovery")
+        let badge = tone == .good ? L.s("회복 우수", "Good Recovery", ja: "回復良好") : L.s("회복 능력", "Recovery", ja: "回復力")
         let msg = L.s(
             "회복 구간에서 심박이 평균 \(dropStr)bpm 떨어졌습니다.",
-            "HR dropped an average of \(dropStr) bpm during recovery intervals."
+            "HR dropped an average of \(dropStr) bpm during recovery intervals.", ja: "回復区間で心拍が平均\(dropStr)bpm下がりました。"
         )
         return RunInsight(category: .recovery, tone: tone, badge: badge,
                           message: msg, highlights: [dropStr + "bpm"])
@@ -641,9 +641,9 @@ enum RunInsightEngine {
         let totalStr = String(format: "%.1f", totalKm)
         let msg = L.s(
             "운동 구간 합계 \(workStr)km / 회복 포함 총 \(totalStr)km",
-            "Work intervals total \(workStr) km / \(totalStr) km incl. recovery"
+            "Work intervals total \(workStr) km / \(totalStr) km incl. recovery", ja: "本練習の合計\(workStr)km / 回復込みの合計\(totalStr)km"
         )
-        return RunInsight(category: .intervalQuality, tone: .neutral, badge: L.s("운동량", "Volume"),
+        return RunInsight(category: .intervalQuality, tone: .neutral, badge: L.s("운동량", "Volume", ja: "運動量"),
                           message: msg, highlights: [workStr + "km", totalStr + "km"])
     }
 
@@ -660,22 +660,22 @@ enum RunInsightEngine {
         let sd    = (paces.map { pow($0 - mean, 2) }.reduce(0.0, +) / Double(paces.count)).squareRoot()
         let sdInt = Int(sd.rounded())
         let avgPaceStr = String(format: "%d'%02d\"", Int(mean.rounded()) / 60, Int(mean.rounded()) % 60)
-        let sdStr      = "\(sdInt)초"
+        let sdStr      = AppLanguage.shared.s("\(sdInt)초", "\(sdInt)s", ja: "\(sdInt)秒")
 
         let tone: InsightTone; let badge: String; let msg: String
         if sdInt <= 10 {
-            tone = .good; badge = L.s("안정적", "Steady")
+            tone = .good; badge = L.s("안정적", "Steady", ja: "安定")
             msg = L.s("평균 템포 페이스 \(avgPaceStr), 편차 \(sdStr) — 안정적으로 유지했습니다.",
-                      "Avg tempo pace \(avgPaceStr), SD \(sdStr) — very steady.")
+                      "Avg tempo pace \(avgPaceStr), SD \(sdStr) — very steady.", ja: "平均テンポペース \(avgPaceStr)、ばらつき\(sdStr) — 安定して保ちました。")
         } else if sdInt <= 20 {
-            tone = .neutral; badge = L.s("페이스 유지", "Pacing")
+            tone = .neutral; badge = L.s("페이스 유지", "Pacing", ja: "ペース維持")
             msg = L.s("평균 템포 페이스 \(avgPaceStr), 편차 \(sdStr)입니다.",
-                      "Avg tempo pace \(avgPaceStr), SD \(sdStr).")
+                      "Avg tempo pace \(avgPaceStr), SD \(sdStr).", ja: "平均テンポペース \(avgPaceStr)、ばらつき\(sdStr)です。")
         } else {
-            tone = .caution; badge = L.s("페이스 변동", "Variable")
+            tone = .caution; badge = L.s("페이스 변동", "Variable", ja: "ペース変動")
             msg = L.s(
                 "평균 페이스 \(avgPaceStr)이지만 편차 \(sdStr)으로 다소 변동이 있었습니다. 일정한 리듬을 시도해 볼 수 있습니다.",
-                "Avg pace \(avgPaceStr) but SD \(sdStr) shows some variation. A steadier rhythm may help next time."
+                "Avg pace \(avgPaceStr) but SD \(sdStr) shows some variation. A steadier rhythm may help next time.", ja: "平均ペース\(avgPaceStr)ですが、ばらつき\(sdStr)でやや変動がありました。一定のリズムを意識してみるのも一案です。"
             )
         }
         return RunInsight(category: .intensity, tone: tone, badge: badge,
@@ -705,19 +705,19 @@ enum RunInsightEngine {
 
         // "올랐어요"는 후반이 실제로 오른(양수) 경우에만 — 큰 하락까지 상승으로 잘못 읽히면 안 된다.
         let tone: InsightTone = driftPct > 6 ? .neutral : .good
-        let badge = tone == .good ? L.s("드리프트 낮음", "Low Drift") : L.s("심박 드리프트", "Cardiac Drift")
+        let badge = tone == .good ? L.s("드리프트 낮음", "Low Drift", ja: "ドリフト小") : L.s("심박 드리프트", "Cardiac Drift", ja: "心拍ドリフト")
         var msg: String
         if driftPct > 6 {
             msg = L.s("후반 심박이 전반보다 \(driftStr) 올랐습니다.",
-                      "HR rose \(driftStr) in the second half.")
+                      "HR rose \(driftStr) in the second half.", ja: "後半の心拍が前半より\(driftStr)上がりました。")
             // 더운 날엔 드리프트 자체가 정상 범위 — 과장된 경고로 읽히지 않게 한마디 붙인다
             if heatHR.delta(activity.temperatureC) >= 5, driftPct <= 10, let t = activity.temperatureC {
                 let tempStr = "\(Int(t.rounded()))°C"
-                msg += L.s(" \(tempStr)에서는 흔한 폭입니다.", " Common at \(tempStr).")
+                msg += L.s(" \(tempStr)에서는 흔한 폭입니다.", " Common at \(tempStr).", ja: " \(tempStr)ではよくある幅です。")
             }
         } else {
             msg = L.s("전반/후반 심박 차이 \(driftStr) — 카디악 드리프트 적습니다.",
-                      "Front/back HR drift \(driftStr) — minimal cardiac drift.")
+                      "Front/back HR drift \(driftStr) — minimal cardiac drift.", ja: "前半/後半の心拍差\(driftStr) — カーディアックドリフトは小さいです。")
         }
         return RunInsight(category: category, tone: tone, badge: badge,
                           message: msg, highlights: [driftStr])
@@ -737,23 +737,23 @@ enum RunInsightEngine {
             guard heatHR.explains(tempC: activity.temperatureC), let t = activity.temperatureC else { return "" }
             let tempStr = "\(Int(t.rounded()))°C"
             return heatHR.isFallback
-                ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))")
-                : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
+                ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))", ja: " (一般的な暑さの影響を考慮 · \(tempStr))")
+                : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))", ja: " (\(tempStr)を考慮)")
         }()
 
         if pct > 75 {
             let msg = L.s(
                 "이지런 기준 심박이 \(pctStr)로 다소 높았습니다 — 더 여유롭게 가도 좋습니다.\(heatSuffix)",
-                "HR at \(pctStr) of max for an easy run — it's fine to go a bit easier.\(heatSuffix)"
+                "HR at \(pctStr) of max for an easy run — it's fine to go a bit easier.\(heatSuffix)", ja: "イージーランとしては心拍が\(pctStr)とやや高めでした — もっとゆったりでも大丈夫です。\(heatSuffix)"
             )
-            return RunInsight(category: .intensity, tone: .caution, badge: L.s("강도 참고", "Effort Note"),
+            return RunInsight(category: .intensity, tone: .caution, badge: L.s("강도 참고", "Effort Note", ja: "強度の参考"),
                               message: msg, highlights: [pctStr])
         }
         let msg = L.s(
             "심박 \(pctStr)로 여유 있는 강도의 이지런이었습니다.\(heatSuffix)",
-            "HR at \(pctStr) of max — good easy effort level.\(heatSuffix)"
+            "HR at \(pctStr) of max — good easy effort level.\(heatSuffix)", ja: "心拍\(pctStr)で、ゆとりのある強度のイージーランでした。\(heatSuffix)"
         )
-        return RunInsight(category: .intensity, tone: .good, badge: L.s("좋은 강도", "Good Effort"),
+        return RunInsight(category: .intensity, tone: .good, badge: L.s("좋은 강도", "Good Effort", ja: "適切な強度"),
                           message: msg, highlights: [pctStr])
     }
 
@@ -770,21 +770,21 @@ enum RunInsightEngine {
 
         let ratio   = Double(decreasingPairs) / Double(paces.count - 1)
         let gainSec = Int((paces[0] - paces[paces.count - 1]).rounded())
-        let gainStr = "\(gainSec)초"
+        let gainStr = AppLanguage.shared.s("\(gainSec)초", "\(gainSec)s", ja: "\(gainSec)秒")
 
         if gainSec > 0, ratio >= 0.6 {
             let msg = L.s(
                 "전체적으로 \(gainStr) 빨라졌습니다 — 빌드업이 잘 됐습니다.",
-                "Overall \(gainStr) faster from start to finish — great build-up execution."
+                "Overall \(gainStr) faster from start to finish — great build-up execution.", ja: "全体で\(gainStr)速くなりました — ビルドアップがうまくいきました。"
             )
-            return RunInsight(category: .intensity, tone: .good, badge: L.s("빌드업 성공", "Build-Up ✓"),
+            return RunInsight(category: .intensity, tone: .good, badge: L.s("빌드업 성공", "Build-Up ✓", ja: "ビルドアップ成功"),
                               message: msg, highlights: [gainStr])
         }
         let msg = L.s(
             "이번 빌드업은 구간별 속도 변화가 일정하지 않았습니다. 다음에 점진적 가속을 시도해 볼 수 있습니다.",
-            "Pacing varied in this build-up. A more gradual acceleration may help next time."
+            "Pacing varied in this build-up. A more gradual acceleration may help next time.", ja: "今回のビルドアップは区間ごとの速度変化が一定ではありませんでした。次は段階的な加速を試してみるのも一案です。"
         )
-        return RunInsight(category: .intensity, tone: .neutral, badge: L.s("페이스 패턴", "Pace Pattern"),
+        return RunInsight(category: .intensity, tone: .neutral, badge: L.s("페이스 패턴", "Pace Pattern", ja: "ペースパターン"),
                           message: msg, highlights: [])
     }
 
@@ -828,25 +828,25 @@ enum RunInsightEngine {
             let tempStr = tempC.map { "\(Int($0.rounded()))°C" } ?? ""
             parts.append(L.s(
                 "평균 페이스 \(currentStr) — \(tempStr)를 감안하면 평소와 같습니다.",
-                "Avg pace \(currentStr) — on par with recent average for \(tempStr)."
+                "Avg pace \(currentStr) — on par with recent average for \(tempStr).", ja: "平均ペース\(currentStr) — \(tempStr)を考慮すると普段どおりです。"
             ))
             tone = .good
         } else {
             let absDiff = abs(diffToShow)
-            let diffStr = "\(Int(absDiff.rounded()))초"
+            let diffStr = AppLanguage.shared.s("\(Int(absDiff.rounded()))초", "\(Int(absDiff.rounded()))s", ja: "\(Int(absDiff.rounded()))秒")
             highlights.append(diffStr)
-            let direction = diffToShow < 0 ? L.s("빨랐습니다", "faster") : L.s("느렸습니다", "slower")
+            let direction = diffToShow < 0 ? L.s("빨랐습니다", "faster", ja: "速かったです") : L.s("느렸습니다", "slower", ja: "遅かったです")
             tone = diffToShow < 0 ? .good : .neutral
             if heatExplains {
                 let tempStr = tempC.map { "\(Int($0.rounded()))°C" } ?? ""
                 parts.append(L.s(
                     "평균 페이스 \(currentStr) — \(tempStr) 감안해도 \(diffStr) \(direction).",
-                    "Avg pace \(currentStr) — \(diffStr) \(direction) even after heat adjustment."
+                    "Avg pace \(currentStr) — \(diffStr) \(direction) even after heat adjustment.", ja: "平均ペース\(currentStr) — \(tempStr)を考慮しても\(diffStr)\(direction)。"
                 ))
             } else {
                 parts.append(L.s(
                     "평균 페이스 \(currentStr) — 최근 평균보다 \(diffStr) \(direction).",
-                    "Avg pace \(currentStr) — \(diffStr) \(direction) than recent average."
+                    "Avg pace \(currentStr) — \(diffStr) \(direction) than recent average.", ja: "平均ペース\(currentStr) — 最近の平均より\(diffStr)\(direction)。"
                 ))
             }
         }
@@ -862,7 +862,7 @@ enum RunInsightEngine {
             highlights.append("\(avgHR)bpm")
         }
 
-        let badge = heatExplains ? L.s("기온 감안", "Heat-Adjusted") : L.s("페이스 비교", "Pace vs History")
+        let badge = heatExplains ? L.s("기온 감안", "Heat-Adjusted", ja: "気温を考慮") : L.s("페이스 비교", "Pace vs History", ja: "ペース比較")
         return RunInsight(category: .intensity, tone: tone, badge: badge,
                           message: parts.joined(separator: " "), highlights: highlights)
     }
@@ -1072,7 +1072,7 @@ enum RunInsightEngine {
                                    hrSamples: hrSamples, maxHR: maxHR) else { return nil }
         let L = AppLanguage.shared
         let suffix = L.s(" 당일 컨디션이나 날씨 영향일 수도 있습니다.",
-                         " Day-of conditions or weather may also have played a role.")
+                         " Day-of conditions or weather may also have played a role.", ja: " 当日のコンディションや天候の影響かもしれません。")
         let fkmStr     = fa.fadeStartKm.map { String(format: "%.1f", $0) + "km" }
         let recentStr  = String(format: "%.1f", fa.recentLongRunKm) + "km"
 
@@ -1080,57 +1080,62 @@ enum RunInsightEngine {
 
         switch fa.cause {
         case .overpace:
-            tone = .caution; badge = L.s("페이스 배분", "Pacing")
+            tone = .caution; badge = L.s("페이스 배분", "Pacing", ja: "ペース配分")
             if let fkm = fkmStr {
                 msg = L.s(
                     "초반 페이스가 최근 평균보다 빨랐고 심박도 높게 시작했습니다. \(fkm) 부터 감속이 시작된 걸 보면 초반 배분이 원인일 가능성이 있습니다." + suffix,
-                    "Early pace was faster than recent average and HR started high. Deceleration appeared around \(fkm), which may suggest pacing was too aggressive early on." + suffix
+                    "Early pace was faster than recent average and HR started high. Deceleration appeared around \(fkm), which may suggest pacing was too aggressive early on." + suffix,
+                    ja: "序盤のペースが最近の平均より速く、心拍も高く始まりました。\(fkm)から減速が始まったことから、序盤の配分が原因の可能性があります。" + suffix
                 )
                 highlights = [fkm]
             } else {
                 msg = L.s(
                     "초반 페이스가 최근 평균보다 빨랐고 심박도 높게 시작했습니다. 초반 배분이 원인일 가능성이 있습니다." + suffix,
-                    "Early pace was faster than recent average and HR started high. This may suggest pacing was too aggressive early on." + suffix
+                    "Early pace was faster than recent average and HR started high. This may suggest pacing was too aggressive early on." + suffix,
+                    ja: "序盤のペースが最近の平均より速く、心拍も高く始まりました。序盤の配分が原因の可能性があります。" + suffix
                 )
             }
 
         case .threshold:
-            tone = .caution; badge = L.s("강도", "Intensity")
+            tone = .caution; badge = L.s("강도", "Intensity", ja: "強度")
             msg = L.s(
                 "전반부터 심박이 역치 구간(최대심박 85% 이상)에 머물렀습니다. 그 강도를 오래 유지하기 어려워 후반에 느려진 것으로 보입니다." + suffix,
-                "HR stayed in the threshold zone (85%+ of max HR) from the start. Sustaining that intensity may have led to the slowdown." + suffix
+                "HR stayed in the threshold zone (85%+ of max HR) from the start. Sustaining that intensity may have led to the slowdown." + suffix,
+                ja: "前半から心拍が閾値域(最大心拍の85%以上)にとどまりました。その強度を長く保つのが難しく、後半に遅くなったとみられます。" + suffix
             )
 
         case .enduranceGap:
-            tone = .neutral; badge = L.s("지구력", "Endurance")
+            tone = .neutral; badge = L.s("지구력", "Endurance", ja: "持久力")
             let ratio = fa.recentLongRunKm > 0 ? activity.distance / 1000 / fa.recentLongRunKm : 0
             let ratioStr = String(format: "%.1f", ratio)
             // [106] 문구: 관찰 수준만 — 메커니즘 표현 없음
             msg = L.s(
                 "준비한 최장 거리(\(recentStr))의 \(ratioStr)배를 뛰었습니다." + suffix,
-                "Today's run was \(ratioStr)× your longest preparation run (\(recentStr))." + suffix
+                "Today's run was \(ratioStr)× your longest preparation run (\(recentStr))." + suffix,
+                ja: "準備した最長距離(\(recentStr))の\(ratioStr)倍を走りました。" + suffix
             )
             highlights = [recentStr]
 
         case .mixed:
-            tone = .neutral; badge = L.s("복합", "Mixed")
+            tone = .neutral; badge = L.s("복합", "Mixed", ja: "複合")
             msg = L.s(
                 "초반 강도와 지구력 요인이 함께 작용한 것으로 보입니다." + suffix,
-                "Both early intensity and endurance factors may have contributed." + suffix
+                "Both early intensity and endurance factors may have contributed." + suffix,
+                ja: "序盤の強度と持久力の要因が重なったとみられます。" + suffix
             )
 
         case .unclear:
-            tone = .neutral; badge = L.s("참고", "Note")
+            tone = .neutral; badge = L.s("참고", "Note", ja: "参考")
             if let fkm = fkmStr {
                 msg = L.s(
                     "\(fkm) 부터 감속이 있었습니다. 컨디션·기온·보급 등 기록에 없는 요인도 영향을 줬을 수 있습니다.",
-                    "Deceleration appeared around \(fkm). Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect."
+                    "Deceleration appeared around \(fkm). Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect.", ja: "\(fkm)から減速がありました。コンディション・気温・補給など記録にない要因も影響した可能性があります。"
                 )
                 highlights = [fkm]
             } else {
                 msg = L.s(
                     "후반 감속이 있었습니다. 컨디션·기온·보급 등 기록에 없는 요인도 영향을 줬을 수 있습니다.",
-                    "Deceleration in the second half. Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect."
+                    "Deceleration in the second half. Factors not in the record — such as conditions, temperature, or fueling — may also have had an effect.", ja: "後半に減速がありました。コンディション・気温・補給など記録にない要因も影響した可能性があります。"
                 )
             }
         }
@@ -1157,11 +1162,11 @@ enum RunInsightEngine {
         let ageDecade: String
         if let n = norm {
             let lo = n.range.lowerBound
-            ageDecade = lo >= 60 ? L.s("60대 이상", "60+") : L.s("\(lo / 10 * 10)대", "\(lo)s")
+            ageDecade = lo >= 60 ? L.s("60대 이상", "60+", ja: "60代以上") : L.s("\(lo / 10 * 10)대", "\(lo)s", ja: "\(lo / 10 * 10)代")
         } else {
-            ageDecade = L.s("해당 연령대", "your age group")
+            ageDecade = L.s("해당 연령대", "your age group", ja: "該当年代")
         }
-        let genderSuffix = isMale == nil ? "" : L.s(useMale ? " 남성" : " 여성", useMale ? " male" : " female")
+        let genderSuffix = isMale == nil ? "" : L.s(useMale ? " 남성" : " 여성", useMale ? " male" : " female", ja: useMale ? " 男性" : " 女性")
 
         let suffix = ""
 
@@ -1170,22 +1175,22 @@ enum RunInsightEngine {
         case .high:
             mainMsg = L.s(
                 "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '높음'입니다.",
-                "Cardio fitness \(voStr) is 'High' for \(ageDecade)\(genderSuffix)."
+                "Cardio fitness \(voStr) is 'High' for \(ageDecade)\(genderSuffix).", ja: "心肺フィットネス\(voStr)は\(ageDecade)\(genderSuffix)基準で「高い」です。"
             )
         case .aboveAvg:
             mainMsg = L.s(
                 "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '평균 이상'입니다.",
-                "Cardio fitness \(voStr) is 'Above Average' for \(ageDecade)\(genderSuffix)."
+                "Cardio fitness \(voStr) is 'Above Average' for \(ageDecade)\(genderSuffix).", ja: "心肺フィットネス\(voStr)は\(ageDecade)\(genderSuffix)基準で「平均以上」です。"
             )
         case .belowAvg:
             mainMsg = L.s(
                 "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '평균 이하'입니다. 꾸준한 유산소 운동으로 올릴 수 있습니다.",
-                "Cardio fitness \(voStr) is 'Below Average' for \(ageDecade)\(genderSuffix). Consistent aerobic training can help."
+                "Cardio fitness \(voStr) is 'Below Average' for \(ageDecade)\(genderSuffix). Consistent aerobic training can help.", ja: "心肺フィットネス\(voStr)は\(ageDecade)\(genderSuffix)基準で「平均以下」です。継続した有酸素運動で上げられます。"
             )
         case .low:
             mainMsg = L.s(
                 "유산소 피트니스 \(voStr)는 \(ageDecade)\(genderSuffix) 기준 '낮음' 구간입니다. 가벼운 유산소부터 쌓아가면 좋습니다.",
-                "Cardio fitness \(voStr) is in the 'Low' range for \(ageDecade)\(genderSuffix). Building up with easy aerobic runs will help."
+                "Cardio fitness \(voStr) is in the 'Low' range for \(ageDecade)\(genderSuffix). Building up with easy aerobic runs will help.", ja: "心肺フィットネス\(voStr)は\(ageDecade)\(genderSuffix)基準で「低い」区間です。軽い有酸素運動から積み上げるとよいです。"
             )
         }
 
@@ -1212,11 +1217,11 @@ enum RunInsightEngine {
         let L = AppLanguage.shared
         switch bucket {
         case .aerobic:
-            return L.s("유산소 구간 안에서 달리셨습니다.", "You stayed in the aerobic zone.")
+            return L.s("유산소 구간 안에서 달리셨습니다.", "You stayed in the aerobic zone.", ja: "有酸素域の中で走りました。")
         case .tempo:
-            return L.s("이지보다 템포에 가까운 날이었습니다.", "Closer to tempo than easy today.")
+            return L.s("이지보다 템포에 가까운 날이었습니다.", "Closer to tempo than easy today.", ja: "イージーよりテンポに近い日でした。")
         case .hard:
-            return L.s("꽤 강하게 밀어붙이셨습니다.", "You pushed pretty hard today.")
+            return L.s("꽤 강하게 밀어붙이셨습니다.", "You pushed pretty hard today.", ja: "かなり強く追い込みました。")
         }
     }
 
@@ -1226,8 +1231,8 @@ enum RunInsightEngine {
         let L = AppLanguage.shared
         let tempStr = "\(Int(t.rounded()))°C"
         return heatHR.isFallback
-            ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))")
-            : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))")
+            ? L.s(" (일반적인 더위 영향 감안 · \(tempStr))", " (allowing for typical heat at \(tempStr))", ja: " (一般的な暑さの影響を考慮 · \(tempStr))")
+            : L.s(" (\(tempStr) 감안)", " (adjusted for \(tempStr))", ja: " (\(tempStr)を考慮)")
     }
 
     static func intensityInsight(
@@ -1256,14 +1261,14 @@ enum RunInsightEngine {
             let extra: String
             switch bucket {
             case .aerobic:
-                extra = L.s(" 이런 날이 오래 가는 다리를 만듭니다.", " Runs like this build lasting endurance.")
+                extra = L.s(" 이런 날이 오래 가는 다리를 만듭니다.", " Runs like this build lasting endurance.", ja: " こうした日が長く走れる脚をつくります。")
                 tone = .good
             case .tempo:
                 extra = L.s(" 나쁜 건 아니고, 다음 한 번을 조금 느리게 잡아두면 균형이 맞습니다.",
-                            " Nothing wrong with that — one easy session next time keeps the balance.")
+                            " Nothing wrong with that — one easy session next time keeps the balance.", ja: " 悪いことではなく、次の1回を少しゆっくりにすればバランスが取れます。")
                 tone = .neutral
             case .hard:
-                extra = L.s(" 내일은 가볍게 가셔도 좋습니다.", " Tomorrow can be an easy one.")
+                extra = L.s(" 내일은 가볍게 가셔도 좋습니다.", " Tomorrow can be an easy one.", ja: " 明日は軽めでも大丈夫です。")
                 tone = .good
             }
             let text = hrEffortSentence(bucket) + extra + heatHRSuffix(heatHR: heatHR, tempC: activity.temperatureC)
@@ -1274,20 +1279,20 @@ enum RunInsightEngine {
             let pct = Double(avgHR) / Double(mhr) * 100
             let zoneName: String
             switch pct {
-            case ..<60:   zoneName = L.s("저강도", "low intensity")
-            case 60..<70: zoneName = L.s("저강도", "low-moderate")
-            case 70..<80: zoneName = L.s("중강도", "moderate");        tone = .good
-            case 80..<90: zoneName = L.s("중고강도", "moderate-high"); tone = .good
-            default:      zoneName = L.s("고강도", "high intensity");  tone = .caution
+            case ..<60:   zoneName = L.s("저강도", "low intensity", ja: "低強度")
+            case 60..<70: zoneName = L.s("저강도", "low-moderate", ja: "低強度")
+            case 70..<80: zoneName = L.s("중강도", "moderate", ja: "中強度");        tone = .good
+            case 80..<90: zoneName = L.s("중고강도", "moderate-high", ja: "中高強度"); tone = .good
+            default:      zoneName = L.s("고강도", "high intensity", ja: "高強度");  tone = .caution
             }
             let pctStr = String(format: "%.0f%%", pct)
             parts.append(L.s(
                 "평균 심박 \(avgHR)은 추정 최대심박의 약 \(pctStr) — \(zoneName)입니다.",
-                "Avg HR \(avgHR) is ~\(pctStr) of estimated max — \(zoneName)."
+                "Avg HR \(avgHR) is ~\(pctStr) of estimated max — \(zoneName).", ja: "平均心拍\(avgHR)は推定最大心拍の約\(pctStr) — \(zoneName)です。"
             ))
             highlights += ["\(avgHR)", pctStr]
         } else {
-            parts.append(L.s("평균 심박 \(avgHR) bpm입니다.", "Avg HR \(avgHR) bpm."))
+            parts.append(L.s("평균 심박 \(avgHR) bpm입니다.", "Avg HR \(avgHR) bpm.", ja: "平均心拍は\(avgHR) bpmです。"))
             highlights.append("\(avgHR)")
         }
 
@@ -1297,19 +1302,19 @@ enum RunInsightEngine {
             if mean > 0 {
                 let sd    = (paces.map { pow($0 - mean, 2) }.reduce(0.0, +) / Double(paces.count)).squareRoot()
                 let sdInt = Int(sd.rounded())
-                let sdStr = L.s("\(sdInt)초", "\(sdInt)s")
+                let sdStr = L.s("\(sdInt)초", "\(sdInt)s", ja: "\(sdInt)秒")
                 let stability = sdInt <= 15
-                    ? L.s("안정적이었습니다", "was steady")
-                    : L.s("다소 변동이 있었습니다", "varied somewhat")
+                    ? L.s("안정적이었습니다", "was steady", ja: "安定していました")
+                    : L.s("다소 변동이 있었습니다", "varied somewhat", ja: "やや変動がありました")
                 parts.append(L.s(
                     "페이스 편차 \(sdStr)로 \(stability).",
-                    "Pace SD \(sdStr) — \(stability)."
+                    "Pace SD \(sdStr) — \(stability).", ja: "ペースのばらつき\(sdStr)で\(stability)。"
                 ))
                 highlights.append(sdStr)
             }
         }
 
-        let badge = tone == .good ? L.s("적정 강도", "Good Effort") : L.s("강도 확인", "Intensity")
+        let badge = tone == .good ? L.s("적정 강도", "Good Effort", ja: "適切な強度") : L.s("강도 확인", "Intensity", ja: "強度の確認")
         return RunInsight(category: .intensity, tone: tone, badge: badge,
                           message: parts.joined(separator: " "), highlights: highlights)
     }
@@ -1329,22 +1334,22 @@ enum RunInsightEngine {
 
         let tone: InsightTone; let badge: String; let msg: String
         if drift <= 3 {
-            tone = .good; badge = L.s("후반 유지", "Strong Finish")
+            tone = .good; badge = L.s("후반 유지", "Strong Finish", ja: "後半維持")
             msg = L.s(
                 "전반 대비 후반 페이스 편차 \(driftStr) — 끝까지 잘 유지했습니다.",
-                "Pace drift \(driftStr) vs. first half — great consistency to the end."
+                "Pace drift \(driftStr) vs. first half — great consistency to the end.", ja: "前半に対する後半のペース差\(driftStr) — 最後までよく保ちました。"
             )
         } else if drift <= 5 {
-            tone = .neutral; badge = L.s("완만한 처짐", "Minor Fade")
+            tone = .neutral; badge = L.s("완만한 처짐", "Minor Fade", ja: "緩やかな失速")
             msg = L.s(
                 "후반 페이스가 전반보다 \(driftStr) 느려졌습니다.",
-                "Back-half pace was \(driftStr) slower than the front half."
+                "Back-half pace was \(driftStr) slower than the front half.", ja: "後半のペースが前半より\(driftStr)遅くなりました。"
             )
         } else {
-            tone = .caution; badge = L.s("참고", "Note")
+            tone = .caution; badge = L.s("참고", "Note", ja: "参考")
             msg = L.s(
                 "후반 페이스가 전반보다 \(driftStr) 느려졌습니다. 다음번 페이스 배분에 참고해 볼 수 있습니다.",
-                "Pace fell \(driftStr) in the back half — consider pacing strategy next time."
+                "Pace fell \(driftStr) in the back half — consider pacing strategy next time.", ja: "後半のペースが前半より\(driftStr)遅くなりました。次回のペース配分の参考にできます。"
             )
         }
         return RunInsight(category: .endurance, tone: tone, badge: badge,
@@ -1364,9 +1369,9 @@ enum RunInsightEngine {
         let sorted = history.filter { $0.type == .running && $0.date < activity.date }.sorted { $0.date < $1.date }
         if let last = sorted.last {
             let g = Calendar.current.dateComponents([.day], from: last.date, to: activity.date).day ?? 0
-            if g >= 14 { return L.s("\(g)일 공백의 영향일 수 있습니다.", "\(g)-day break may be a factor.") }
+            if g >= 14 { return L.s("\(g)일 공백의 영향일 수 있습니다.", "\(g)-day break may be a factor.", ja: "\(g)日のブランクの影響かもしれません。") }
         }
-        return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.")
+        return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.", ja: "今日のコンディションを反映しているのかもしれません。")
     }
 
     /// 심박 효율 비교 표본 — 퍼포먼스 카드의 산점도 제목("심박 효율 ↓N bpm")·히어로·맨 아래 문장이 **이 함수 하나**를 쓴다.
@@ -1417,18 +1422,18 @@ enum RunInsightEngine {
             guard abs(rawDiff) >= 3 else { return nil }
             let diffStr = "\(Int(abs(rawDiff).rounded()))"
             if rawDiff > 0 {
-                return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
+                return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
                     message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았습니다.",
-                                 "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks."),
-                    highlights: [diffStr + "bpm", sampleStr + "회"])
+                                 "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
+                    highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
             }
             let cause = heatExplains
-                ? L.s("\(tempStr) 더위 영향일 수 있습니다.", "the \(tempStr) heat may be a factor.")
+                ? L.s("\(tempStr) 더위 영향일 수 있습니다.", "the \(tempStr) heat may be a factor.", ja: "\(tempStr)の暑さの影響かもしれません。")
                 : Self.efficiencyCause(activity: activity, history: history)
-            return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
+            return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
                 message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높습니다. \(cause)",
-                             "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"),
-                highlights: [diffStr + "bpm", sampleStr + "회"])
+                             "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
+                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
         }
 
         // 양쪽 모두 15°C 환산 — 더운 날의 과거 심박이 "높았던 기준"으로 남지 않게
@@ -1444,14 +1449,14 @@ enum RunInsightEngine {
         if rawDiff <= -3, diff > -3, heatExplains {
             let rawStr = "\(Int(abs(rawDiff).rounded()))"
             if heatHR.isFallback {
-                return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
+                return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
                     message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보입니다.",
-                                 "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but allowing for typical heat effects (\(tempStr)) it looks like your usual level."),
+                                 "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but allowing for typical heat effects (\(tempStr)) it looks like your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、一般的な暑さの影響(\(tempStr))を考慮すると普段の水準とみられます。"),
                     highlights: [rawStr + "bpm", tempStr])
             }
-            return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("기온 감안", "Heat-Adjusted"),
+            return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("기온 감안", "Heat-Adjusted", ja: "気温を考慮"),
                 message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준입니다.",
-                             "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but at \(tempStr) that is your usual level."),
+                             "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but at \(tempStr) that is your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、\(tempStr)の気温を考慮すると普段の水準です。"),
                 highlights: [rawStr + "bpm", tempStr])
         }
         guard abs(diff) >= 3 else { return nil }
@@ -1460,10 +1465,10 @@ enum RunInsightEngine {
         // 개선("낮아요") 주장은 원본 비교도 3bpm 이상 낮을 때만 — 보정만으로 만들어진 개선은 말하지 않는다.
         if diff >= 3 {
             guard rawDiff >= 3 else { return nil }
-            return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient"),
+            return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
                 message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았습니다.",
-                             "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks."),
-                highlights: [diffStr + "bpm", sampleStr + "회"])
+                             "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
+                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
         }
         let cause = Self.efficiencyCause(activity: activity, history: history)
         // 오늘 기온이 설명할 만큼 덥지 않아도, 과거 기록 쪽이 평균적으로 더 더웠다면
@@ -1472,17 +1477,17 @@ enum RunInsightEngine {
         let prefix: String
         if heatExplains {
             prefix = heatHR.isFallback
-                ? L.s("일반적인 더위 영향(\(tempStr))을 감안해도 ", "Even allowing for typical heat effects (\(tempStr)), ")
-                : L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ")
+                ? L.s("일반적인 더위 영향(\(tempStr))을 감안해도 ", "Even allowing for typical heat effects (\(tempStr)), ", ja: "一般的な暑さの影響(\(tempStr))を考慮しても")
+                : L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ", ja: "\(tempStr)の気温を考慮しても")
         } else if histHeatDelta >= MRHeatHRModel.explainThresholdBpm {
-            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "With the recent, hotter runs adjusted to 15°C, ")
+            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "With the recent, hotter runs adjusted to 15°C, ", ja: "暑い日が多かった最近の記録を15°C基準に揃えると")
         } else {
             prefix = ""
         }
-        return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note"),
+        return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
             message: L.s("\(prefix)비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높습니다. \(cause)",
-                         "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)"),
-            highlights: [diffStr + "bpm", sampleStr + "회"])
+                         "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "\(prefix)近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
+            highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
     }
 
     private static func formInsight(detail: ActivityDetail?) -> RunInsight? {
@@ -1498,22 +1503,22 @@ enum RunInsightEngine {
         //   Cavanagh & Williams (1982 Med Sci Sports Exerc): 선수들은 자신에게 맞는 케이던스를 자연스럽게 선택.
         //   Heiderscheit (2011 J Orthop Sports Phys Ther): 5–10% 증가로 하중 감소 — 목표 수치는 제시 안 함.
         //   180spm은 Daniels의 엘리트 선수 관찰값이지, 일반 러너 처방 범위가 아니다.
-        parts.append(L.s("케이던스 \(cadStr)spm", "Cadence \(cadStr) spm"))
+        parts.append(L.s("케이던스 \(cadStr)spm", "Cadence \(cadStr) spm", ja: "ケイデンス \(cadStr)spm"))
         highlights.append(cadStr)
 
         if let gct = detail?.avgGroundContactTime {
             let ms = Int(gct.rounded())
-            parts.append(L.s("지면접촉 \(ms)ms.", "Ground contact \(ms)ms."))
+            parts.append(L.s("지면접촉 \(ms)ms.", "Ground contact \(ms)ms.", ja: "接地時間 \(ms)ms。"))
             highlights.append("\(ms)ms")
         }
 
         if let stride = detail?.avgStrideLength {
             let strideStr = String(format: "%.2fm", stride)
-            parts.append(L.s("보폭 \(strideStr)입니다.", "Stride length \(strideStr)."))
+            parts.append(L.s("보폭 \(strideStr)입니다.", "Stride length \(strideStr).", ja: "ストライドは\(strideStr)です。"))
             highlights.append(strideStr)
         }
 
-        let badge = L.s("주법", "Form")
+        let badge = L.s("주법", "Form", ja: "走法")
         return RunInsight(category: .form, tone: tone, badge: badge,
                           message: parts.joined(separator: " "), highlights: highlights)
     }
@@ -1525,7 +1530,7 @@ enum RunInsightEngine {
         if let t = activity.temperatureC { header += "\(Int(t.rounded()))°C" }
         if let h = activity.humidityPercent {
             if !header.isEmpty { header += " · " }
-            header += L.s("습도 \(Int(h.rounded()))%", "\(Int(h.rounded()))% humidity")
+            header += L.s("습도 \(Int(h.rounded()))%", "\(Int(h.rounded()))% humidity", ja: "湿度 \(Int(h.rounded()))%")
         }
 
         let isHot   = (activity.temperatureC ?? 0) > 25
@@ -1534,23 +1539,23 @@ enum RunInsightEngine {
 
         let msg: String; let tone: InsightTone; let badge: String
         if isHot && isHumid {
-            tone = .caution; badge = L.s("날씨 감안", "Conditions")
+            tone = .caution; badge = L.s("날씨 감안", "Conditions", ja: "天候を考慮")
             msg = L.s("\(header) — 더위와 습도가 높아 체감 부담이 있었을 것입니다.",
-                      "\(header) — hot and humid conditions add extra strain.")
+                      "\(header) — hot and humid conditions add extra strain.", ja: "\(header) — 暑さと湿度が高く、体感の負担があったと考えられます。")
         } else if isHot {
-            tone = .caution; badge = L.s("날씨 감안", "Conditions")
+            tone = .caution; badge = L.s("날씨 감안", "Conditions", ja: "天候を考慮")
             msg = L.s("\(header) — 더운 날씨라 체감 부담이 있었을 것입니다.",
-                      "\(header) — warm conditions can increase perceived effort.")
+                      "\(header) — warm conditions can increase perceived effort.", ja: "\(header) — 暑い天候で、体感の負担があったと考えられます。")
         } else if isHumid {
-            tone = .caution; badge = L.s("날씨 감안", "Conditions")
+            tone = .caution; badge = L.s("날씨 감안", "Conditions", ja: "天候を考慮")
             msg = L.s("\(header) — 습한 편이라 체감 부담이 있었을 것입니다.",
-                      "\(header) — high humidity can increase perceived effort.")
+                      "\(header) — high humidity can increase perceived effort.", ja: "\(header) — 湿度が高めで、体感の負担があったと考えられます。")
         } else if isCool {
-            tone = .neutral; badge = L.s("날씨", "Conditions")
-            msg = L.s("\(header) — 서늘한 날씨였습니다.", "\(header) — cool conditions.")
+            tone = .neutral; badge = L.s("날씨", "Conditions", ja: "天候")
+            msg = L.s("\(header) — 서늘한 날씨였습니다.", "\(header) — cool conditions.", ja: "\(header) — 涼しい天候でした。")
         } else {
-            tone = .good; badge = L.s("쾌적", "Pleasant")
-            msg = L.s("\(header) — 쾌적한 날씨였습니다.", "\(header) — comfortable conditions.")
+            tone = .good; badge = L.s("쾌적", "Pleasant", ja: "快適")
+            msg = L.s("\(header) — 쾌적한 날씨였습니다.", "\(header) — comfortable conditions.", ja: "\(header) — 快適な天候でした。")
         }
         return RunInsight(category: .environment, tone: tone, badge: badge,
                           message: msg, highlights: [header])
@@ -1564,7 +1569,7 @@ enum RunInsightEngine {
     private static func loadInsight(baseline: RunBaseline) -> RunInsight? {
         guard baseline.weeklyLoadKm > 0 else { return nil }
         let L = AppLanguage.shared
-        let badge = L.s("주간 거리", "Weekly Load")
+        let badge = L.s("주간 거리", "Weekly Load", ja: "週間距離")
         let thisStr = String(format: "%.1f", baseline.weeklyLoadKm)
         let wd = baseline.weekDayIndex
         let dayNames = ["", "월", "화", "수", "목", "금", "토", "일"]
@@ -1584,13 +1589,13 @@ enum RunInsightEngine {
             if let target = baseline.planWeeklyTargetKm, target > 0 {
                 let targetStr = String(format: "%.0f", target)
                 msg = L.s("이번 주 \(thisStr)km · 계획 \(targetStr)km.",
-                           "This week \(thisStr) km · plan \(targetStr) km.")
+                           "This week \(thisStr) km · plan \(targetStr) km.", ja: "今週\(thisStr)km · 計画\(targetStr)km。")
                 hi.append(targetStr + "km")
                 #if DEBUG
                 print("[주간] 7일차(일) · \(thisStr)km / 계획 \(targetStr)km → 마무리 문구")
                 #endif
             } else {
-                msg = L.s("이번 주 \(thisStr)km 마쳤습니다.", "This week: \(thisStr) km.")
+                msg = L.s("이번 주 \(thisStr)km 마쳤습니다.", "This week: \(thisStr) km.", ja: "今週は\(thisStr)kmを走り終えました。")
                 #if DEBUG
                 print("[주간] 7일차(일) · \(thisStr)km → 마무리 문구 (계획 없음)")
                 #endif
@@ -1606,16 +1611,16 @@ enum RunInsightEngine {
             if let target = baseline.planWeeklyTargetKm, target > 0 {
                 let targetStr = String(format: "%.0f", target)
                 // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "… / 48km · 10K 계획."
-                let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan") } ?? ""
+                let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan", ja: " · \($0)の計画") } ?? ""
                 msg = L.s("내일이 이번 주 마지막 날입니다 · \(thisStr) / \(targetStr)km\(tag).",
-                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km\(tag).")
+                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km\(tag).", ja: "明日が今週最後の日です · \(thisStr) / \(targetStr)km\(tag)。")
                 hi.append(targetStr + "km")
                 #if DEBUG
                 print("[주간] 6일차(토) · \(thisStr)/\(targetStr)km → 마지막 안내")
                 #endif
             } else {
                 msg = L.s("내일이 이번 주 마지막 날입니다 · 지금까지 \(thisStr)km.",
-                           "Tomorrow is the last day this week · \(thisStr) km so far.")
+                           "Tomorrow is the last day this week · \(thisStr) km so far.", ja: "明日が今週最後の日です · ここまで\(thisStr)km。")
                 #if DEBUG
                 print("[주간] 6일차(토) · \(thisStr)km → 마지막 안내 (계획 없음)")
                 #endif
@@ -1634,7 +1639,7 @@ enum RunInsightEngine {
             let slowStr = paceStr(slowest)
             let count = baseline.thisWeekRunCount
             let msg = L.s("이번 주 \(count)회 · \(fastStr)~\(slowStr)에 걸쳐 있습니다.",
-                           "This week \(count) runs · \(fastStr) to \(slowStr).")
+                           "This week \(count) runs · \(fastStr) to \(slowStr).", ja: "今週\(count)回 · \(fastStr)~\(slowStr)の範囲です。")
             #if DEBUG
             print("[주간] \(wd)일차(\(dayNames[wd])) · \(count)회 · 페이스 \(fastStr)~\(slowStr) → 구성 문구")
             #endif
@@ -1647,9 +1652,9 @@ enum RunInsightEngine {
         if let target = baseline.planWeeklyTargetKm, target > 0 {
             let targetStr = String(format: "%.0f", target)
             // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "이번 주 12.6 / 48km · 10K 계획 · 5일 남았어요."
-            let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan") } ?? ""
+            let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan", ja: " · \($0)の計画") } ?? ""
             let msg = L.s("이번 주 \(thisStr) / \(targetStr)km\(tag) · \(daysLeft)일 남았습니다.",
-                           "This week \(thisStr) / \(targetStr) km\(tag) · \(daysLeft) days left.")
+                           "This week \(thisStr) / \(targetStr) km\(tag) · \(daysLeft) days left.", ja: "今週\(thisStr) / \(targetStr)km\(tag) · 残り\(daysLeft)日です。")
             #if DEBUG
             print("[주간] \(wd)일차(\(dayNames[wd])) · \(thisStr)/\(targetStr)km · \(daysLeft)일 남음 → 진행률 문구")
             #endif
@@ -1659,14 +1664,14 @@ enum RunInsightEngine {
         if baseline.prevSameDayKm > 0 {
             let prevStr = String(format: "%.1f", baseline.prevSameDayKm)
             let msg = L.s("이번 주 \(wd)일째 \(thisStr)km — 지난주 같은 시점엔 \(prevStr)km였습니다.",
-                           "Day \(wd) this week: \(thisStr) km — same point last week: \(prevStr) km.")
+                           "Day \(wd) this week: \(thisStr) km — same point last week: \(prevStr) km.", ja: "今週\(wd)日目で\(thisStr)km — 先週の同じ時点では\(prevStr)kmでした。")
             #if DEBUG
             print("[주간] \(wd)일차(\(dayNames[wd])) · \(wd)일째 \(thisStr)km / 지난주 \(prevStr)km → 비교 문구")
             #endif
             return RunInsight(category: .load, tone: .neutral, badge: badge,
                               message: msg, highlights: [thisStr + "km", prevStr + "km"])
         }
-        let msg = L.s("이번 주 \(wd)일째 \(thisStr)km입니다.", "Day \(wd) this week: \(thisStr) km.")
+        let msg = L.s("이번 주 \(wd)일째 \(thisStr)km입니다.", "Day \(wd) this week: \(thisStr) km.", ja: "今週\(wd)日目で\(thisStr)kmです。")
         return RunInsight(category: .load, tone: .neutral, badge: badge,
                           message: msg, highlights: [thisStr + "km"])
     }
@@ -1739,13 +1744,13 @@ enum RunInsightEngine {
         let L = AppLanguage.shared
         let decade: String
         switch age {
-        case ..<30: decade = L.s("20대", "20s")
-        case ..<40: decade = L.s("30대", "30s")
-        case ..<50: decade = L.s("40대", "40s")
-        case ..<60: decade = L.s("50대", "50s")
-        default:    decade = L.s("60대+", "60s+")
+        case ..<30: decade = L.s("20대", "20s", ja: "20代")
+        case ..<40: decade = L.s("30대", "30s", ja: "30代")
+        case ..<50: decade = L.s("40대", "40s", ja: "40代")
+        case ..<60: decade = L.s("50대", "50s", ja: "50代")
+        default:    decade = L.s("60대+", "60s+", ja: "60代以上")
         }
-        let gender = isMale == nil ? "" : (male ? L.s("남성", "M") : L.s("여성", "F"))
+        let gender = isMale == nil ? "" : (male ? L.s("남성", "M", ja: "男性") : L.s("여성", "F", ja: "女性"))
         return VO2FitnessInfo(
             levelLabel: result.level.rawValue,
             normBelowAvg: norm.belowAvg,

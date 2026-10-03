@@ -484,12 +484,12 @@ enum LateRunDiagnosis {
         let L = AppLanguage.shared
         switch r.kind {
         case .held:
-            return r.isFastFinish ? L.s("후반 가속까지 유지", "Held with a fast finish")
-                                  : L.s("끝까지 유지", "Held to the end")
-        case .legs:     return L.s("다리가 먼저 지침", "Legs tired first")
-        case .cardio:   return L.s("심박이 먼저 오름", "HR rose first")
-        case .energy:   return L.s("후반 힘 빠짐", "Ran low late")
-        case .combined: return L.s("다리·심박 함께", "Legs and HR together")
+            return r.isFastFinish ? L.s("후반 가속까지 유지", "Held with a fast finish", ja: "後半の加速まで維持")
+                                  : L.s("끝까지 유지", "Held to the end", ja: "最後まで維持")
+        case .legs:     return L.s("다리가 먼저 지침", "Legs tired first", ja: "脚が先に疲れた")
+        case .cardio:   return L.s("심박이 먼저 오름", "HR rose first", ja: "心拍が先に上がった")
+        case .energy:   return L.s("후반 힘 빠짐", "Ran low late", ja: "後半の失速")
+        case .combined: return L.s("다리·심박 함께", "Legs and HR together", ja: "脚と心拍の両方")
         }
     }
 
@@ -499,48 +499,48 @@ enum LateRunDiagnosis {
         let L = AppLanguage.shared
         var pieces: [String] = []
         pieces.append(L.s("중반→후반 페이스 \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))",
-                          "mid→late pace \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))"))
+                          "mid→late pace \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))", ja: "中盤→後半のペース \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))"))
         if let a = r.mid.avgHR, let b = r.late.avgHR {
             let ai = Int(a.rounded()), bi = Int(b.rounded())
-            pieces.append(L.s("심박 \(ai)→\(bi)", "HR \(ai)→\(bi)"))
+            pieces.append(L.s("심박 \(ai)→\(bi)", "HR \(ai)→\(bi)", ja: "心拍 \(ai)→\(bi)"))
         }
         if let d = r.decouplingPct, !r.isFastFinish {
             // 10% 미만은 소수 한 자리 — 문턱(5%) 근처에서 "5%"로 반올림돼 판정과 어긋나 보이지 않게
             let n = abs(d) < 10 ? String(format: "%.1f", abs(d)) : String(format: "%.0f", abs(d))
             if r.heatAdjustBpm >= 1 {
-                pieces.append(L.s("더위 몫 \(Int(r.heatAdjustBpm.rounded()))bpm 빼고", "after removing \(Int(r.heatAdjustBpm.rounded())) bpm of heat"))
+                pieces.append(L.s("더위 몫 \(Int(r.heatAdjustBpm.rounded()))bpm 빼고", "after removing \(Int(r.heatAdjustBpm.rounded())) bpm of heat", ja: "暑さの分\(Int(r.heatAdjustBpm.rounded()))bpmを除いて"))
             }
             if d >= 0.5 {
-                pieces.append(L.s("같은 속도에 심박 \(n)% 더 듦", "\(n)% more HR per speed"))
+                pieces.append(L.s("같은 속도에 심박 \(n)% 더 듦", "\(n)% more HR per speed", ja: "同じ速度で心拍が\(n)%多く必要"))
             } else if d <= -0.5 {
-                pieces.append(L.s("같은 속도에 심박 \(n)% 덜 듦", "\(n)% less HR per speed"))
+                pieces.append(L.s("같은 속도에 심박 \(n)% 덜 듦", "\(n)% less HR per speed", ja: "同じ速度で心拍が\(n)%少なく済む"))
             } else {
-                pieces.append(L.s("심박 효율 그대로", "HR efficiency unchanged"))
+                pieces.append(L.s("심박 효율 그대로", "HR efficiency unchanged", ja: "心拍効率は変わらず"))
             }
         }
         if !r.legMetrics.isEmpty {
             let names = r.legMetrics.map { m -> String in
                 switch m {
-                case .cadence:       return L.s("케이던스↓", "cadence↓")
-                case .stride:        return L.s("보폭↓", "stride↓")
-                case .groundContact: return L.s("지면접촉↑", "ground contact↑")
-                case .verticalOsc:   return L.s("수직진폭↑", "vertical osc↑")
+                case .cadence:       return L.s("케이던스↓", "cadence↓", ja: "ケイデンス↓")
+                case .stride:        return L.s("보폭↓", "stride↓", ja: "ストライド↓")
+                case .groundContact: return L.s("지면접촉↑", "ground contact↑", ja: "接地時間↑")
+                case .verticalOsc:   return L.s("수직진폭↑", "vertical osc↑", ja: "上下動↑")
                 }
             }
             let joined = names.joined(separator: " ")
             pieces.append(r.legMethod == .paceTrend
-                ? L.s("느려진 속도 몫을 빼고도 \(joined)", "\(joined) beyond what the slowdown explains")
+                ? L.s("느려진 속도 몫을 빼고도 \(joined)", "\(joined) beyond what the slowdown explains", ja: "遅くなった速度の分を除いても\(joined)")
                 : joined)
             // 다리 신호 + 90분↑에서 페이스·심박이 함께 떨어졌으면 에너지 고갈이 겹쳤을 수 있다(보급 기록 없음)
             if r.durationMin >= energyMinDurationMin, r.paceChangeSec >= slowdownSec,
                let h = r.hrChange, h <= -energyHRDropBpm {
                 pieces.append(L.s("심박도 함께 내려가 보급 부족이 겹쳤을 수 있습니다",
-                                  "HR fell too — low fuel may have added to it"))
+                                  "HR fell too — low fuel may have added to it", ja: "心拍も一緒に下がっており、補給不足が重なった可能性があります"))
             }
         }
         if let o = onsetPiece(r) { pieces.append(o) }
         if r.kind == .energy {
-            pieces.append(L.s("보급 기록이 없어 추정입니다", "estimated — no fueling data"))
+            pieces.append(L.s("보급 기록이 없어 추정입니다", "estimated — no fueling data", ja: "補給の記録がないため推定です"))
         }
         return pieces.joined(separator: " · ")
     }
@@ -557,12 +557,12 @@ enum LateRunDiagnosis {
         switch (hrInVerdict ? r.efficiencyOnsetKm : nil, r.paceOnsetKm) {
         case let (e?, p?) where e < p:
             return L.s("심박 효율 \(km(e))km부터↓, 페이스는 \(km(p))km부터↓",
-                       "HR efficiency slipped from \(km(e)) km, pace from \(km(p)) km")
+                       "HR efficiency slipped from \(km(e)) km, pace from \(km(p)) km", ja: "心拍効率は\(km(e))kmから↓、ペースは\(km(p))kmから↓")
         case let (e?, nil):
             return L.s("심박 효율 \(km(e))km부터↓, 페이스는 유지",
-                       "HR efficiency slipped from \(km(e)) km while pace held")
+                       "HR efficiency slipped from \(km(e)) km while pace held", ja: "心拍効率は\(km(e))kmから↓、ペースは維持")
         case let (_, p?):
-            return L.s("페이스 \(km(p))km부터↓", "pace slipped from \(km(p)) km")
+            return L.s("페이스 \(km(p))km부터↓", "pace slipped from \(km(p)) km", ja: "ペースは\(km(p))kmから↓")
         default:
             return nil
         }
@@ -578,34 +578,34 @@ enum LateRunDiagnosis {
             if r.isFastFinish { return nil }
             return isRace
                 ? L.s("끝까지 달리기를 남겼습니다. 다음 대회는 목표 페이스를 조금 올려 봐도 좋습니다.",
-                      "You kept your running to the end. You could aim a little faster next race.")
+                      "You kept your running to the end. You could aim a little faster next race.", ja: "最後まで走りを保ちました。次のレースは目標ペースを少し上げてもよさそうです。")
                 : L.s("다음 롱런은 마지막 15분을 목표 대회 페이스로 올려 보세요 — 지친 상태에서 페이스를 지키는 연습입니다.",
-                      "On your next long run, lift the last 15 minutes to goal race pace — practice holding pace while tired.")
+                      "On your next long run, lift the last 15 minutes to goal race pace — practice holding pace while tired.", ja: "次のロング走は最後の15分を目標レースペースに上げてみてください — 疲れた状態でペースを守る練習です。")
         case .legs:
             return isRace
                 ? L.s("30km 이상을 버티는 롱런을 늘리기보다, 편한 페이스 롱런을 꾸준히 쌓고 근력·점프 운동을 주 2회 넣어 보세요.",
-                      "Rather than grinding out 30 km+ long runs, keep stacking easy-paced long runs and add strength and jump work twice a week.")
+                      "Rather than grinding out 30 km+ long runs, keep stacking easy-paced long runs and add strength and jump work twice a week.", ja: "30km以上耐えるロング走を増やすより、楽なペースのロング走を継続し、筋力・ジャンプ系トレーニングを週2回入れてみてください。")
                 : L.s("거리를 무리하게 늘리기보다, 편한 페이스 롱런을 꾸준히 쌓고 근력·점프 운동을 주 2회 넣어 보세요.",
-                      "Rather than forcing more distance, keep stacking easy-paced long runs and add strength and jump work twice a week.")
+                      "Rather than forcing more distance, keep stacking easy-paced long runs and add strength and jump work twice a week.", ja: "距離を無理に伸ばすより、楽なペースのロング走を継続し、筋力・ジャンプ系トレーニングを週2回入れてみてください。")
         case .cardio:
             if hot {
                 return L.s("더운 날은 수분·나트륨을 챙기고 페이스를 5~10초/km 늦추세요.",
-                           "On hot days, keep up fluids and sodium and ease pace by 5–10 s/km.")
+                           "On hot days, keep up fluids and sodium and ease pace by 5–10 s/km.", ja: "暑い日は水分・ナトリウムを補給し、ペースを5~10秒/km落としてください。")
             }
             return isRace
                 ? L.s("다음 대회는 초반을 5~10초/km 늦게 시작하고, 롱런 후반에 목표 페이스를 넣어 지친 상태의 페이스를 연습해 보세요.",
-                      "Start your next race 5–10 s/km slower, and practice goal pace late in long runs.")
+                      "Start your next race 5–10 s/km slower, and practice goal pace late in long runs.", ja: "次のレースは序盤を5~10秒/km遅く入り、ロング走の後半に目標ペースを入れて疲れた状態でのペースを練習してみてください。")
                 : L.s("다음 롱런은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줍니다.",
-                      "Ease mid-run pace by 10 s/km next long run. A weekly 20-minute tempo lowers HR at the same pace.")
+                      "Ease mid-run pace by 10 s/km next long run. A weekly 20-minute tempo lowers HR at the same pace.", ja: "次のロング走は中盤のペースを10秒/km落としてみてください。週1回20分のテンポ走が同じペースでの心拍を下げてくれます。")
         case .energy:
             return isRace
                 ? L.s("다음 대회는 30~40분부터 탄수화물을 나눠 먹고, 롱런에서 같은 보급을 미리 연습해 두세요.",
-                      "Next race, start carbs at 30–40 minutes and rehearse the same fueling in long runs.")
+                      "Next race, start carbs at 30–40 minutes and rehearse the same fueling in long runs.", ja: "次のレースは30~40分から炭水化物を分けて摂り、ロング走で同じ補給を事前に練習しておいてください。")
                 : L.s("90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보세요. 초반 10분은 목표보다 느리게 달리세요.",
-                      "On runs over 90 minutes, take 30–60 g of carbs per hour from 30–40 minutes in, and start the first 10 minutes easier.")
+                      "On runs over 90 minutes, take 30–60 g of carbs per hour from 30–40 minutes in, and start the first 10 minutes easier.", ja: "90分を超えるロング走は、30~40分から1時間あたり30~60gの炭水化物を分けて摂ってみてください。最初の10分は目標より遅く走ってください。")
         case .combined:
             return L.s("초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 기본 지구력을 올려 보세요.",
-                       "Start easier, and build base endurance with steady weekly volume rather than one big long run.")
+                       "Start easier, and build base endurance with steady weekly volume rather than one big long run.", ja: "序盤をもっと楽に入り、長いロング走1回より週間距離を継続して積んで基礎持久力を上げてみてください。")
         }
     }
 }
@@ -659,21 +659,22 @@ struct LateRunPoint: Identifiable, Equatable {
         let all = c == n
         let headKo = all ? "최근 끊김 없는 긴 러닝 \(n)번 모두" : "최근 끊김 없는 긴 러닝 \(n)번 중 \(c)번"
         let headEn = all ? "In all of your last \(n) unbroken long runs" : "In \(c) of your last \(n) unbroken long runs"
+        let headJa = all ? "最近の途切れのない長いラン\(n)回すべてで" : "最近の途切れのない長いラン\(n)回中\(c)回で"
         switch s.kind {
         case .held:
-            return L.s("\(headKo) 후반까지 달리기를 남겼습니다.", "\(headEn), you kept your running to the end.")
+            return L.s("\(headKo) 후반까지 달리기를 남겼습니다.", "\(headEn), you kept your running to the end.", ja: "\(headJa)、後半まで走りを保ちました。")
         case .cardio:
             return L.s("\(headKo) 심박이 먼저 올랐습니다. 다리보다 심폐가 먼저 한계에 닿는 편입니다.",
-                       "\(headEn), HR rose first — your cardio tends to hit the limit before your legs.")
+                       "\(headEn), HR rose first — your cardio tends to hit the limit before your legs.", ja: "\(headJa)、心拍が先に上がりました。脚より心肺が先に限界に達する傾向です。")
         case .legs:
             return L.s("\(headKo) 다리가 먼저 지쳤습니다. 심폐보다 근지구력이 먼저 한계에 닿는 편입니다.",
-                       "\(headEn), legs tired first — muscular endurance tends to give out before cardio.")
+                       "\(headEn), legs tired first — muscular endurance tends to give out before cardio.", ja: "\(headJa)、脚が先に疲れました。心肺より筋持久力が先に限界に達する傾向です。")
         case .energy:
             return L.s("\(headKo) 후반에 힘이 빠졌습니다. 보급을 점검해 볼 만합니다.",
-                       "\(headEn), you ran low late — worth checking your fueling.")
+                       "\(headEn), you ran low late — worth checking your fueling.", ja: "\(headJa)、後半に失速しました。補給を見直してみる価値があります。")
         case .combined:
             return L.s("\(headKo) 다리와 심박이 함께 무너졌습니다.",
-                       "\(headEn), legs and HR faded together.")
+                       "\(headEn), legs and HR faded together.", ja: "\(headJa)、脚と心拍が一緒に崩れました。")
         }
     }
 
@@ -684,12 +685,12 @@ struct LateRunPoint: Identifiable, Equatable {
         let n = String(format: "%.1f", abs(d))
         if d >= trendDeltaPct {
             return L.s("후반 효율 하락이 이전보다 \(n)%p 줄었습니다 — 후반 내구성이 좋아지고 있습니다.",
-                       "Late-run efficiency loss is down \(n) pts — your durability is improving.")
+                       "Late-run efficiency loss is down \(n) pts — your durability is improving.", ja: "後半の効率低下が以前より\(n)ポイント減りました — 後半の耐久力が上がっています。")
         }
         if d <= -trendDeltaPct {
             return L.s("후반 효율 하락이 이전보다 \(n)%p 늘었습니다. 최근 롱런 강도나 회복을 살펴보세요.",
-                       "Late-run efficiency loss is up \(n) pts. Check recent long-run intensity or recovery.")
+                       "Late-run efficiency loss is up \(n) pts. Check recent long-run intensity or recovery.", ja: "後半の効率低下が以前より\(n)ポイント増えました。最近のロング走の強度や回復を見直してください。")
         }
-        return L.s("후반 효율 하락은 이전과 비슷합니다.", "Late-run efficiency loss is about the same as before.")
+        return L.s("후반 효율 하락은 이전과 비슷합니다.", "Late-run efficiency loss is about the same as before.", ja: "後半の効率低下は以前と同程度です。")
     }
 }

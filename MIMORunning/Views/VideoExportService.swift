@@ -2653,9 +2653,7 @@ struct VideoExportService {
                     cg.move(to: CGPoint(x: xPos, y: chartY))
                     cg.addLine(to: CGPoint(x: xPos, y: chartY + chartH))
                     cg.strokePath()
-                    let text = AppLanguage.shared.isEnglish
-                        ? String(format: "%.0fm", tMin)
-                        : String(format: "%.0f분", tMin)
+                    let text = AppLanguage.shared.s(String(format: "%.0f분", tMin), String(format: "%.0fm", tMin), ja: String(format: "%.0f分", tMin))
                     let sz   = (text as NSString).size(withAttributes: axisAttrs)
                     var lx   = xPos - sz.width / 2
                     if i == 0 { lx = xPos }

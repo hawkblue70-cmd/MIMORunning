@@ -9,11 +9,11 @@ enum SleepGrade: String, Codable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .excellent:    L.s("매우높음", "Excellent")
-        case .good:         L.s("높음",     "Good")
-        case .fair:         L.s("보통",     "Fair")
-        case .insufficient: L.s("낮음",     "Poor")
-        case .poor:         L.s("매우낮음", "Very Poor")
+        case .excellent:    L.s("매우높음", "Excellent", ja: "とても高い")
+        case .good:         L.s("높음",     "Good", ja: "高い")
+        case .fair:         L.s("보통",     "Fair", ja: "普通")
+        case .insufficient: L.s("낮음",     "Poor", ja: "低い")
+        case .poor:         L.s("매우낮음", "Very Poor", ja: "とても低い")
         }
     }
 
@@ -21,11 +21,11 @@ enum SleepGrade: String, Codable {
     var runningComment: String {
         let L = AppLanguage.shared
         return switch self {
-        case .excellent:    L.s("오늘 힘껏 달려도 좋습니다",     "Great day to push hard")
-        case .good:         L.s("컨디션이 좋습니다",             "Good condition today")
-        case .fair:         L.s("무리하지 않게 달리세요",       "Keep it comfortable")
-        case .insufficient: L.s("가볍게 달리는 걸 추천합니다",   "Easy run recommended")
-        case .poor:         L.s("충분한 휴식 후 달리세요",     "Rest up before running")
+        case .excellent:    L.s("오늘 힘껏 달려도 좋습니다",     "Great day to push hard", ja: "今日は思いきり走っても大丈夫です")
+        case .good:         L.s("컨디션이 좋습니다",             "Good condition today", ja: "コンディションは良好です")
+        case .fair:         L.s("무리하지 않게 달리세요",       "Keep it comfortable", ja: "無理せず走ってください")
+        case .insufficient: L.s("가볍게 달리는 걸 추천합니다",   "Easy run recommended", ja: "軽めに走ることをおすすめします")
+        case .poor:         L.s("충분한 휴식 후 달리세요",     "Rest up before running", ja: "十分に休んでから走ってください")
         }
     }
 }

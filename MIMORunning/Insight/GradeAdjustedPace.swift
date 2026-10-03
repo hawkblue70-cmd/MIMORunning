@@ -137,7 +137,7 @@ enum GradeAdjustedPace {
         let secs = Int(gap.rounded())
         let paceText = "\(secs / 60)'\(String(format: "%02d", secs % 60))\""
         // 영문은 러너에게 통용되는 GAP 그대로, 한국어는 뜻이 바로 읽히는 "평지 환산"
-        return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)")
+        return AppLanguage.shared.s("평지 환산 \(paceText)", "GAP \(paceText)", ja: "平地換算 \(paceText)")
     }
 
     /// 지속 경사로 볼 최소 고도 변화(m) — 1km 안에서 한 방향으로 이만큼 변해야 한다(평균 1% 경사).

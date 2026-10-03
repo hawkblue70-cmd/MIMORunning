@@ -496,20 +496,25 @@ enum FormPhase {
         if accel >= accelDeltaSec {
             var koPairs: [(conj: String, final: String)] = []
             var enPhrases: [String] = []
+            var jaStems: [String] = []   // 연용형 — 마지막에 "ました"
             if let a = e.stride, let b = m.stride, b - a >= strideDeltaM {
                 koPairs.append(("보폭이 늘고", "보폭이 늘었습니다")); enPhrases.append("a longer stride")
+                jaStems.append("ストライドが伸び")
             }
             if let a = e.groundContact, let b = m.groundContact, a - b >= 8 {
                 koPairs.append(("지면접촉이 짧아지고", "지면접촉이 짧아졌습니다")); enPhrases.append("shorter ground contact")
+                jaStems.append("接地時間が短くなり")
             }
             if let a = e.cadence, let b = m.cadence, b - a >= cadenceGainSPM {
                 koPairs.append(("발 회전이 빨라지고", "발 회전이 빨라졌습니다")); enPhrases.append("quicker steps")
+                jaStems.append("ピッチが速くなり")
             }
             if !koPairs.isEmpty {
                 let ko = joinKoClauses(koPairs)
                 let en = joinEnPhrases(enPhrases)
                 out.append(L.s("중반 \(kmKo(m)): 페이스가 \(Int(accel.rounded()))초/km 빨라지며 \(ko).",
-                               "Mid \(kmEn(m)): pace picked up by \(Int(accel.rounded())) s/km with \(en)."))
+                               "Mid \(kmEn(m)): pace picked up by \(Int(accel.rounded())) s/km with \(en).",
+                               ja: "中盤 \(kmKo(m)): ペースが\(Int(accel.rounded()))秒/km速くなり、\(jaStems.joined(separator: "、"))ました。"))
             }
         }
 
@@ -521,17 +526,21 @@ enum FormPhase {
 
             let paceKo: String
             let paceEn: String
+            let paceJa: String
             if abs(paceDelta) < paceDeltaSec {
                 paceKo = "페이스는 같은데"
                 paceEn = "pace held but"
+                paceJa = "ペースは同じなのに"
             } else if paceDelta > 0 {
                 let n = Int(paceDelta.rounded())
                 paceKo = "페이스가 \(n)초/km 느려지며"
                 paceEn = "pace slowed by \(n) s/km as"
+                paceJa = "ペースが\(n)秒/km遅くなり"
             } else {
                 let n = Int((-paceDelta).rounded())
                 paceKo = "페이스가 \(n)초/km 빨라지며"
                 paceEn = "pace picked up by \(n) s/km as"
+                paceJa = "ペースが\(n)秒/km速くなり"
             }
 
             // late phase already reads out cadence drop when it drove the .heavier verdict — don't repeat it here
@@ -550,29 +559,39 @@ enum FormPhase {
                 else { cadenceDir = .rose }
             }
 
-            var heatKo = "", heatEn = ""
+            var heatKo = "", heatEn = "", heatJa = ""
             if heatReassuranceApplies(r, heatDeltaBpm: heatDeltaBpm), let heat = heatDeltaBpm {
                 let h = Int(heat.rounded())
                 heatKo = " (더위 +\(h)bpm을 감안하면 흔한 폭)"
                 heatEn = " (common with +\(h) bpm from heat)"
+                heatJa = "(暑さ+\(h)bpmを考えるとよくある幅)"
             }
 
             let ko: String
             let en: String
+            let ja: String
             if let dir = cadenceDir {
-                let cadKo: String, cadEn: String
+                let cadKo: String, cadEn: String, cadJa: String
                 switch dir {
-                case .same:    cadKo = "케이던스는 그대로입니다.";  cadEn = "while cadence stayed the same."
-                case .dropped: cadKo = "케이던스는 \(cadenceDeltaSPM)spm 내려갔습니다."; cadEn = "and cadence dropped \(cadenceDeltaSPM) spm."
-                case .rose:    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 올라갔습니다."; cadEn = "and cadence went up \(cadenceDeltaSPM) spm."
+                case .same:
+                    cadKo = "케이던스는 그대로입니다.";  cadEn = "while cadence stayed the same."
+                    cadJa = "ケイデンスは変わりません。"
+                case .dropped:
+                    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 내려갔습니다."; cadEn = "and cadence dropped \(cadenceDeltaSPM) spm."
+                    cadJa = "ケイデンスは\(cadenceDeltaSPM)spm下がりました。"
+                case .rose:
+                    cadKo = "케이던스는 \(cadenceDeltaSPM)spm 올라갔습니다."; cadEn = "and cadence went up \(cadenceDeltaSPM) spm."
+                    cadJa = "ケイデンスは\(cadenceDeltaSPM)spm上がりました。"
                 }
                 ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐고\(heatKo), \(cadKo)"
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn), \(cadEn)"
+                ja = "\(paceJa)、心拍が\(hrDelta)bpm上がり\(heatJa)、\(cadJa)"
             } else {
                 ko = "\(paceKo) 심박이 \(hrDelta)bpm 올랐습니다\(heatKo)."
                 en = "\(paceEn) heart rate rose \(hrDelta) bpm\(heatEn)."
+                ja = "\(paceJa)、心拍が\(hrDelta)bpm上がりました\(heatJa)。"
             }
-            out.append(L.s("후반 \(kmKo(l)): " + ko, "Late \(kmEn(l)): " + en))
+            out.append(L.s("후반 \(kmKo(l)): " + ko, "Late \(kmEn(l)): " + en, ja: "後半 \(kmKo(l)): " + ja))
         }
         return out
     }
@@ -594,15 +613,15 @@ enum FormPhase {
         let L = AppLanguage.shared
         let lateKm = String(format: "%.0f", r.totalKm - r.lateStartKm)
         switch r.late {
-        case .held:            return L.s("끝까지 유지", "Held to the finish")
+        case .held:            return L.s("끝까지 유지", "Held to the finish", ja: "最後まで維持")
         case .heavier:
             if r.isSoftCadenceOnly {
-                return L.s("편한 페이스 · 케이던스만 살짝 내려감", "Easy pace · cadence eased slightly")
+                return L.s("편한 페이스 · 케이던스만 살짝 내려감", "Easy pace · cadence eased slightly", ja: "楽なペース · ケイデンスだけ少し低下")
             }
-            return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km")
-        case .cadenceDefended: return L.s("후반 회전은 유지", "Cadence held late")
-        case .bouncier:        return L.s("후반 위로 튐", "Bouncier late")
-        case .faded:           return L.s("마지막 \(lateKm)km 페이스 떨어짐", "Pace faded in the last \(lateKm) km")
+            return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km", ja: "最後の\(lateKm)kmで少し重くなった")
+        case .cadenceDefended: return L.s("후반 회전은 유지", "Cadence held late", ja: "後半のピッチは維持")
+        case .bouncier:        return L.s("후반 위로 튐", "Bouncier late", ja: "後半に上下動が増えた")
+        case .faded:           return L.s("마지막 \(lateKm)km 페이스 떨어짐", "Pace faded in the last \(lateKm) km", ja: "最後の\(lateKm)kmでペース低下")
         }
     }
 

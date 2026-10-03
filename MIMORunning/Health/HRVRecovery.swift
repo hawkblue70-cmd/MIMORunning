@@ -8,10 +8,10 @@ enum RecoveryLevel: String, Codable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .low:          L.s("평소보다 낮음", "Below Normal")
-        case .normal:       L.s("정상 범위",     "Normal")
-        case .high:         L.s("평소보다 높음", "Above Normal")
-        case .insufficient: L.s("데이터 부족",   "Insufficient Data")
+        case .low:          L.s("평소보다 낮음", "Below Normal", ja: "普段より低い")
+        case .normal:       L.s("정상 범위",     "Normal", ja: "正常範囲")
+        case .high:         L.s("평소보다 높음", "Above Normal", ja: "普段より高い")
+        case .insufficient: L.s("데이터 부족",   "Insufficient Data", ja: "データ不足")
         }
     }
 

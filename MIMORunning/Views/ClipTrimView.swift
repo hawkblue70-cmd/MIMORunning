@@ -1285,9 +1285,7 @@ struct ClipTrimSheet: View {
                             let xp   = CGFloat(frac) * cw
                             var gp = Path(); gp.move(to: CGPoint(x: xp, y: 0)); gp.addLine(to: CGPoint(x: xp, y: ch))
                             ctx.stroke(gp, with: .color(Color.white.opacity(0.10)), lineWidth: 0.5)
-                            let xTxt = AppLanguage.shared.isEnglish
-                                ? String(format: "%.0fm", frac * hrdtMin)
-                                : String(format: "%.0f분", frac * hrdtMin)
+                            let xTxt = AppLanguage.shared.s(String(format: "%.0f분", frac * hrdtMin), String(format: "%.0fm", frac * hrdtMin), ja: String(format: "%.0f分", frac * hrdtMin))
                             var anch: UnitPoint = .top
                             if i == 0 { anch = .topLeading } else if i == xMarkN - 1 { anch = .topTrailing }
                             ctx.draw(Text(xTxt).font(axisFont).foregroundColor(axisColor),
@@ -1625,7 +1623,7 @@ struct ClipTrimSheet: View {
                 return String(format: "%.2f", v)
             }
             let fmtXStr: (Double) -> String = { m in
-                AppLanguage.shared.isEnglish ? String(format: "%.0fm", m) : String(format: "%.0f분", m)
+                AppLanguage.shared.s(String(format: "%.0f분", m), String(format: "%.0fm", m), ja: String(format: "%.0f分", m))
             }
 
             ZStack(alignment: .topLeading) {

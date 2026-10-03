@@ -134,15 +134,15 @@ enum RaceYearOverYear {
             let amount: String
             switch d {
             case .time(let s): amount = L.s(koreanDuration(s), clockDuration(s))
-            case .pace(let s): amount = L.s("km당 \(s)초", "\(s) s/km")
+            case .pace(let s): amount = L.s("km당 \(s)초", "\(s) s/km", ja: "1kmあたり\(s)秒")
             }
-            if sameRace && yearsAgo == 1 { return L.s("작년보다 \(amount) 빠릅니다", "\(amount) faster than last year") }
-            if sameRace && yearsAgo >= 2 { return L.s("\(year)년보다 \(amount) 빠릅니다", "\(amount) faster than \(year)") }
-            return L.s("지난 \(name)보다 \(amount) 빠릅니다", "\(amount) faster than your last \(name)")
+            if sameRace && yearsAgo == 1 { return L.s("작년보다 \(amount) 빠릅니다", "\(amount) faster than last year", ja: "昨年より\(amount)速いです") }
+            if sameRace && yearsAgo >= 2 { return L.s("\(year)년보다 \(amount) 빠릅니다", "\(amount) faster than \(year)", ja: "\(year)年より\(amount)速いです") }
+            return L.s("지난 \(name)보다 \(amount) 빠릅니다", "\(amount) faster than your last \(name)", ja: "前回の\(name)より\(amount)速いです")
         }
-        if sameRace && yearsAgo == 1 { return L.s("작년 \(name) \(record)", "Last year's \(name): \(record)") }
-        if sameRace && yearsAgo >= 2 { return L.s("\(year)년 \(name) \(record)", "\(name) \(year): \(record)") }
-        return L.s("지난 \(name) \(record)", "Last \(name): \(record)")
+        if sameRace && yearsAgo == 1 { return L.s("작년 \(name) \(record)", "Last year's \(name): \(record)", ja: "昨年の\(name) \(record)") }
+        if sameRace && yearsAgo >= 2 { return L.s("\(year)년 \(name) \(record)", "\(name) \(year): \(record)", ja: "\(year)年の\(name) \(record)") }
+        return L.s("지난 \(name) \(record)", "Last \(name): \(record)", ja: "前回の\(name) \(record)")
     }
 
     /// 표의 차이 칸 — "+4:12" · "−1:05" · "±0:00" · "km당 +5초"(영어 "+5 s/km").
@@ -152,7 +152,7 @@ enum RaceYearOverYear {
         case .time(let s):
             return sign(s) + clockDuration(abs(s))
         case .pace(let s):
-            return AppLanguage.shared.s("km당 \(sign(s))\(abs(s))초", "\(sign(s))\(abs(s)) s/km")
+            return AppLanguage.shared.s("km당 \(sign(s))\(abs(s))초", "\(sign(s))\(abs(s)) s/km", ja: "1kmあたり\(sign(s))\(abs(s))秒")
         }
     }
 
