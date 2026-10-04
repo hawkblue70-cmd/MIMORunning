@@ -2291,8 +2291,11 @@ private struct PlannedRaceRow: View {
                         Text(d, format: .dateTime.month(.abbreviated))
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(race.isPast ? Color.secondary : RaceBadge.color)
+                        // 한국어·일본어는 "15일"·"15日"로 단위가 붙는다 — 22pt에서는 40pt 칸을 넘어 "15/일" 두 줄이 됐다
                         Text(d, format: .dateTime.day())
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .foregroundStyle(race.isPast ? Color.secondary : Color.white)
                     } else {
                         Text("—")
