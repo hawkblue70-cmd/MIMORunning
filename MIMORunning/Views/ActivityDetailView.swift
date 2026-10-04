@@ -2733,17 +2733,18 @@ private struct SplitsHighlightCard: View {
                   + Text("\(spread)초").foregroundStyle(g)
                   + Text(", 흔들림 없었습니다.").foregroundStyle(Color.white)
         case .recentBest(let n):
+            // 판정은 "최근 비슷한 거리 n회의 평균보다 빠름" — "가장 빠른"이라고 하면 사실과 다르다
             if L.isJapanese {
-                return Text("直近\(n)回で").foregroundStyle(Color.white)
-                    + Text("最も速い平均ペース").foregroundStyle(g)
+                return Text("直近\(n)回の平均より").foregroundStyle(Color.white)
+                    + Text("速いペース").foregroundStyle(g)
                     + Text("です。").foregroundStyle(Color.white)
             }
             return L.isEnglish
-                ? Text("Fastest avg pace in your last ").foregroundStyle(Color.white)
-                  + Text("\(n) runs").foregroundStyle(g)
+                ? Text("Faster than your ").foregroundStyle(Color.white)
+                  + Text("last \(n) runs' average").foregroundStyle(g)
                   + Text(".").foregroundStyle(Color.white)
-                : Text("최근 \(n)회 중 ").foregroundStyle(Color.white)
-                  + Text("가장 빠른 평균 페이스").foregroundStyle(g)
+                : Text("최근 \(n)회 평균보다 ").foregroundStyle(Color.white)
+                  + Text("빠른 페이스").foregroundStyle(g)
                   + Text("입니다.").foregroundStyle(Color.white)
         case .finishKick(let km):
             // 이지런이면 "힘이 남았다"보다 편하게 마무리한 쪽으로
