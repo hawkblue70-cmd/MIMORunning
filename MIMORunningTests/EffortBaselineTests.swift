@@ -117,7 +117,22 @@ struct EffortBaselineTests {
         #expect(rows[0].count == 3)
         #expect(rows[0].median == 5)
         #expect(rows[1].count == 2)
-        #expect(rows[1].median == nil)                 // 3건 미만 → 전체 폴백 없이 nil
+        #expect(rows[1].median == 5)                   // 표는 1건부터 표시(전체 폴백 없이 같은 유형만)
+        // 기준선 계산(활동 상세·판정)은 3건 기준 그대로
+        let tempoSummary = EffortBaseline.typeSummary(for: .tempo, asOf: now, history: all, index: idx,
+                                                      typeOf: { tempoIDs.contains($0) ? .tempo : .easy })
+        #expect(tempoSummary.median == nil)
+    }
+
+    @Test func typeTableShowsSingleRun() {
+        let now = Date()
+        let one = [run(3, from: now)]
+        let idx = EffortIndex(user: [:], apple: [one[0].id: apple(7, at: now)])
+        let rows = EffortBaseline.typeTable(asOf: now, history: one, index: idx, typeOf: { _ in .tempo })
+        #expect(rows.count == 1)
+        #expect(rows[0].windowWeeks == 12)             // 8주 3건 미만 → 12주로 넓혀 센다
+        #expect(rows[0].median == 7)
+        #expect(!rows[0].isUserBased)
     }
 
     @Test func typeSummaryExcludesCurrentRun() {

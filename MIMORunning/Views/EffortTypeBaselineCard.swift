@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 성장 탭 — 유형별 "평소 강도" 표. 절대 임계 대신 본인 중앙값을 보여준다.
-/// 각 행: 유형 · 중앙값(3회 이상일 때만) · 창/표본 수 · 수동 입력 기준 여부.
+/// 각 행: 유형 · 중앙값(1회부터) · 창/표본 수 · 수동 입력 기준 여부.
 struct EffortTypeBaselineCard: View {
     let rows: [EffortBaseline.TypeSummary]
 
