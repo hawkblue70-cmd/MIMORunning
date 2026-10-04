@@ -252,7 +252,7 @@ struct SplitsShareCardView: View {
 
     private func hrZoneNumber(for hr: Int) -> Int? {
         guard !zones.isEmpty else { return nil }
-        return zones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+        return zones.zoneID(forBPM: hr)
     }
 
     private func hrZoneColor(_ zone: Int) -> Color {

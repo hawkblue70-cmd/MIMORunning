@@ -2496,7 +2496,7 @@ private struct SplitBarRow: View {
 
     private var hrZoneNumber: Int? {
         guard let hr = split.avgHeartRate, !zones.isEmpty else { return nil }
-        return zones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+        return zones.zoneID(forBPM: hr)
     }
 
     private static let barWidth: CGFloat = 110

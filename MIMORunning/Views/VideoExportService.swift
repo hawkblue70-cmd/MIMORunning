@@ -2731,7 +2731,7 @@ struct VideoExportService {
             let lime   = UIColor(red: 0.745, green: 0.980, blue: 0.416, alpha: 1.0)
             func zoneUIColor(_ hr: Int?) -> UIColor {
                 guard let hr = hr,
-                      let zid = hrZones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+                      let zid = hrZones.zoneID(forBPM: hr)
                 else { return UIColor.red.withAlphaComponent(0.70) }
                 switch zid {
                 case 1: return UIColor(red: 0.310, green: 0.765, blue: 0.969, alpha: 1)

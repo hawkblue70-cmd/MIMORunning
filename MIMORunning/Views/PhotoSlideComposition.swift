@@ -1193,8 +1193,8 @@ enum PhotoSlideComposition {
                 let limeClr  = UIColor(red: 0.745, green: 0.980, blue: 0.416, alpha: 1.0)   // BEFA6A
 
                 func zoneUIColor(hr: Int) -> UIColor {
-                    if let z = hrZones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM }) {
-                        switch z.id {
+                    if let zid = hrZones.zoneID(forBPM: hr) {
+                        switch zid {
                         case 1: return UIColor(red: 0.310, green: 0.765, blue: 0.969, alpha: 1.0)
                         case 2: return UIColor(red: 0.506, green: 0.784, blue: 0.518, alpha: 1.0)
                         case 3: return UIColor(red: 1.000, green: 0.718, blue: 0.302, alpha: 1.0)

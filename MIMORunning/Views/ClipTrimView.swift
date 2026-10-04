@@ -1410,7 +1410,7 @@ struct ClipTrimSheet: View {
 
                 let zoneColor: (Int?) -> Color = { hrOpt in
                     guard let hr = hrOpt,
-                          let zid = self.hrZones.first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+                          let zid = self.hrZones.zoneID(forBPM: hr)
                     else { return Color.red.opacity(0.70) }
                     switch zid {
                     case 1: return Color(hex: "4FC3F7")

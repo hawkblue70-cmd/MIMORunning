@@ -311,6 +311,16 @@ struct HRZoneData: Identifiable, Codable {
     var upperSeconds: TimeInterval? = nil
 }
 
+extension Array where Element == HRZoneData {
+    /// 심박 → 존 번호. Zone 5 상한(= 추정 최대 심박)을 넘는 심박도 Z5다 — 존 시간 집계(`ratios` 마지막 칸 ∞)와 같은 규칙.
+    /// 예전 `first { min...max }`는 50대 추정 최대 170을 넘은 구간(171·173)에서 nil이 돼 카드에 존이 비었다.
+    func zoneID(forBPM hr: Int) -> Int? {
+        guard let last = self.last else { return nil }
+        if hr >= last.minBPM { return last.id }
+        return first(where: { hr >= $0.minBPM && hr <= $0.maxBPM })?.id
+    }
+}
+
 // MARK: - ActivityDetail Codable (manual — handles CLLocationCoordinate2D and named tuples)
 
 extension ActivityDetail: Codable {
