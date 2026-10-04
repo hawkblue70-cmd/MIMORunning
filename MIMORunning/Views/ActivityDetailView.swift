@@ -2638,7 +2638,10 @@ private struct SplitsHighlightCard: View {
 
     private static let gold = Color(hex: "FFC74D")
 
+    /// 러닝 전체 평균 페이스(총 시간 ÷ 총 거리) — 러닝 데이터·위 문장("최근 5회 중…")과 같은 값.
+    /// 구간 페이스의 단순 평균은 끝 조각(300m 미만)·구간 밖 시간이 빠져 1초 어긋났다(5'18" vs 5'19").
     private var avgPaceSeconds: Double {
+        if let p = activity?.paceSecPerKm { return p }
         guard !splits.isEmpty else { return 0 }
         return splits.map(\.paceSecPerKm).reduce(0,+) / Double(splits.count)
     }

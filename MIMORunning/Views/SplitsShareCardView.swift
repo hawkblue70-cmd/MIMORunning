@@ -199,7 +199,10 @@ struct SplitsShareCardView: View {
         displaySplits.indices.min(by: { displaySplits[$0].paceSecPerKm < displaySplits[$1].paceSecPerKm })
     }
 
+    /// 러닝 전체 평균 페이스(총 시간 ÷ 총 거리) — 러닝 데이터 카드·활동 상세와 같은 값.
+    /// 구간 페이스 단순 평균은 끝 조각·구간 밖 시간이 빠져 1초 어긋났다(5'18" vs 5'19").
     private var avgPace: Double {
+        if let p = activity.paceSecPerKm { return p }
         guard !displaySplits.isEmpty else { return 0 }
         return displaySplits.map(\.paceSecPerKm).reduce(0, +) / Double(displaySplits.count)
     }
