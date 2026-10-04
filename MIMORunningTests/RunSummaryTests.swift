@@ -259,6 +259,20 @@ struct RunSummaryTests {
         #expect(RunSummary.lines(i).first { $0.axis == "훈련부하" }?.tone == .neutral)
     }
 
+    @Test func raceDayInTaperWeekSkipsPlanWording() {
+        // 대회 날은 계획의 끝 — 테이퍼 주여도 "테이퍼 주인데 고강도"·"이지런 위주로" 대신 대회 문구
+        var i = RunSummaryInput(); i.workoutType = .race; i.planPhase = "테이퍼"
+        i.zoneFractions = [3: 0.02, 4: 0.05, 5: 0.93]
+        i.weekOverWeek = -0.2; i.acuteChronic = .low
+        let lines = RunSummary.lines(i)
+        let heart = lines.first { $0.axis == "심박" }
+        #expect(heart?.state == "의도한 고강도")      // 대회 본래 판정
+        #expect(heart?.tone == .good)
+        #expect(heart?.next == nil)
+        #expect(heart?.evidence?.contains("테이퍼") == false)
+        #expect(lines.first { $0.axis == "훈련부하" }?.next == "대회를 마쳤습니다. 며칠은 휴식이나 짧은 이지런으로 회복하세요.")
+    }
+
     @Test func steadyLoadIsGood() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])

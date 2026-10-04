@@ -180,7 +180,8 @@ enum RunSummaryBuilder {
         // 차트 축 라벨(평활화 최고)과 같은 값 — 원본 최고를 쓰면 카드 안에서 157 vs 159처럼 어긋난다
         input.peakHeartRate = c.hrSamples.count >= 5 ? hrChartSmoothed(c.hrSamples.map(\.bpm)).max().map { Int($0.rounded()) } : nil
         input.temperatureC = c.activity.temperatureC
-        input.planPhase = c.planPhase
+        // 대회 날은 계획의 끝이다 — 그 주가 테이퍼·회복 주여도 "테이퍼 주인데 고강도"·"이지런 위주로"를 말하지 않는다
+        input.planPhase = c.workoutType == .race ? nil : c.planPhase
         input.easyPace = c.easyPaceLookup
         // daysSinceHardRun 계산(과거 최대 28일 스캔)은 loadNext가 실제로 쓸 수 있을 때만 —
         // 회복/테이퍼 주거나 이미 4주 평균 대비 높음·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.

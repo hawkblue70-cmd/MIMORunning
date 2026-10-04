@@ -329,7 +329,7 @@ enum RunSummary {
         } else {
             let high3 = frac(3) + frac(4) + frac(5)
             let pct = Int((high3 * 100).rounded())
-            if let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
+            if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
                 // 유형이 '계획된 고강도'여도 플랜이 우선한다 — 회복·테이퍼 주의 고강도는 계획대로가 아니다
                 planDeviationPhase = phase
                 line = RunSummaryLine(axis: axis,
@@ -503,7 +503,7 @@ enum RunSummary {
     /// HRV 근거 상태어 — 본인 4주 기준선 대비 관찰어. 억제(아래·불안정)가 좋음보다 먼저다.
     static func hrvGradeLabel(_ t: MRHRVTrend) -> String { t.gradeLabel }
 
-    /// 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
+    /// 대회 > 계획상 회복/테이퍼 주 > 급증/단조/장기 연속 > 충분한 회복 순으로 다음 행동을 고른다.
     /// 어젯밤 한 밤이 평소(4주)보다 15% 넘게 낮았나 — 근거 줄의 "(평소보다 낮음)"과 같은 판정. 추세가 보통이어도 다음 행동에 반영한다.
     private static func lastNightLow(_ i: RunSummaryInput) -> Bool {
         guard let t = i.hrvTrend, let n = i.lastNightHRV else { return false }
@@ -514,6 +514,10 @@ enum RunSummary {
         let L = AppLanguage.shared
         if i.todayEffortMissing {
             return L.s("강도를 입력하면 오늘 러닝이 부하에 반영됩니다.", "Rate today's effort and it will count toward your load.", ja: "強度を入力すると今日のランが負荷に反映されます。")
+        }
+        if i.workoutType == .race {
+            return L.s("대회를 마쳤습니다. 며칠은 휴식이나 짧은 이지런으로 회복하세요.",
+                      "Race done — give it a few days of rest or short easy runs.", ja: "レースを終えました。数日は休養か短いイージーランで回復してください。")
         }
         if let phase = i.planPhase {
             if phase == "회복" {
