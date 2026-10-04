@@ -84,6 +84,8 @@ struct StampData {
     var weatherIcon: String?     = nil   // SF Symbol
     var weatherText: String?     = nil   // "18°C"
     var shoeName: String?        = nil
+    /// 대회명 — 대회 확정 + 대회 칩 ON일 때만. 좌측 상단 로고 아래 뱃지(`StampHeaderMark`)
+    var raceName: String?        = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -129,6 +131,30 @@ struct StampData {
 // MARK: - 날짜·시간 라벨 (워드마크 줄 오른쪽 · 스토리/영상/슬라이드/경로 영상 공용)
 
 /// 스탬프 카드의 날짜·시간 라벨. `StampPhotoConfig.showDate`가 켜져 있을 때만 배치한다.
+/// 스탬프 카드 좌측 상단 머리 — MIMO 워드마크 + (대회명 있으면) 대회 뱃지. 애슬레틱 카드와 같은 배치(로고 아래 6pt).
+/// 스탬프의 모든 경로(사진·슬라이드·영상·경로 영상, 미리보기·출력)가 **이 뷰 하나만** 쓴다(§5.8).
+/// 문구·스탬프가 뱃지를 덮지 않도록 각 경로의 위 여백에 `extraTopInset`을 더한다.
+struct StampHeaderMark: View {
+    let raceName: String?
+    var onLight: Bool = false
+
+    static let badgeGap: CGFloat = 6
+    /// RaceBadge 한 줄(10pt bold) 높이 + 여유
+    static let badgeHeight: CGFloat = 14
+
+    /// 대회 뱃지가 있을 때 문구·스탬프를 아래로 미는 양
+    static func extraTopInset(_ raceName: String?) -> CGFloat {
+        raceName == nil ? 0 : badgeGap + badgeHeight
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Self.badgeGap) {
+            MIMOWordmark(size: 11, onMediaCard: true)
+            if let r = raceName { RaceBadge(name: r, onLight: onLight) }
+        }
+    }
+}
+
 struct StampDateLabel: View {
     let date: Date
     /// 흰 배경(사진 없는 스탬프 카드) — 검은 글자, 그림자 없음
@@ -393,10 +419,13 @@ struct StampCard: View {
         // 스탬프별 절대 배율표 (StampTemplate.sizeScales) — 폭 기준 소 40%·중 55%·대 72%·특대 90%
         let scale = template.stampScale(for: sizeLevel)
 
+        // 대회 뱃지가 로고 아래에 붙으면 그만큼 위 여백을 늘린다 — 문구·스탬프가 뱃지를 덮지 않게
+        let topInset = wordmarkTopInset + StampHeaderMark.extraTopInset(data.raceName)
+
         ZStack {
             if !renderOnlyText {
                 if template.positionMode == .fixed {
-                    stampContent(fill: fill, outline: outline, scale: scale)
+                    stampContent(fill: fill, outline: outline, scale: scale, topClearance: topInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     // ImageRenderer에서 .frame(alignment:)의 bottom 앵커가 무시되는 SwiftUI 버그를
@@ -409,7 +438,7 @@ struct StampCard: View {
                     let stampPadded = stampContent(fill: fill, outline: outline, scale: scale)
                         .fixedSize()
                         .padding(EdgeInsets(
-                            top: position.isTop ? wordmarkTopInset : 12,
+                            top: position.isTop ? topInset : 12,
                             leading: sideInset + template.leadingOverhang * scale,
                             bottom: 12,
                             trailing: sideInset + template.leadingOverhang * scale))
@@ -433,7 +462,7 @@ struct StampCard: View {
                 let textSideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
                 let textPadded = textOverlay
                     .padding(EdgeInsets(
-                        top: stampTextPosition.isTop ? wordmarkTopInset : 14,
+                        top: stampTextPosition.isTop ? topInset : 14,
                         leading: textSideInset, bottom: 14, trailing: textSideInset))
                 VStack(spacing: 0) {
                     if !stampTextPosition.isTop    { Spacer(minLength: 0) }
@@ -466,7 +495,7 @@ struct StampCard: View {
     }
 
     @ViewBuilder
-    private func stampContent(fill: Color, outline: Color, scale: CGFloat) -> some View {
+    private func stampContent(fill: Color, outline: Color, scale: CGFloat, topClearance: CGFloat = 0) -> some View {
         switch template {
         case .passportStamp:
             StampPassportView(data: data, fill: fill, outline: outline, scale: scale,
@@ -510,7 +539,8 @@ struct StampCard: View {
         case .hud:
             StampHUDView(data: data, fill: fill, outline: outline, scale: scale,
                          showHeartRate: showHeartRate, showCalories: showCalories,
-                         showTextOutline: showTextOutline, position: position)
+                         showTextOutline: showTextOutline, position: position,
+                         topClearance: topClearance)
         case .hrWave:
             StampHRWaveView(data: data, fill: fill, outline: outline, scale: scale,
                             showTextOutline: showTextOutline)
@@ -1081,6 +1111,8 @@ private struct StampHUDView: View {
     var showTextOutline: Bool = true
     /// 9셀 그리드에서 데이터 블록 배치 위치 (Canvas 브래킷은 항상 전체 프레임)
     var position: CardPosition = .center
+    /// 위쪽 배치 시 데이터 블록이 피해야 할 로고(+대회 뱃지) 아래 선
+    var topClearance: CGFloat = 0
 
     /// 심박 토글 + 심박 데이터 → 워치 스타일(LIVE 헤더, ♥심박·케이던스 줄). 구 "워치 HUD" 병합.
     private var liveMode: Bool { showHeartRate && data.heartRate != nil }
@@ -1142,6 +1174,7 @@ private struct StampHUDView: View {
             }
             .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
             .padding(sz(16, scale))
+            .padding(.top, position.isTop ? max(0, topClearance - sz(16, scale)) : 0)
         }
     }
 }

@@ -12,6 +12,8 @@ struct StampControlsView: View {
     var data: StampData = .sample
     /// 사진 탭인데 사진이 없어 흰 배경인 상태 — 테두리 칩이 흰 배경 전용 값을 다룬다
     var isWhiteBackground: Bool = false
+    /// 확정된 대회명 — 있으면 맨 위에 대회 칩(애슬레틱 카드와 같은 모양). 칩 ON/OFF는 vm.showRace
+    var confirmedRaceName: String? = nil
     var onLoadPreview: (() async -> Void)? = nil
     @State private var showTemplatePicker = false
     @State private var controlTab: StampControlTab = .stamp
@@ -19,6 +21,9 @@ struct StampControlsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // (0) 대회 칩 — 대회 확정 시에만
+            if let race = confirmedRaceName { raceChipRow(race) }
+
             // (a) 템플릿 선택 버튼
             Button { showTemplatePicker = true } label: {
                 HStack(spacing: 8) {
@@ -414,6 +419,32 @@ struct StampControlsView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isOn)
+    }
+
+    /// 대회 칩 — 애슬레틱 카드 대회 칩과 같은 모양. ON이면 로고 아래 대회 뱃지(StampHeaderMark)
+    private func raceChipRow(_ race: String) -> some View {
+        let isOn = vm.showRace
+        return ScrollView(.horizontal, showsIndicators: false) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { vm.showRace.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 10))
+                    Text(race)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(isOn ? Color.white : Color.white.opacity(0.4))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 2)
+        }
     }
 
     /// 날짜·시간 토글 — 워드마크 줄 오른쪽에 "2026. 9. 4 오후 6:16" 표시 (스토리·영상·슬라이드·경로 영상)

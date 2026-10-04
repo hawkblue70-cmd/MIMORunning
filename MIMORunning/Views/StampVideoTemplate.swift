@@ -46,7 +46,7 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
             showWordmark: false,
             cardHeightOverride: textH,
             cardWidthOverride: textW,
-            safeTopInset: 54,
+            safeTopInset: 54 + StampHeaderMark.extraTopInset(data.raceName),
             safeBottomInset: 14,
             horizontalPadding: 14,
             isStaticPreview: true
@@ -105,13 +105,13 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
 /// 슬라이드 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 9:16 캔버스(renderSize) 기준으로 렌더 → scale 적용으로 px 출력.
 @MainActor
-func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage? {
+func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil) -> UIImage? {
     let ptH = renderSize.height / renderSize.width * 300
     let vPad = ptH * 0.06
 
     // date != nil → 워드마크 줄 오른쪽에 날짜·시간 (미리보기 StampDateLabel과 동일)
     let overlay = ZStack(alignment: .topLeading) {
-        MIMOWordmark(size: 11, onMediaCard: true)
+        StampHeaderMark(raceName: raceName)
             .padding(.leading, 14)
             .padding(.top, vPad)
         if let d = date {
@@ -133,13 +133,13 @@ func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage?
 /// 영상 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 영상 미리보기(previewW=375*9/16≈211pt)와 동일한 논리 크기로 렌더.
 @MainActor
-func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil) -> UIImage? {
+func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil) -> UIImage? {
     // 영상 미리보기 컨테이너와 동일한 논리 폭 → 미리보기·출력 워드마크 크기 일치
     let baseW: CGFloat = 375.0 * 9.0 / 16.0  // ≈ 210.94pt
     let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
     let vPad = ptH * 0.06  // ≈ 22.5pt (미리보기: cardSectionH * 0.06)
     let overlay = ZStack(alignment: .topLeading) {
-        MIMOWordmark(size: 11, onMediaCard: true)
+        StampHeaderMark(raceName: raceName)
             .padding(.leading, 14)
             .padding(.top, vPad)
         if let d = date {
@@ -317,6 +317,8 @@ private struct StampVideoTextOverlay: View {
     let isVideoPlaying: Bool
     let startDelay: Double
     let photoIndex: Int
+    /// 대회 뱃지만큼 문구를 아래로 (StampHeaderMark.extraTopInset)
+    var extraTopInset: CGFloat = 0
 
     @State private var phase: Double = 0
     @State private var loopCounter: Int = 0
@@ -353,7 +355,7 @@ private struct StampVideoTextOverlay: View {
                 showWordmark: false,
                 cardHeightOverride: geo.size.height,
                 cardWidthOverride: kClipW,
-                safeTopInset: 54,
+                safeTopInset: 54 + extraTopInset,
                 safeBottomInset: 14,
                 horizontalPadding: 14,
                 isStaticPreview: true
@@ -437,7 +439,8 @@ struct AnimatedStampPreviewCard: View {
                     previewProgress: previewProgress,
                     isVideoPlaying: isVideoPlaying,
                     startDelay: stampDur,
-                    photoIndex: currentPhotoIndex
+                    photoIndex: currentPhotoIndex,
+                    extraTopInset: StampHeaderMark.extraTopInset(data.raceName)
                 )
             }
         }
@@ -609,7 +612,7 @@ extension ShareCardScreen {
                 .frame(width: kClipW, height: cardSectionH)
                 .clipped()
                 .overlay(alignment: .topLeading) {
-                    MIMOWordmark(size: 11, onMediaCard: true)
+                    StampHeaderMark(raceName: stampPreviewData.raceName)
                         .padding(.leading, 14)
                         .padding(.top, cardSectionH * 0.06)
                 }
@@ -880,7 +883,7 @@ extension ShareCardScreen {
         }
         // 워드마크(좌측 상단) — 8% 여백 바로 아래에 배치
         .overlay(alignment: .topLeading) {
-            MIMOWordmark(size: 11, onMediaCard: true)
+            StampHeaderMark(raceName: stampPreviewData.raceName)
                 .padding(.leading, 10)
                 .padding(.top, cardSectionH * 0.06)
         }

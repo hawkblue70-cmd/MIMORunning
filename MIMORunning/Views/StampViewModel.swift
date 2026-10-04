@@ -11,6 +11,11 @@ import SwiftUI
 @MainActor
 final class StampViewModel {
 
+    // MARK: - 대회 칩
+
+    /// 대회 뱃지(로고 아래 대회명) 표시 — 시트를 열 때마다 ON(저장 안 함). 대회 확정된 러닝에서만 칩이 보인다.
+    var showRace: Bool = true
+
     // MARK: - Per-photo Configs
 
     /// 사진 인덱스 → 스탬프 속성 전체. story/slide 에서 사진마다 독립 저장.

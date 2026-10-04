@@ -896,7 +896,7 @@ struct ShareCardScreen: View {
                         showWordmark: false,
                         cardHeightOverride: 375,
                         cardWidthOverride: vidW,
-                        safeTopInset: 54,
+                        safeTopInset: 54 + StampHeaderMark.extraTopInset(stampPreviewData.raceName),
                         safeBottomInset: 14,
                         isStaticPreview: true
                     )
@@ -909,8 +909,8 @@ struct ShareCardScreen: View {
                     .offset(stampVM.stampTextEntranceMode == .flyIn && !previewTextVisible
                         ? stampPreviewFlyOffset(for: stampVM.stampTextFlyDirection, w: vidW, h: 375) : .zero)
                 }
-                // 로고(좌측 상단) — 영상·슬라이드 미리보기와 동일 size: 11
-                MIMOWordmark(size: 11, onMediaCard: true)
+                // 로고(+ 대회 뱃지, 좌측 상단) — 영상·슬라이드 미리보기와 동일 size: 11
+                StampHeaderMark(raceName: stampPreviewData.raceName)
                     .padding(.leading, vidW * 0.047)
                     .padding(.top, 375.0 * 0.06)
                     .frame(width: vidW, height: 375, alignment: .topLeading)
@@ -1018,6 +1018,8 @@ struct ShareCardScreen: View {
         d.weatherIcon = condition?.weather?.systemIcon(at: activity.date)
         d.weatherText = activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? condition?.weather?.formattedTemp
         d.shoeName    = displayShoeName
+        // 대회 — 확정 + 대회 칩 ON일 때만 로고 아래 뱃지
+        d.raceName    = stampVM.showRace ? confirmedRace?.raceName : nil
         return d
     }
 
@@ -1628,6 +1630,7 @@ struct ShareCardScreen: View {
     @ViewBuilder private var activeChipRow: some View {
         if isStamp                              { StampControlsView(vm: stampVM, template: template, data: stampPreviewData,
                                                     isWhiteBackground: template == .photo && storyPhotos.isEmpty,
+                                                    confirmedRaceName: confirmedRace?.raceName,
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
@@ -3938,7 +3941,8 @@ struct ShareCardScreen: View {
                 textFlyDirs.append(cfg.textFlyDirection)
             }
             guard !photos.isEmpty else { isExportingVideo = false; return }
-            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil)
+            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
+                                                       raceName: stampPreviewData.raceName)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
@@ -3980,7 +3984,8 @@ struct ShareCardScreen: View {
                 guard isStamp, template == .video else { isExportingVideo = false; return }
             }
 
-            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil)
+            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
+                                                    raceName: stampPreviewData.raceName)
 
             var processedURLs: [URL] = []
             for (i, recipe) in stampVM.clipRecipes.enumerated() {
@@ -4187,7 +4192,7 @@ struct ShareCardScreen: View {
                             showBackground: false,
                             showWordmark: false,
                             cardHeightOverride: textH,
-                            safeTopInset: 77,
+                            safeTopInset: 77 + StampHeaderMark.extraTopInset(stampPreviewData.raceName) * textW / previewVidW,
                             isStaticPreview: true
                         )
                         .frame(width: textW, height: textH)
@@ -4244,7 +4249,8 @@ struct ShareCardScreen: View {
                     ))
                 }
                 // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
-                if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil) {
+                if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil,
+                                                        raceName: stampPreviewData.raceName) {
                     exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
                         image: logoImg,
                         entranceMode: .none,

@@ -451,6 +451,9 @@ struct MiniMeOrCustomImage: View {
 struct RaceBadge: View {
     let name: String
     var scale: CGFloat = 1.0
+    /// 흰 배경(사진 없는 스탬프 카드) — 노랑이 묻히므로 진한 금색, 그림자 없음
+    var onLight: Bool = false
+    static let onLightColor = Color(hex: "A07800")
     /// 밝은 노랑 — 심박 라임(#C6FF00)과 구분되게 주황기 없는 순노랑.
     static let color = Color(hex: "FFD60A")
 
@@ -462,7 +465,8 @@ struct RaceBadge: View {
                 .font(.system(size: 10 * scale, weight: .bold))
                 .lineLimit(1)
         }
-        .foregroundStyle(Self.color)
-        .cardTextShadow()
+        .foregroundStyle(onLight ? Self.onLightColor : Self.color)
+        .shadow(color: onLight ? .clear : CardVisual.textShadowColor,
+                radius: CardVisual.textShadowRadius, x: 0, y: CardVisual.textShadowY)   // = cardTextShadow()
     }
 }
