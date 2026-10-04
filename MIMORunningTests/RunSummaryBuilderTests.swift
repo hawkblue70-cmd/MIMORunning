@@ -111,7 +111,7 @@ struct RunSummaryBuilderTests {
     }
 }
 
-/// 테이퍼 주에 대회를 이미 뛰었으면 대회 다음 날부터 회복 주로 본다.
+/// 테이퍼 주에 대회를 이미 뛰었으면 대회 다음 날부터 "대회를 마친 주"로 본다.
 @Suite("RunSummaryBuilder 대회 뒤 계획 단계", .korean)
 @MainActor
 struct RunSummaryBuilderPostRaceTests {
@@ -136,7 +136,7 @@ struct RunSummaryBuilderPostRaceTests {
         let types: [UUID: WorkoutType] = [before.id: .easy, race.id: .race, sameDay.id: .easy, after.id: .easy]
         #expect(RunSummaryBuilder.postRacePhase(ctx(before, history: all, types: types, phase: "테이퍼")) == nil)
         #expect(RunSummaryBuilder.postRacePhase(ctx(sameDay, history: all, types: types, phase: "테이퍼")) == nil)   // 대회 당일은 아직
-        #expect(RunSummaryBuilder.postRacePhase(ctx(after, history: all, types: types, phase: "테이퍼")) == "회복")
+        #expect(RunSummaryBuilder.postRacePhase(ctx(after, history: all, types: types, phase: "테이퍼")) == RunSummary.postRacePhase)
         #expect(RunSummaryBuilder.postRacePhase(ctx(after, history: all, types: types, phase: "늘리기")) == nil)    // 테이퍼 주만
     }
 }

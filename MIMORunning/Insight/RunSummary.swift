@@ -97,7 +97,9 @@ enum RunSummary {
     /// 오늘 거리가 계획의 일부인 유형 — 거리 적응 줄이 증량 규칙을 말하지 않는다.
     static let plannedLongRunTypes: Set<WorkoutType> = [.longRun, .lsd, .distanceRun, .race]
     /// 대회 훈련 계획상 강도를 낮추는 주 — 이 주에는 계획된 고강도 유형이라도 고강도가 계획 이탈이다.
-    static let planEasyPhases: Set<String> = ["회복", "테이퍼"]
+    /// 테이퍼 주에 대회를 이미 뛴 뒤(`RunSummaryBuilder.postRacePhase`) — 계획표에는 없는 내부 단계. 문구는 "대회를 마친 주".
+    static let postRacePhase = "대회 후"
+    static let planEasyPhases: Set<String> = ["회복", "테이퍼", postRacePhase]
 
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
@@ -260,7 +262,10 @@ enum RunSummary {
         // 다음 롱런 거리를 정하는 주체가 둘이면 지시가 충돌한다.
         // 대회 플랜 > 계획된 롱런 유형 > (둘 다 없을 때만) 일반 증량 규칙 순으로 고른다.
         let next: String
-        if let phase = i.planPhase {
+        if i.planPhase == postRacePhase {
+            next = L.s("대회를 마친 주입니다. 거리를 더 늘리지 말고 회복하세요.",
+                      "Your race is done this week — hold the distance and recover.", ja: "レースを終えた週です。距離をこれ以上伸ばさず、回復してください。")
+        } else if let phase = i.planPhase {
             next = planEasyPhases.contains(phase)
                 ? L.s("대회 훈련 계획상 \(phase) 주입니다. 거리를 더 늘리지 말고 계획대로 가세요.",
                       "Your race plan has this as an easy week — hold the distance and stick to the plan.", ja: "レース計画では軽めの週です。距離をこれ以上伸ばさず、計画どおりに進めてください。")
@@ -333,7 +338,7 @@ enum RunSummary {
                 // 유형이 '계획된 고강도'여도 플랜이 우선한다 — 회복·테이퍼 주의 고강도는 계획대로가 아니다
                 planDeviationPhase = phase
                 line = RunSummaryLine(axis: axis,
-                                      state: L.s("\(phase) 주인데 고강도 · Zone 3 이상 \(pct)%",
+                                      state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주인데 고강도 · Zone 3 이상 \(pct)%",
                                                  "High intensity in an easy week · \(pct)% in Zone 3+", ja: "軽めの週なのに高強度 · ゾーン3以上\(pct)%"),
                                       tone: .neutral)
             } else if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
@@ -366,7 +371,10 @@ enum RunSummary {
         }
 
         var next: String? = nil
-        if let phase = planDeviationPhase {
+        if planDeviationPhase == postRacePhase {
+            next = L.s("대회를 마친 주는 회복하는 기간입니다. 다음 러닝은 이지런으로 돌아가세요.",
+                      "The week after a race is for recovery — make your next run an easy one.", ja: "レースを終えた週は回復の期間です。次のランはイージーランに戻してください。")
+        } else if let phase = planDeviationPhase {
             next = L.s("\(phase) 주는 다음 고강도를 받아낼 몸을 만드는 기간입니다. 다음 러닝은 이지런으로 돌아가세요.",
                       "An easy week is what makes the next hard block land — make your next run an easy one.", ja: "軽めの週は次の高強度を受け止める体をつくる期間です。次のランはイージーランに戻してください。")
         } else if isEasyHighBranch {
@@ -379,7 +387,9 @@ enum RunSummary {
         }
 
         // 이 줄이 뜬 까닭(대회 훈련 계획 단계)은 상태어가 아니라 근거 맨 앞에서 말한다 — 상태어는 짧게 유지
-        if let phase = planDeviationPhase {
+        if planDeviationPhase == postRacePhase {
+            evidence = L.s("대회를 마친 주 · \(evidence)", "Race done this week · \(evidence)", ja: "レースを終えた週 · \(evidence)")
+        } else if let phase = planDeviationPhase {
             evidence = L.s("대회 훈련 계획상 \(phase) 주 · \(evidence)",
                           "Race-plan easy week · \(evidence)", ja: "レース計画で軽めの週 · \(evidence)")
         }
@@ -454,7 +464,7 @@ enum RunSummary {
     /// 연속일은 **상태어에만** 쓴다(loadLine) — 두 줄에 같은 "N일 연속"이 겹쳐 보이지 않게.
     /// 대회 훈련 계획상 회복·테이퍼 주 — 부하 줄의 다음 행동이 계획 문장이 되는 주
     private static func planEasyWeek(_ i: RunSummaryInput) -> Bool {
-        i.planPhase == "회복" || i.planPhase == "테이퍼"
+        i.planPhase.map { planEasyPhases.contains($0) } == true
     }
 
     private static func loadEvidence(_ i: RunSummaryInput) -> String? {
@@ -520,6 +530,9 @@ enum RunSummary {
                       "Race done — give it a few days of rest or short easy runs.", ja: "レースを終えました。数日は休養か短いイージーランで回復してください。")
         }
         if let phase = i.planPhase {
+            if phase == postRacePhase {
+                return L.s("대회를 마친 주입니다. 이지런 위주로 회복하세요.", "Your race is done this week — keep to easy runs and recover.", ja: "レースを終えた週です。イージーラン中心で回復してください。")
+            }
             if phase == "회복" {
                 return L.s("대회 훈련 계획상 회복 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.", ja: "レース計画では回復週です。イージーラン中心にしてください。")
             }

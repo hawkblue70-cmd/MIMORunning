@@ -273,6 +273,20 @@ struct RunSummaryTests {
         #expect(lines.first { $0.axis == "훈련부하" }?.next == "대회를 마쳤습니다. 며칠은 휴식이나 짧은 이지런으로 회복하세요.")
     }
 
+    @Test func postRaceWeekUsesOwnWording() {
+        var i = RunSummaryInput(); i.workoutType = .easy; i.planPhase = RunSummary.postRacePhase
+        i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
+        i.weekOverWeek = -0.2; i.acuteChronic = .steady; i.streakDays = 4
+        let lines = RunSummary.lines(i)
+        let heart = lines.first { $0.axis == "심박" }
+        #expect(heart?.state == "대회를 마친 주인데 고강도 · Zone 3 이상 100%")
+        #expect(heart?.next == "대회를 마친 주는 회복하는 기간입니다. 다음 러닝은 이지런으로 돌아가세요.")
+        #expect(heart?.evidence?.hasPrefix("대회를 마친 주 · ") == true)
+        let load = lines.first { $0.axis == "훈련부하" }
+        #expect(load?.next == "대회를 마친 주입니다. 이지런 위주로 회복하세요.")
+        #expect(load?.tone == .good)   // 계획상 쉬운 주처럼 연속 일수로 경고하지 않는다
+    }
+
     @Test func steadyLoadIsGood() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])

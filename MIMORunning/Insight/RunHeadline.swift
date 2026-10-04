@@ -83,7 +83,7 @@ struct RunHeadline: Equatable {
                            threshold: ThresholdContext? = nil) -> [Candidate] {
         let L = AppLanguage.shared
         func line(_ a: Axis) -> RunSummaryLine? { a.label.flatMap { lbl in lines.first { $0.axis == lbl } } }
-        let planEasy = i.planPhase == "회복" || i.planPhase == "테이퍼"
+        let planEasy = i.planPhase.map { RunSummary.planEasyPhases.contains($0) } == true
         var out: [Candidate] = []
 
         // 1 드문 사건
@@ -146,7 +146,8 @@ struct RunHeadline: Equatable {
         // 5 맥락
         if planEasy, let p = i.planPhase {
             out.append(Candidate(source: .context, title: L.s("숨 고르는 러닝", "Catching Your Breath", ja: "息を整えるラン"),
-                                 fact: p == "테이퍼" ? L.s("대회 계획 테이퍼 주", "Race plan: taper week", ja: "レース計画: テーパー週")
+                                 fact: p == RunSummary.postRacePhase ? L.s("대회를 마친 주", "Race done this week", ja: "レースを終えた週")
+                                    : p == "테이퍼" ? L.s("대회 계획 테이퍼 주", "Race plan: taper week", ja: "レース計画: テーパー週")
                                                     : L.s("대회 계획 회복 주", "Race plan: recovery week", ja: "レース計画: 回復週"),
                                  axis: .load))
         }

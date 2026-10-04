@@ -29,7 +29,7 @@ enum RunSummaryBuilder {
         RunSummary.lines(input(c))
     }
 
-    /// 테이퍼 주에 대회를 이미 뛰었으면(대회 다음 날부터 그 주 끝까지) 회복 주로 본다 — 테이퍼는 대회 전까지의 말이다.
+    /// 테이퍼 주에 대회를 이미 뛰었으면(대회 다음 날부터 그 주 끝까지) "대회를 마친 주"로 본다 — 테이퍼는 대회 전까지의 말이다.
     static func postRacePhase(_ c: Context) -> String? {
         guard c.planPhase == "테이퍼", let typeOf = c.workoutTypeFn else { return nil }
         let cal = Calendar.current
@@ -40,7 +40,7 @@ enum RunSummaryBuilder {
             $0.date >= monday && cal.startOfDay(for: $0.date) < today &&
             typeOf($0.id) == .race
         }
-        return racedEarlier ? "회복" : nil
+        return racedEarlier ? RunSummary.postRacePhase : nil
     }
 
     /// 직전 4주간 러닝 1회 평균 거리(km). 거리 문맥 판단(장거리 여부·거리 적응 근거)에 쓴다.
@@ -202,7 +202,7 @@ enum RunSummaryBuilder {
         // (급증 판정은 RunSummary.loadLine과 같이 acuteChronic만 본다 — 최근 7일 증감은 근거 숫자일 뿐)
         let jumped = input.acuteChronic == .high || input.acuteChronic == .veryHigh
         if (input.acuteChronic != nil || input.sevenDayAU != nil),
-           input.planPhase != "회복", input.planPhase != "테이퍼",
+           !(input.planPhase.map { RunSummary.planEasyPhases.contains($0) } ?? false),
            !jumped, input.loadSentence != .monotony, input.streakDays < 4 {
             input.daysSinceHardRun = daysSinceHardRun(activity: c.activity, history: c.history,
                                                        effortIndex: c.effortIndex,
