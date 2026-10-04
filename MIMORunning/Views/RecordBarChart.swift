@@ -156,9 +156,9 @@ struct RecordBarChart: View {
 
     private var paceValues: [Double] { bars.compactMap(\.paceSec) }
 
-    /// 페이스 축 범위(초/km). 표본이 충분하면 사분위 울타리(Q1−1.5·IQR ~ Q3+1.5·IQR) 밖 값을 빼고 잡는다 —
+    /// 페이스 축 범위(초/km). 표본이 충분하면 느린 쪽 사분위 울타리(Q3+1.5·IQR) 밖 값을 빼고 잡는다 —
     /// 14일 창처럼 표본이 10개 안팎이면 백분위 자르기가 최댓값을 그대로 남겨, 18분대 한 점이 축을 5'40"~18'10"로 늘렸다.
-    /// 울타리 밖 점은 `yForPace`가 축 끝에 붙인다(울타리 안 가장 빠른 점은 90%, 그보다 빠른 극단값은 100%).
+    /// 울타리 밖(느린) 점은 `yForPace`가 바닥에 붙인다. 가장 빠른 점은 늘 90% 높이.
     private var paceRange: (fast: Double, slow: Double)? {
         let vals = paceValues.sorted()
         guard var fast = vals.first, var slow = vals.last else { return nil }
@@ -169,8 +169,10 @@ struct RecordBarChart: View {
                 return i + 1 < vals.count ? vals[i] + (vals[i + 1] - vals[i]) * f : vals[i]
             }
             let q1 = quantile(0.25), q3 = quantile(0.75), iqr = q3 - q1
-            let inside = vals.filter { $0 >= q1 - 1.5 * iqr && $0 <= q3 + 1.5 * iqr }
-            if let lo = inside.first, let hi = inside.last { fast = lo; slow = hi }
+            // 느린 쪽만 자른다 — 빠른 쪽까지 자르니 페이스가 6'15"~6'45"에 몰린 달에 템포·대회(5'19"·5'29"·5'51")가
+            // 전부 울타리 밖으로 밀려 맨 위 선에 붙었고, 축 꼭대기(6'20")와 머리 글자 "가장 빠른 5'19""가 어긋났다.
+            // 빠른 날은 실제 기록이고, 축을 늘리는 쪽은 걷기 섞인 날·GPS 튐 같은 느린 값이다.
+            if let hi = vals.last(where: { $0 <= q3 + 1.5 * iqr }) { slow = hi }
         }
         slow += Metrics.pacePad
         // 위 여유는 (가장 빠른 → 축 바닥) 폭에 비례 — 가장 빠른 점이 늘 `fastestPaceHeight`에 온다
