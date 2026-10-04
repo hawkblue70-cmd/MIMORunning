@@ -110,3 +110,33 @@ struct RunSummaryBuilderTests {
         #expect(load.state.contains("4일 연속"))
     }
 }
+
+/// 테이퍼 주에 대회를 이미 뛰었으면 대회 다음 날부터 회복 주로 본다.
+@Suite("RunSummaryBuilder 대회 뒤 계획 단계", .korean)
+@MainActor
+struct RunSummaryBuilderPostRaceTests {
+    private func ctx(_ today: Activity, history: [Activity], types: [UUID: WorkoutType], phase: String?) -> RunSummaryBuilder.Context {
+        RunSummaryBuilder.Context(activity: today, detail: nil, history: history, hrZones: [], hrSamples: [],
+                                  formBaseline: nil, formShifts: [], workoutType: types[today.id] ?? .easy,
+                                  workoutTypeFn: { types[$0] }, effortIndex: nil, heatHRModel: nil,
+                                  age: nil, isMale: nil, easyPaceLookup: nil, planPhase: phase,
+                                  raceDetailFn: nil, hrZonesFn: nil)
+    }
+
+    private func run(_ date: Date) -> Activity {
+        Activity(id: UUID(), type: .running, date: date, duration: 3000, distance: 8000, calories: nil, avgHeartRate: nil)
+    }
+
+    @Test func taperWeekBecomesRecoveryAfterRace() {
+        let cal = Calendar.current
+        let monday = MRPlanGovernance.weekMonday(of: Date())
+        let at = { (d: Int, h: Int) in cal.date(byAdding: .hour, value: d * 24 + h, to: monday)! }
+        let before = run(at(1, 7)), race = run(at(2, 8)), sameDay = run(at(2, 18)), after = run(at(4, 7))
+        let all = [before, race, sameDay, after]
+        let types: [UUID: WorkoutType] = [before.id: .easy, race.id: .race, sameDay.id: .easy, after.id: .easy]
+        #expect(RunSummaryBuilder.postRacePhase(ctx(before, history: all, types: types, phase: "테이퍼")) == nil)
+        #expect(RunSummaryBuilder.postRacePhase(ctx(sameDay, history: all, types: types, phase: "테이퍼")) == nil)   // 대회 당일은 아직
+        #expect(RunSummaryBuilder.postRacePhase(ctx(after, history: all, types: types, phase: "테이퍼")) == "회복")
+        #expect(RunSummaryBuilder.postRacePhase(ctx(after, history: all, types: types, phase: "늘리기")) == nil)    // 테이퍼 주만
+    }
+}

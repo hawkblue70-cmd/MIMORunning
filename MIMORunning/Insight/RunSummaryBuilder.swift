@@ -29,6 +29,20 @@ enum RunSummaryBuilder {
         RunSummary.lines(input(c))
     }
 
+    /// 테이퍼 주에 대회를 이미 뛰었으면(대회 다음 날부터 그 주 끝까지) 회복 주로 본다 — 테이퍼는 대회 전까지의 말이다.
+    static func postRacePhase(_ c: Context) -> String? {
+        guard c.planPhase == "테이퍼", let typeOf = c.workoutTypeFn else { return nil }
+        let cal = Calendar.current
+        let monday = MRPlanGovernance.weekMonday(of: c.activity.date, calendar: cal)
+        let today = cal.startOfDay(for: c.activity.date)
+        let racedEarlier = c.history.contains {
+            $0.type == .running && $0.id != c.activity.id &&
+            $0.date >= monday && cal.startOfDay(for: $0.date) < today &&
+            typeOf($0.id) == .race
+        }
+        return racedEarlier ? "회복" : nil
+    }
+
     /// 직전 4주간 러닝 1회 평균 거리(km). 거리 문맥 판단(장거리 여부·거리 적응 근거)에 쓴다.
     /// 리듬 카드 body·oneLiner도 이 헬퍼 하나만 쓴다.
     static func typicalRunDistanceKm(activity: Activity, history: [Activity]) -> Double? {
@@ -181,7 +195,7 @@ enum RunSummaryBuilder {
         input.peakHeartRate = c.hrSamples.count >= 5 ? hrChartSmoothed(c.hrSamples.map(\.bpm)).max().map { Int($0.rounded()) } : nil
         input.temperatureC = c.activity.temperatureC
         // 대회 날은 계획의 끝이다 — 그 주가 테이퍼·회복 주여도 "테이퍼 주인데 고강도"·"이지런 위주로"를 말하지 않는다
-        input.planPhase = c.workoutType == .race ? nil : c.planPhase
+        input.planPhase = c.workoutType == .race ? nil : postRacePhase(c) ?? c.planPhase
         input.easyPace = c.easyPaceLookup
         // daysSinceHardRun 계산(과거 최대 28일 스캔)은 loadNext가 실제로 쓸 수 있을 때만 —
         // 회복/테이퍼 주거나 이미 4주 평균 대비 높음·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.
