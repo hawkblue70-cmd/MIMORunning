@@ -70,8 +70,11 @@ struct RecordBarChart: View {
         static let dimmed: Double = 0.55
         /// `emphasisFrom` 앞 구간(맥락으로만 깔리는 부분)
         static let deemphasized: Double = 0.45
-        /// 페이스 축 위아래 여유 (초/km)
+        /// 페이스 축 아래 여유 (초/km) — 가장 느린 점이 바닥선에 붙지 않게
         static let pacePad: Double = 10
+        /// 축 범위 안 가장 빠른 페이스가 놓이는 높이(플롯 높이 대비). 위 여유를 고정 초가 아니라 이 비율로 잡아,
+        /// 페이스가 고른 달(점이 75%까지 내려앉음)·들쑥날쑥한 달(96%까지 붙음) 모두 같은 높이에 온다.
+        static let fastestPaceHeight: Double = 0.9
         /// 극단값(걷기 섞인 날·GPS 튐)이 나머지를 눌러 앉히지 않도록 사분위 울타리로 자르기 시작하는 표본 수
         static let paceClipMinCount: Int = 4
         /// 축 끝 눈금 라벨이 플롯 위아래에서 잘리지 않도록 눈금을 안쪽으로 들이는 비율
@@ -155,7 +158,7 @@ struct RecordBarChart: View {
 
     /// 페이스 축 범위(초/km). 표본이 충분하면 사분위 울타리(Q1−1.5·IQR ~ Q3+1.5·IQR) 밖 값을 빼고 잡는다 —
     /// 14일 창처럼 표본이 10개 안팎이면 백분위 자르기가 최댓값을 그대로 남겨, 18분대 한 점이 축을 5'40"~18'10"로 늘렸다.
-    /// 울타리 밖 점은 `yForPace`가 축 끝에 붙인다.
+    /// 울타리 밖 점은 `yForPace`가 축 끝에 붙인다(울타리 안 가장 빠른 점은 90%, 그보다 빠른 극단값은 100%).
     private var paceRange: (fast: Double, slow: Double)? {
         let vals = paceValues.sorted()
         guard var fast = vals.first, var slow = vals.last else { return nil }
@@ -169,8 +172,9 @@ struct RecordBarChart: View {
             let inside = vals.filter { $0 >= q1 - 1.5 * iqr && $0 <= q3 + 1.5 * iqr }
             if let lo = inside.first, let hi = inside.last { fast = lo; slow = hi }
         }
-        fast -= Metrics.pacePad
         slow += Metrics.pacePad
+        // 위 여유는 (가장 빠른 → 축 바닥) 폭에 비례 — 가장 빠른 점이 늘 `fastestPaceHeight`에 온다
+        fast -= (slow - fast) * (1 - Metrics.fastestPaceHeight) / Metrics.fastestPaceHeight
         if slow - fast < 1 { slow = fast + 1 }   // 0 나눗셈 방지
         return (fast, slow)
     }
