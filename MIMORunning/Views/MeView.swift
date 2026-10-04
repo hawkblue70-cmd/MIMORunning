@@ -2508,8 +2508,11 @@ private struct RaceSearchRow: View {
                     Text(d, format: .dateTime.month(.abbreviated))
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Theme.violet)
+                    // 예정 대회 행과 같은 문제 — 20pt "15일"이 36pt 칸에서 두 줄로 접혔다
                     Text(d, format: .dateTime.day())
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .foregroundStyle(.white)
                 }
             }
