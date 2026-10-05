@@ -43,9 +43,11 @@ enum ShareCard: Int, CaseIterable, Hashable {
     case stamp
     case oneLiner
     case athletic
+    /// 기본 사진·영상 위에 사진 2장 + 문구 (러닝 지표 없음)
+    case overlay
 
     /// 상단 사진 스트립 선택을 함께 따르는 카드(스탬프는 자체 선택).
-    static let photoLinked: [ShareCard] = [.oneLiner, .athletic]
+    static let photoLinked: [ShareCard] = [.oneLiner, .athletic, .overlay]
 
     /// 캐러셀 이름표
     var name: String {
@@ -53,6 +55,7 @@ enum ShareCard: Int, CaseIterable, Hashable {
         case .stamp:     return "Stamp"
         case .oneLiner:  return "One Liner"
         case .athletic:  return "Athletic"
+        case .overlay:   return "Overlay"
         }
     }
 
@@ -63,13 +66,14 @@ enum ShareCard: Int, CaseIterable, Hashable {
         case .oneLiner:  return [.photo, .video, .slide]
         case .athletic:  return [.record, .photo, .video, .slide, .routeVideo]
         case .stamp:     return [.photo, .video, .slide, .routeVideo]
+        case .overlay:   return [.photo, .video]
         }
     }
 
     /// 카드 진입 시 현재 템플릿이 미지원이면 이 값으로 자동 전환.
     var defaultTemplate: ShareTemplate {
         switch self {
-        case .oneLiner, .stamp: return .photo
+        case .oneLiner, .stamp, .overlay: return .photo
         default:                            return .record
         }
     }
@@ -107,6 +111,8 @@ struct ShareCardScreen: View {
         OneLinerEntry.visible(from: allOneLinerEntries, workoutID: activity.id.uuidString)
     }
 
+    /// 확정된 대회명 — 오버레이 카드 로고 줄 대회 뱃지용
+    var confirmedRaceName: String? { confirmedRace?.raceName }
     private var confirmedRace: PersistedRaceMatch? {
         guard let m = raceDetector.matchFor(activityID: activity.id), m.isConfirmed else { return nil }
         return m
@@ -151,6 +157,11 @@ struct ShareCardScreen: View {
     @State var stampVM = StampViewModel()
     /// 로고 칩 "열 때마다 ON" — 이 시트 인스턴스에서 한 번만 리셋(사진 선택 등 되돌아올 때 재리셋 방지)
     @State private var didResetMediaLogo = false
+    // Overlay card ViewModel
+    @State var overlayVM = OverlayViewModel()
+    @State var overlayCropDragBase: CGFloat? = nil
+    @State private var overlayShareImages: [UIImage] = []
+    @State private var showOverlayShareSheet = false
     // OneLiner card ViewModel
     @State var oneLinerVM = OneLinerViewModel()
     // Athletic card ViewModel
@@ -209,6 +220,7 @@ struct ShareCardScreen: View {
 
     private var isStamp: Bool      { card == .stamp }
     var isOneLiner: Bool   { card == .oneLiner }
+    var isOverlay: Bool    { card == .overlay }
     // .athletic: 기본 템플릿 카드, 별도 판별 불필요
 
     /// Metric chips injected into MultiClipEditorView for the running day OneLiner.
@@ -1462,6 +1474,13 @@ struct ShareCardScreen: View {
                         .animation(.easeInOut(duration: 0.2), value: template)
                         .frame(width: w, height: 375)
                         .id(ShareCard.athletic)
+                    // Overlay (기본 사진·영상 + 사진 2장 + 문구)
+                    AnyView(overlayCardPreview)
+                        .frame(width: 300, height: 375)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: Theme.violet.opacity(0.25), radius: 28, y: 10)
+                        .frame(width: w, height: 375)
+                        .id(ShareCard.overlay)
                 }
             }
             .scrollDisabled(true)
@@ -1632,6 +1651,7 @@ struct ShareCardScreen: View {
                                                     isWhiteBackground: template == .photo && storyPhotos.isEmpty,
                                                     confirmedRaceName: confirmedRace?.raceName,
                                                     onLoadPreview: { await loadStampVideoPreview(data: stampPreviewData) }) }
+        else if isOverlay                       { OverlayControlsView(vm: overlayVM, template: template) }
         else if isOneLiner                      { oneLinerChipRow }
         else                                    { chipRow }
     }
@@ -1882,7 +1902,7 @@ struct ShareCardScreen: View {
 
     @ViewBuilder
     private var bottomControls: some View {
-        if template == .video, !isStamp {
+        if template == .video, !isStamp, !isOverlay {
             Text(AppLanguage.shared.s("영상 선택과 공유시 영상 길이에 따라 시간이 소요됩니다.", "Processing time varies by video length.", ja: "動画の選択と共有には、動画の長さに応じて時間がかかります。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -1929,6 +1949,11 @@ struct ShareCardScreen: View {
         if isStamp, template == .video, !stampVM.clipRecipes.isEmpty {
             AnyView(stampTrimRow)
         }
+        if isOverlay, template == .video, !overlayVM.media.clipRecipes.isEmpty {
+            AnyView(clipTrimRow(vm: overlayVM.media) {
+                Task { await loadClipsVideoPreview(vm: overlayVM.media, forCard: .overlay) }
+            })
+        }
         if template == .photo || (isStamp && template == .slide) {
             AnyView(photoStrip.padding(.bottom, 8))
         }
@@ -1960,6 +1985,26 @@ struct ShareCardScreen: View {
                     onSave: {
                         exportedVideoFile = nil
                         Task { await loadStampVideoPreview(data: stampPreviewData) }
+                    },
+                    showTitle: false,
+                    openEditOnTap: false,
+                    showEditHint: false,
+                    videoTitle: .constant(""),
+                    titleStyle: .constant(OneLinerTitleStyle())
+                )
+                .padding(.horizontal, 24))
+            } else if isOverlay {
+                AnyView(MultiClipEditorView(
+                    recipes: Bindable(overlayVM.media).clipRecipes,
+                    isPhotoSlideMode: .constant(false),
+                    muteAudio: Bindable(overlayVM.media).muteAudio,
+                    selectedClipIndex: Bindable(overlayVM.media).selectedClipIndex,
+                    savedClipLines: [],
+                    availableMetrics: [],
+                    enabledMetricIDs: .constant(Set<String>()),
+                    onSave: {
+                        exportedVideoFile = nil
+                        Task { await loadClipsVideoPreview(vm: overlayVM.media, forCard: .overlay) }
                     },
                     showTitle: false,
                     openEditOnTap: false,
@@ -2431,6 +2476,17 @@ struct ShareCardScreen: View {
             .onChange(of: stampVM.clipRecipes.count) { _, _ in
                 propagateClips(stampVM.clipRecipes)
             }
+            .onChange(of: overlayVM.media.clipRecipes.count) { _, _ in
+                propagateClips(overlayVM.media.clipRecipes)
+                guard isOverlay, template == .video else { return }
+                previewPlayer.invalidate()
+                exportedVideoFile = nil
+                Task { await loadClipsVideoPreview(vm: overlayVM.media, forCard: .overlay) }
+            }
+            .onChange(of: overlayVM.media.muteAudio) { _, newVal in
+                guard isOverlay, template == .video else { return }
+                previewPlayer.setMuted(newVal)
+            }
     }
 
 
@@ -2488,6 +2544,7 @@ struct ShareCardScreen: View {
         }
         if ids(athleticVM.athleticClipRecipes)   != srcIds { athleticVM.athleticClipRecipes   = recipes }
         if ids(stampVM.clipRecipes)              != srcIds { stampVM.clipRecipes              = recipes }
+        if ids(overlayVM.media.clipRecipes)      != srcIds { overlayVM.media.clipRecipes      = recipes }
     }
 
     var body: some View {
@@ -2809,6 +2866,15 @@ struct ShareCardScreen: View {
                 Task { await loadStampVideoPreview(data: data) }
             }
         }
+        // Overlay 영상: 스탬프와 같은 이유로 진입마다 초기화 후 재빌드
+        if isOverlay, template == .video {
+            previewPlayer.invalidate()
+            if !overlayVM.media.clipRecipes.isEmpty {
+                Task { await loadClipsVideoPreview(vm: overlayVM.media, forCard: .overlay) }
+            }
+        }
+        // Overlay 사진: 문구는 첫 칸(0) 설정 하나 — 영상에서 다른 클립을 고른 채 돌아와도 같은 문구
+        if isOverlay, template == .photo { overlayVM.media.selectedClipIndex = 0 }
         // OneLiner 영상: 진입 시 클립이 있으면 프리뷰 빌드.
         // onChange(of: count)는 count가 바뀔 때만 발화 → count 불변 시 buildPreview 미발화 방지.
         if isOneLiner, template == .video, !oneLinerVM.oneLinerClipRecipes.isEmpty {
@@ -2835,7 +2901,7 @@ struct ShareCardScreen: View {
         // player를 직접 사용하는 카드(Stamp·OneLiner)로 이동할 때만 초기화.
         // 같은 카드 복귀(예: Stamp→Athletic→Stamp)는 builtForCard가 같아 초기화 생략 → 영상 유지.
         // OneLiner 한정: 슬라이드↔영상 전환 후 다른 카드 경유 복귀 시 player 컨텐츠가 template과 불일치하면 초기화.
-        if [.stamp, .oneLiner].contains(newCard) {
+        if [.stamp, .oneLiner, .overlay].contains(newCard) {
             let cardMismatch = previewPlayer.builtForCard != newCard
             let oneLinerContentMismatch = newCard == .oneLiner
                 && previewPlayer.builtForCard == .oneLiner
@@ -2910,6 +2976,16 @@ struct ShareCardScreen: View {
                         await loadStampVideoPreview(data: data)
                         saveStampConfig()
                     }
+                }
+            }
+        }
+        // Overlay 카드 진입 시 — 영상이면 미리보기 재빌드 (다른 카드의 contentLayer 잔상 방지)
+        if newCard == .overlay {
+            if template == .photo { overlayVM.media.selectedClipIndex = 0 }
+            if template == .video {
+                previewPlayer.invalidate()
+                if !overlayVM.media.clipRecipes.isEmpty {
+                    Task { await loadClipsVideoPreview(vm: overlayVM.media, forCard: .overlay) }
                 }
             }
         }
@@ -3404,7 +3480,8 @@ struct ShareCardScreen: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-            } else if isStamp, template == .video, stampVM.clipRecipes.isEmpty {
+            } else if (isStamp && template == .video && stampVM.clipRecipes.isEmpty)
+                        || (isOverlay && template == .video && overlayVM.media.clipRecipes.isEmpty) {
                 Text(AppLanguage.shared.s("영상을 선택해 주세요", "Select a video first", ja: "動画を選択してください"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -3469,6 +3546,26 @@ struct ShareCardScreen: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .disabled(routeSnapshotPoints.isEmpty)
+            }
+        } else if isOverlay {
+            // 오버레이 사진 카드 — 탭할 때 미리보기와 같은 뷰로 렌더
+            Button {
+                Task { @MainActor in
+                    guard let img = await makeOverlayStoryImage(), isOverlay, template == .photo else { return }
+                    overlayShareImages = [img]
+                    await Task.yield()
+                    showOverlayShareSheet = true
+                }
+            } label: {
+                Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .sheet(isPresented: $showOverlayShareSheet) {
+                ShareSheet(images: overlayShareImages)
             }
         } else if isRendering {
             HStack(spacing: 10) {
@@ -3674,6 +3771,109 @@ struct ShareCardScreen: View {
     }
 
     @MainActor
+    /// 영상 클립 합성 — 스탬프·오버레이 카드 공용. 클립마다 메인 레이어(스탬프 또는 오버레이 사진) → 문구 → 로고를 얹는다.
+    /// mainLayer(클립 설정, 배경 밝음, 출력 크기, 논리 폭)는 메인 레이어 이미지를 돌려준다.
+    private func exportStampClipsVideo(
+        vm: StampViewModel, data: StampData,
+        isActive: () -> Bool,
+        mainLayer: (StampPhotoConfig, Bool, CGSize, CGFloat) -> UIImage?
+    ) async {
+        // 프리뷰 플레이어를 일시 정지해 AVAssetExportSession과 소스 파일 경합 방지
+        previewPlayer.pause()
+        let renderSz = VideoExportService.targetSize
+
+        // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
+        // logicalWidth: 영상 미리보기 컨테이너(375*9/16≈211pt)와 동일하게 → 미리보기·출력 크기 일치
+        let stampVideoLogicalW: CGFloat = 375.0 * 9.0 / 16.0
+        if let firstRecipe = vm.clipRecipes.first {
+            let wuCfg = vm.photoConfig(at: 0)
+            let wuBright = stampBackgroundIsBright(photo: firstRecipe.thumbnail, position: wuCfg.position)
+            _ = mainLayer(wuCfg, wuBright, renderSz, stampVideoLogicalW)
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard isActive() else { isExportingVideo = false; return }
+        }
+
+        let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: vm.showDate ? activity.date : nil,
+                                                raceName: data.raceName)
+
+        var processedURLs: [URL] = []
+        for (i, recipe) in vm.clipRecipes.enumerated() {
+            // 클립별 독립 config (스탬프·위치·색상·문구 등)
+            let cfg      = vm.photoConfig(at: i)
+            let isBright = stampBackgroundIsBright(photo: recipe.thumbnail, position: cfg.position)
+            guard let stampImg = mainLayer(cfg, isBright, renderSz, stampVideoLogicalW)
+            else { continue }
+            let textImg: UIImage? = cfg.text.isEmpty ? nil : makeStampOverlayImage(
+                data: data, vm: vm,
+                isBright: isBright, renderSize: renderSz,
+                configOverride: cfg,
+                renderOnlyText: true,
+                logicalWidth: stampVideoLogicalW)
+
+            var srcURL: URL = recipe.url
+            if !FileManager.default.fileExists(atPath: recipe.url.path) {
+                if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
+                    srcURL = urlAsset.url
+                } else if let assetID = recipe.assetIdentifier,
+                          let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
+                          let urlAsset = resolved as? AVURLAsset {
+                    srcURL = urlAsset.url
+                } else {
+                    continue
+                }
+            }
+            let clipDur = recipe.trimmedDuration / max(0.1, recipe.speed)
+            let textLayer = VideoExportService.buildClipTextContentLayer(
+                recipes: [],
+                renderSize: renderSz,
+                totalDuration: clipDur,
+                showWordmark: false)
+            let stampLayer = buildStampOverlayLayer(
+                from: stampImg, renderSize: renderSz,
+                mode: cfg.entranceMode,
+                flyDirection: cfg.flyDirection)
+            textLayer.addSublayer(stampLayer)
+            // 문구 독립 레이어 (있는 경우) — 스탬프 애니메이션 완료 후 등장
+            if let tImg = textImg {
+                let stampAnimDur: Double = cfg.entranceMode == .none ? 0 : 0.60
+                let tl = buildStampOverlayLayer(
+                    from: tImg, renderSize: renderSz,
+                    mode: cfg.textEntranceMode,
+                    flyDirection: cfg.textFlyDirection,
+                    beginTimeOffset: stampAnimDur)
+                textLayer.addSublayer(tl)
+            }
+            // 로고 정적 레이어
+            if let logo = stampLogoImg, let cgLogo = logo.cgImage {
+                let ll = CALayer()
+                ll.frame = CGRect(origin: .zero, size: renderSz)
+                ll.contents = cgLogo
+                ll.contentsGravity = .resize
+                ll.contentsScale = 1.0
+                textLayer.addSublayer(ll)
+            }
+            if let out = try? await VideoExportService.exportPlaceableClipAnimated(
+                sourceURL: srcURL, staticOverlay: nil,
+                textLayer: textLayer,
+                trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
+                muteAudio: vm.muteAudio, speed: recipe.speed,
+                brightenHDR: true) {
+                processedURLs.append(out)
+            }
+        }
+        let stampExportedURL: URL? = processedURLs.count > 1
+            ? (try? await VideoExportService.concatenateURLs(processedURLs))
+            : processedURLs.first
+        if let out = stampExportedURL {
+            exportedVideoFile = SharableVideoFile(url: out)
+            presentShareSheet(url: out)
+        } else {
+            videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.", ja: "動画の合成に失敗しました。")
+            showVideoExportError = true
+        }
+        isExportingVideo = false
+    }
+
     private func exportVideo() async {
         guard !isExportingVideo else { return }
         isExportingVideo = true
@@ -3964,110 +4164,28 @@ struct ShareCardScreen: View {
             return
         }
 
+        // ── Overlay 영상 합성 — 스탬프 파이프라인에 오버레이 사진 레이어만 바꿔 넣음 ──────
+        if isOverlay, template == .video, !overlayVM.media.clipRecipes.isEmpty {
+            let extra = StampHeaderMark.extraTopInset(overlayPreviewData.raceName)
+            let slots = overlayVM.slots
+            await exportStampClipsVideo(vm: overlayVM.media, data: overlayPreviewData,
+                                        isActive: { isOverlay && template == .video }) { _, _, renderSz, logicalW in
+                makeOverlayPhotosImage(slots: slots, renderSize: renderSz, logicalWidth: logicalW,
+                                       topInset: 54 + extra, bottomInset: 14)
+            }
+            return
+        }
+
         // ── Stamp 영상 합성 (stampVM.clipRecipes 기반) ───────────────────────
         if isStamp, template == .video, !stampVM.clipRecipes.isEmpty {
-            // 프리뷰 플레이어를 일시 정지해 AVAssetExportSession과 소스 파일 경합 방지
-            previewPlayer.pause()
-            let renderSz = VideoExportService.targetSize
-
-            // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
-            // logicalWidth: 영상 미리보기 컨테이너(375*9/16≈211pt)와 동일하게 → 미리보기·출력 크기 일치
-            let stampVideoLogicalW: CGFloat = 375.0 * 9.0 / 16.0
-            if let firstRecipe = stampVM.clipRecipes.first {
-                let wuCfg = stampVM.photoConfig(at: 0)
-                let wuBright = stampBackgroundIsBright(photo: firstRecipe.thumbnail, position: wuCfg.position)
-                _ = makeStampOverlayImage(data: stampPreviewData, vm: stampVM,
-                                          isBright: wuBright, renderSize: renderSz,
-                                          configOverride: wuCfg, renderOnlyStamp: true,
-                                          logicalWidth: stampVideoLogicalW)
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                guard isStamp, template == .video else { isExportingVideo = false; return }
+            let data = stampPreviewData
+            await exportStampClipsVideo(vm: stampVM, data: data,
+                                        isActive: { isStamp && template == .video }) { cfg, isBright, renderSz, logicalW in
+                makeStampOverlayImage(data: data, vm: stampVM,
+                                      isBright: isBright, renderSize: renderSz,
+                                      configOverride: cfg, renderOnlyStamp: true,
+                                      logicalWidth: logicalW)
             }
-
-            let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
-                                                    raceName: stampPreviewData.raceName)
-
-            var processedURLs: [URL] = []
-            for (i, recipe) in stampVM.clipRecipes.enumerated() {
-                // 클립별 독립 config (스탬프·위치·색상·문구 등)
-                let cfg      = stampVM.photoConfig(at: i)
-                let isBright = stampBackgroundIsBright(photo: recipe.thumbnail, position: cfg.position)
-                guard let stampImg = makeStampOverlayImage(
-                    data: stampPreviewData, vm: stampVM,
-                    isBright: isBright, renderSize: renderSz,
-                    configOverride: cfg,
-                    renderOnlyStamp: true,
-                    logicalWidth: stampVideoLogicalW)
-                else { continue }
-                let textImg: UIImage? = cfg.text.isEmpty ? nil : makeStampOverlayImage(
-                    data: stampPreviewData, vm: stampVM,
-                    isBright: isBright, renderSize: renderSz,
-                    configOverride: cfg,
-                    renderOnlyText: true,
-                    logicalWidth: stampVideoLogicalW)
-
-                var srcURL: URL = recipe.url
-                if !FileManager.default.fileExists(atPath: recipe.url.path) {
-                    if let urlAsset = recipe.resolvedAsset as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else if let assetID = recipe.assetIdentifier,
-                              let resolved = try? await MultiClipComposition.resolveAVAsset(assetID: assetID),
-                              let urlAsset = resolved as? AVURLAsset {
-                        srcURL = urlAsset.url
-                    } else {
-                        continue
-                    }
-                }
-                let clipDur = recipe.trimmedDuration / max(0.1, recipe.speed)
-                let textLayer = VideoExportService.buildClipTextContentLayer(
-                    recipes: [],
-                    renderSize: renderSz,
-                    totalDuration: clipDur,
-                    showWordmark: false)
-                let stampLayer = buildStampOverlayLayer(
-                    from: stampImg, renderSize: renderSz,
-                    mode: cfg.entranceMode,
-                    flyDirection: cfg.flyDirection)
-                textLayer.addSublayer(stampLayer)
-                // 문구 독립 레이어 (있는 경우) — 스탬프 애니메이션 완료 후 등장
-                if let tImg = textImg {
-                    let stampAnimDur: Double = cfg.entranceMode == .none ? 0 : 0.60
-                    let tl = buildStampOverlayLayer(
-                        from: tImg, renderSize: renderSz,
-                        mode: cfg.textEntranceMode,
-                        flyDirection: cfg.textFlyDirection,
-                        beginTimeOffset: stampAnimDur)
-                    textLayer.addSublayer(tl)
-                }
-                // 로고 정적 레이어
-                if let logo = stampLogoImg, let cgLogo = logo.cgImage {
-                    let ll = CALayer()
-                    ll.frame = CGRect(origin: .zero, size: renderSz)
-                    ll.contents = cgLogo
-                    ll.contentsGravity = .resize
-                    ll.contentsScale = 1.0
-                    textLayer.addSublayer(ll)
-                }
-                if let out = try? await VideoExportService.exportPlaceableClipAnimated(
-                    sourceURL: srcURL, staticOverlay: nil,
-                    textLayer: textLayer,
-                    trimStart: recipe.trimStart, trimEnd: recipe.trimEnd,
-                    muteAudio: stampVM.muteAudio, speed: recipe.speed,
-                    brightenHDR: true) {
-                    processedURLs.append(out)
-                }
-            }
-            let stampExportedURL: URL? = processedURLs.count > 1
-                ? (try? await VideoExportService.concatenateURLs(processedURLs))
-                : processedURLs.first
-            if let out = stampExportedURL {
-                exportedVideoFile = SharableVideoFile(url: out)
-                presentShareSheet(url: out)
-            } else {
-                videoExportError = AppLanguage.shared.s("영상 합성에 실패했습니다.", "Video export failed.", ja: "動画の合成に失敗しました。")
-                showVideoExportError = true
-            }
-            isExportingVideo = false
             return
         }
 
@@ -4444,6 +4562,8 @@ struct ShareCardScreen: View {
 
     @MainActor
     func renderCard(showSpinner: Bool = true) async {
+        // Overlay: 내보내기 버튼에서 바로 렌더 — 미리 만들 이미지 없음
+        if card == .overlay { isRendering = false; return }
 
 
         // OneLiner card

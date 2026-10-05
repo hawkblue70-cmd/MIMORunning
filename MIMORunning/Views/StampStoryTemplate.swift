@@ -56,6 +56,8 @@ struct StampStoryRenderView: View {
     var configOverride: StampPhotoConfig? = nil
     /// 렌더 높이: 스토리 4:5 = 375, 슬라이드 9:16 ≈ 533
     var renderHeight: CGFloat = 375
+    /// 스탬프 자리를 대신할 레이어 — 오버레이 카드가 오버레이 사진 레이어를 넣는다. nil이면 스탬프.
+    var replacementLayer: AnyView? = nil
 
     private let renderWidth: CGFloat = 300
     private var resolved: StampPhotoConfig { configOverride ?? vm.currentConfig }
@@ -92,7 +94,10 @@ struct StampStoryRenderView: View {
                 Color.white
             }
 
-            // 스탬프 레이어
+            // 스탬프 레이어 (오버레이 카드는 대체 레이어)
+            if let replacementLayer {
+                replacementLayer
+            } else {
             StampCard(
                 data: data,
                 template: resolved.template,
@@ -112,6 +117,7 @@ struct StampStoryRenderView: View {
                 wordmarkTopInset: 42,
                 renderOnlyStamp: true
             )
+            }
             // 문구 레이어 — OneLinerCard(영상·슬라이드와 동일 컴포넌트·폰트 공식)
             if !resolved.text.isEmpty {
                 OneLinerCard(
@@ -298,11 +304,13 @@ struct StampAnimPreviewCard: View {
 @MainActor
 func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          cropOffsetX: CGFloat = 0.5,
-                         configOverride: StampPhotoConfig? = nil) -> UIImage? {
+                         configOverride: StampPhotoConfig? = nil,
+                         replacementLayer: AnyView? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
-                                    configOverride: configOverride)
+                                    configOverride: configOverride,
+                                    replacementLayer: replacementLayer)
         .frame(width: 300, height: 375)
     let renderer = ImageRenderer(content: view)
     renderer.proposedSize = .init(width: 300, height: 375)

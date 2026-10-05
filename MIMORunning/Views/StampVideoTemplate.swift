@@ -416,6 +416,8 @@ struct AnimatedStampPreviewCard: View {
     var currentPhotoIndex: Int    = 0
     var previewProgress: Double = 0
     var isVideoPlaying:  Bool   = false
+    /// 스탬프 자리를 대신할 레이어(오버레이 카드의 오버레이 사진). 등장 애니메이션은 스탬프와 같다.
+    var replacementLayer: AnyView? = nil
 
     var body: some View {
         let cfg = configOverride ?? vm.currentConfig
@@ -427,6 +429,7 @@ struct AnimatedStampPreviewCard: View {
                 entranceMode: cfg.entranceMode,
                 flyDirection: cfg.flyDirection,
                 configOverride: configOverride,
+                replacementLayer: replacementLayer,
                 renderOnlyStamp: true,
                 previewProgress: previewProgress,
                 isVideoPlaying: isVideoPlaying,
@@ -460,6 +463,7 @@ private struct AnimatedStampLayer: View {
     let flyDirection: FlyInDirection
     /// 슬라이드 장별 config 주입 — nil이면 vm.currentConfig 사용
     var configOverride: StampPhotoConfig? = nil
+    var replacementLayer: AnyView? = nil
     var renderOnlyStamp:  Bool   = false
     var renderOnlyText:   Bool   = false
     var previewProgress:  Double = 0
@@ -528,7 +532,12 @@ private struct AnimatedStampLayer: View {
         }
     }
 
+    @ViewBuilder
     private var card: some View {
+        if let replacementLayer { replacementLayer } else { stampCard }
+    }
+
+    private var stampCard: some View {
         let cfg = configOverride ?? vm.currentConfig
         // 미리보기 프레임 375pt, 워드마크 오버레이 top=375*0.06=22.5pt, h=25.3pt → 하단 47.8pt + 6pt 여백 = 54
         return StampCard(
@@ -560,8 +569,14 @@ extension ShareCardScreen {
 
     // MARK: 미리보기 섹션 (9:16 letterboxed, 300×375 외부 프레임)
 
-    @ViewBuilder
     var stampVideoPreviewSection: some View {
+        stampClipsVideoPreview(vm: stampVM, data: stampPreviewData)
+    }
+
+    /// 영상 미리보기 — 스탬프·오버레이 카드 공용. replacementLayer가 있으면 스탬프 대신 그 레이어를 얹는다.
+    @ViewBuilder
+    func stampClipsVideoPreview(vm: StampViewModel, data: StampData,
+                                replacementLayer: AnyView? = nil) -> some View {
         ZStack {
             Color.black
             if previewPlayer.isBuilding {
@@ -570,27 +585,27 @@ extension ShareCardScreen {
                     .background(.black.opacity(0.45))
                     .clipShape(Circle())
             } else if previewPlayer.isReady,
-                      !stampVM.clipRecipes.isEmpty,
+                      !vm.clipRecipes.isEmpty,
                       let pl = previewPlayer.player,
                       let cl = previewPlayer.contentLayer {
                 // 현재 재생 중인 클립 인덱스 — 클립마다 길이가 다를 수 있어 누적 시간으로 계산
                 let playingClipIdx: Int = {
-                    guard previewPlayer.isPlaying, !stampVM.clipRecipes.isEmpty else {
-                        return stampVM.selectedClipIndex
+                    guard previewPlayer.isPlaying, !vm.clipRecipes.isEmpty else {
+                        return vm.selectedClipIndex
                     }
-                    let totalDur = stampVM.clipRecipes.reduce(0.0) { $0 + max(0, $1.trimEnd - $1.trimStart) }
+                    let totalDur = vm.clipRecipes.reduce(0.0) { $0 + max(0, $1.trimEnd - $1.trimStart) }
                     guard totalDur > 0 else { return 0 }
                     let currentTime = previewPlayer.progress * totalDur
                     var elapsed = 0.0
-                    for (i, recipe) in stampVM.clipRecipes.enumerated() {
+                    for (i, recipe) in vm.clipRecipes.enumerated() {
                         elapsed += max(0, recipe.trimEnd - recipe.trimStart)
                         if currentTime < elapsed { return i }
                     }
-                    return stampVM.clipRecipes.count - 1
+                    return vm.clipRecipes.count - 1
                 }()
-                let clipConfig    = stampVM.photoConfig(at: playingClipIdx)
-                let clipThumb     = stampVM.clipRecipes.indices.contains(playingClipIdx)
-                    ? stampVM.clipRecipes[playingClipIdx].thumbnail : nil
+                let clipConfig    = vm.photoConfig(at: playingClipIdx)
+                let clipThumb     = vm.clipRecipes.indices.contains(playingClipIdx)
+                    ? vm.clipRecipes[playingClipIdx].thumbnail : nil
                 let isBrightClip  = stampBackgroundIsBright(photo: clipThumb, position: clipConfig.position)
                 ZStack {
                     OneLinerPreviewView(player: pl, contentLayer: cl,
@@ -600,19 +615,20 @@ extension ShareCardScreen {
                     // CALayer 대신 SwiftUI로 렌더해 AVSynchronizedLayer 문제 우회.
                     // configOverride + currentPhotoIndex: 재생 클립 변경 시 스탬프 config·애니메이션 전환.
                     AnimatedStampPreviewCard(
-                        data: stampPreviewData,
-                        vm: stampVM,
+                        data: data,
+                        vm: vm,
                         configOverride: clipConfig,
                         isBright: isBrightClip,
                         currentPhotoIndex: playingClipIdx,
                         previewProgress: previewPlayer.progress,
-                        isVideoPlaying: previewPlayer.isPlaying
+                        isVideoPlaying: previewPlayer.isPlaying,
+                        replacementLayer: replacementLayer
                     )
                 }
                 .frame(width: kClipW, height: cardSectionH)
                 .clipped()
                 .overlay(alignment: .topLeading) {
-                    StampHeaderMark(raceName: stampPreviewData.raceName)
+                    StampHeaderMark(raceName: data.raceName)
                         .padding(.leading, 14)
                         .padding(.top, cardSectionH * 0.06)
                 }
@@ -642,7 +658,7 @@ extension ShareCardScreen {
                         .shadow(color: .black.opacity(0.5), radius: 8)
                 }
                 .buttonStyle(.plain)
-            } else if stampVM.clipRecipes.isEmpty {
+            } else if vm.clipRecipes.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "video.badge.plus")
                         .font(.system(size: 32))
@@ -657,11 +673,19 @@ extension ShareCardScreen {
 
     // MARK: 트림 행 — 선택된 클립의 길이 조절 슬라이더
 
-    @ViewBuilder
     var stampTrimRow: some View {
-        let idx = stampVM.selectedClipIndex
-        if stampVM.clipRecipes.indices.contains(idx) {
-            let r    = stampVM.clipRecipes[idx]
+        clipTrimRow(vm: stampVM) {
+            saveStampConfig()
+            Task { await loadStampVideoPreview(data: stampPreviewData) }
+        }
+    }
+
+    /// 선택 클립 트림 슬라이더 — 스탬프·오버레이 카드 공용.
+    @ViewBuilder
+    func clipTrimRow(vm: StampViewModel, onEditingEnded: @escaping () -> Void) -> some View {
+        let idx = vm.selectedClipIndex
+        if vm.clipRecipes.indices.contains(idx) {
+            let r    = vm.clipRecipes[idx]
             let dur  = max(0.1, r.fullDuration)
             let used = max(0.1, r.trimEnd - r.trimStart)
             let fmt: (Double) -> String = { s in
@@ -679,12 +703,9 @@ extension ShareCardScreen {
                 .padding(.horizontal, 24)
                 TrimBarView(
                     duration:  dur,
-                    trimStart: Bindable(stampVM).clipRecipes[idx].trimStart,
-                    trimEnd:   Bindable(stampVM).clipRecipes[idx].trimEnd,
-                    onEditingEnded: {
-                        saveStampConfig()
-                        Task { await loadStampVideoPreview(data: stampPreviewData) }
-                    }
+                    trimStart: Bindable(vm).clipRecipes[idx].trimStart,
+                    trimEnd:   Bindable(vm).clipRecipes[idx].trimEnd,
+                    onEditingEnded: onEditingEnded
                 )
                 .padding(.horizontal, 24)
             }
@@ -922,20 +943,25 @@ extension ShareCardScreen {
     // MARK: 미리보기 빌더 — 영상 컴포지션만 빌드, 스탬프는 SwiftUI 오버레이로 표시
 
     func loadStampVideoPreview(data: StampData) async {
-        guard !stampVM.clipRecipes.isEmpty else {
+        await loadClipsVideoPreview(vm: stampVM, forCard: .stamp)
+    }
+
+    /// 영상 미리보기 컴포지션 빌드 — 스탬프·오버레이 카드 공용. 오버레이(스탬프·문구)는 SwiftUI로 얹는다.
+    func loadClipsVideoPreview(vm: StampViewModel, forCard: ShareCard) async {
+        guard !vm.clipRecipes.isEmpty else {
             previewPlayer.invalidate()
             return
         }
         // 스탬프 텍스트는 AnimatedStampPreviewCard(SwiftUI 오버레이)가 전담.
         // ClipRecipe.lines에 이전 문구가 남아있으면 buildClipTextContentLayer가 CALayer에
         // 구워 이중으로 표시됨 → lines를 지우고 빈 레이어만 생성.
-        let blankRecipes = stampVM.clipRecipes.map { r -> ClipRecipe in
+        let blankRecipes = vm.clipRecipes.map { r -> ClipRecipe in
             var r2 = r; r2.lines = []; return r2
         }
         await previewPlayer.buildForVideoClips(
             recipes: blankRecipes,
             showWordmark: false,
-            muteAudio: stampVM.muteAudio,
-            forCard: .stamp)
+            muteAudio: vm.muteAudio,
+            forCard: forCard)
     }
 }

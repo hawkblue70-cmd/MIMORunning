@@ -17,7 +17,6 @@ struct StampControlsView: View {
     var onLoadPreview: (() async -> Void)? = nil
     @State private var showTemplatePicker = false
     @State private var controlTab: StampControlTab = .stamp
-    @FocusState private var textFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -69,32 +68,9 @@ struct StampControlsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 4)
 
-            // (c) 문구 입력 필드 (문구 탭일 때만) — Placeable PlaceableStoryTextFieldView 동일 구조
+            // (c) 문구 입력 필드 (문구 탭일 때만) — 오버레이 카드와 공용
             if controlTab == .text {
-                HStack(spacing: 8) {
-                    TextField(template == .routeVideo
-                                  ? AppLanguage.shared.s("경로 영상 제목", "Route video title", ja: "ルート動画のタイトル")
-                                  : AppLanguage.shared.s("사진 위에 문구", "Text on photo", ja: "写真の上のテキスト"),
-                              text: $vm.stampText)
-                        .focused($textFocused)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.white)
-                        .tint(Theme.violet)
-                        .onChange(of: vm.stampText) { _, new in
-                            if new.count > 30 { vm.stampText = String(new.prefix(30)) }
-                        }
-                    Spacer(minLength: 0)
-                    Text("\(vm.stampText.count)/30")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(hex: "6E6E78"))
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(hex: "1E1E28"))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 4)
+                StampTextInputField(vm: vm, template: template)
             }
         }
         .padding(.vertical, 8)
@@ -194,89 +170,10 @@ struct StampControlsView: View {
         }
     }
 
-    // MARK: - 문구 탭 스타일 (오른쪽) — 크기→폰트→색상→테두리 (Placeable textStyleControls 동일 순서)
+    // MARK: - 문구 탭 스타일 (오른쪽) — 오버레이 카드와 공용(StampTextStyleControls)
 
     private var textStyleControls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // 크기 + 테두리
-            HStack(spacing: 4) {
-                ForEach(TextSizeLevel.allCases, id: \.self) { sz in
-                    let isSel = vm.stampTextSize == sz
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextSize = sz }
-                    } label: { smallChip(sz.chipLabel, isSelected: isSel) }
-                    .buttonStyle(.plain)
-                }
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextHasBorder.toggle() }
-                } label: {
-                    smallChip(AppLanguage.shared.s("테두리", "Outline", ja: "縁取り"), isSelected: vm.stampTextHasBorder)
-                }
-                .buttonStyle(.plain)
-                .animation(.easeInOut(duration: 0.15), value: vm.stampTextHasBorder)
-            }
-            HStack(spacing: 6) {
-                ForEach(OneLinerFont.allCases, id: \.self) { f in
-                    let isSel = vm.stampTextFont == f
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextFont = f }
-                    } label: { smallChip(f.chipLabel, isSelected: isSel) }
-                    .buttonStyle(.plain)
-                }
-            }
-            HStack(spacing: 8) {
-                ForEach(OneLinerTextColor.allCases, id: \.self) { c in
-                    let isSel = vm.stampTextColor == c
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextColor = c }
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(c.color)
-                                .frame(width: 18, height: 18)
-                                .overlay(Circle().strokeBorder(
-                                    c == .white ? Color.gray.opacity(0.4) : Color.clear,
-                                    lineWidth: 1))
-                            if isSel {
-                                Circle()
-                                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
-                                    .frame(width: 24, height: 24)
-                            }
-                        }
-                        .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            // 문구 애니메이션 모드 — 영상·슬라이드·경로 영상
-            if template == .video || template == .slide || template == .routeVideo {
-                HStack(spacing: 6) {
-                    ForEach(StampEntranceMode.allCases, id: \.rawValue) { mode in
-                        let isSel = vm.stampTextEntranceMode == mode
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                vm.stampTextEntranceMode = mode
-                            }
-                        } label: { smallChip(mode.chipLabel, isSelected: isSel) }
-                        .buttonStyle(.plain)
-                    }
-                }
-                // 방향 선택 — flyIn 모드일 때만
-                if vm.stampTextEntranceMode == .flyIn {
-                    HStack(spacing: 6) {
-                        ForEach(FlyInDirection.allCases, id: \.rawValue) { dir in
-                            let isSel = vm.stampTextFlyDirection == dir
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    vm.stampTextFlyDirection = dir
-                                }
-                            } label: { smallChip(dir.chipLabel, isSelected: isSel) }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-        }
+        StampTextStyleControls(vm: vm, template: template)
     }
 
     // MARK: - 스탬프 위치 그리드
@@ -369,14 +266,7 @@ struct StampControlsView: View {
     }
 
     private func smallChip(_ label: String, isSelected: Bool) -> some View {
-        Text(label)
-            .font(.system(size: 11, weight: .semibold))
-            .lineLimit(1)
-            .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
-            .clipShape(Capsule())
+        stampSmallChip(label, isSelected: isSelected)
     }
 
     private var textOutlineChip: some View {
@@ -551,6 +441,143 @@ struct StampControlsView: View {
                 .background(Circle().fill(Color(hex: "14122B")))
         }
     }
+}
+
+// MARK: - 문구 컨트롤 (스탬프·오버레이 카드 공용)
+
+/// 문구 탭 오른쪽 스타일 — 크기→폰트→색상→테두리 (+영상·슬라이드·경로 영상은 등장 애니메이션).
+struct StampTextStyleControls: View {
+    @Bindable var vm: StampViewModel
+    let template: ShareTemplate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // 크기 + 테두리
+            HStack(spacing: 4) {
+                ForEach(TextSizeLevel.allCases, id: \.self) { sz in
+                    let isSel = vm.stampTextSize == sz
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextSize = sz }
+                    } label: { stampSmallChip(sz.chipLabel, isSelected: isSel) }
+                    .buttonStyle(.plain)
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextHasBorder.toggle() }
+                } label: {
+                    stampSmallChip(AppLanguage.shared.s("테두리", "Outline", ja: "縁取り"), isSelected: vm.stampTextHasBorder)
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 0.15), value: vm.stampTextHasBorder)
+            }
+            HStack(spacing: 6) {
+                ForEach(OneLinerFont.allCases, id: \.self) { f in
+                    let isSel = vm.stampTextFont == f
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextFont = f }
+                    } label: { stampSmallChip(f.chipLabel, isSelected: isSel) }
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack(spacing: 8) {
+                ForEach(OneLinerTextColor.allCases, id: \.self) { c in
+                    let isSel = vm.stampTextColor == c
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { vm.stampTextColor = c }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(c.color)
+                                .frame(width: 18, height: 18)
+                                .overlay(Circle().strokeBorder(
+                                    c == .white ? Color.gray.opacity(0.4) : Color.clear,
+                                    lineWidth: 1))
+                            if isSel {
+                                Circle()
+                                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                                    .frame(width: 24, height: 24)
+                            }
+                        }
+                        .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // 문구 애니메이션 모드 — 영상·슬라이드·경로 영상
+            if template == .video || template == .slide || template == .routeVideo {
+                HStack(spacing: 6) {
+                    ForEach(StampEntranceMode.allCases, id: \.rawValue) { mode in
+                        let isSel = vm.stampTextEntranceMode == mode
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                vm.stampTextEntranceMode = mode
+                            }
+                        } label: { stampSmallChip(mode.chipLabel, isSelected: isSel) }
+                        .buttonStyle(.plain)
+                    }
+                }
+                // 방향 선택 — flyIn 모드일 때만
+                if vm.stampTextEntranceMode == .flyIn {
+                    HStack(spacing: 6) {
+                        ForEach(FlyInDirection.allCases, id: \.rawValue) { dir in
+                            let isSel = vm.stampTextFlyDirection == dir
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    vm.stampTextFlyDirection = dir
+                                }
+                            } label: { stampSmallChip(dir.chipLabel, isSelected: isSel) }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 문구 입력 필드 — 30자 제한.
+struct StampTextInputField: View {
+    @Bindable var vm: StampViewModel
+    let template: ShareTemplate
+    @FocusState private var textFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField(template == .routeVideo
+                          ? AppLanguage.shared.s("경로 영상 제목", "Route video title", ja: "ルート動画のタイトル")
+                          : AppLanguage.shared.s("사진 위에 문구", "Text on photo", ja: "写真の上のテキスト"),
+                      text: $vm.stampText)
+                .focused($textFocused)
+                .font(.system(size: 15))
+                .foregroundStyle(.white)
+                .tint(Theme.violet)
+                .onChange(of: vm.stampText) { _, new in
+                    if new.count > 30 { vm.stampText = String(new.prefix(30)) }
+                }
+            Spacer(minLength: 0)
+            Text("\(vm.stampText.count)/30")
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "6E6E78"))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(hex: "1E1E28"))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 4)
+    }
+}
+
+/// 작은 선택 칩 — 스탬프·오버레이 컨트롤 공용 모양.
+func stampSmallChip(_ label: String, isSelected: Bool) -> some View {
+    Text(label)
+        .font(.system(size: 11, weight: .semibold))
+        .lineLimit(1)
+        .foregroundStyle(isSelected ? .white : .white.opacity(0.55))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(isSelected ? Theme.violet : Color.white.opacity(0.08))
+        .clipShape(Capsule())
 }
 
 // MARK: - StampVisualPickerSheet
