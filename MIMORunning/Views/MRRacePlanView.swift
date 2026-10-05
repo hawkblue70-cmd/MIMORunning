@@ -433,7 +433,11 @@ struct MRWeekTable: View {
 
     /// 스냅샷 주의 실행 안내 — 구버전 스냅샷(breakdown=="")은 라이브 플랜 주에서 폴백.
     /// 스냅샷 주가 언급하는 튠업 대회가 삭제됐는가 (단계명 "10K 계획" 또는 문구 안의 거리 라벨).
+    /// ⚠ 지난 주는 실제로 따른 기록이라 바꾸지 않는다 — 대회가 끝나면 나 탭이 예정 목록에서 지우므로(deletePastRaces)
+    ///   10K 대회 다음 날 하프 계획의 "10K 계획" 주들이 하프 라이브 값(늘리기 17.7…)으로 바뀌고 이행 기호가 ○가 됐다(2026-10-05).
     private func mentionsMissingRace(_ snap: MRPlanWeekSummary) -> Bool {
+        let thisMonday = MRPlanGovernance.weekMonday(of: refNow)
+        guard Calendar.current.startOfDay(for: snap.monday) >= thisMonday else { return false }
         let text = snap.phase + " " + snap.breakdown
         guard text.contains("대회") || text.contains("계획") else { return false }
         for label in ["5K", "10K", "하프", "풀"] where text.contains(label) {
