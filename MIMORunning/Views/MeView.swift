@@ -902,8 +902,14 @@ struct MeView: View {
                     if snapMon < thisMonday && !follows { return snap }
                     // 테이퍼 길이 변경(주 수가 늘어 마지막 주가 새로 붙은 경우)도 갱신 — 10K 1주 테이퍼가 2주로 남지 않게
                     let taperChanged = snap.phase == "테이퍼" && live.phase != "테이퍼"
-                    // 튠업 뒤 재개 주: 미래 주이고 이 계획에 튠업이 있으면 롱런·단계 변화를 따라간다
-                    let postTuneUpProgress = planHasTuneUp && snapMon > thisMonday
+                    // 튠업 뒤 재개 주: 미래 주이고 이 계획에 튠업이 있으면 롱런·단계 변화를 따라간다.
+                    // 이번 주도 바로 앞 주가 튠업(따르는 주·대회 주)이었으면 따라간다 — 대회 다음 날 시작하는 주가
+                    // 옛 규칙의 값(10K 테이퍼 10.4km 다음 주 롱런 21km)으로 고정돼 남던 문제(2026-10-05 하프 5주).
+                    let prevWeekWasTuneUp = snapMon == thisMonday && existing.planWeeks.contains { w in
+                        cal.isDate(w.monday, inSameDayAs: cal.date(byAdding: .day, value: -7, to: snapMon) ?? snapMon)
+                            && (MRPlanGovernance.isFollowingPhase(w.phase) || w.phase == "대회 주")
+                    }
+                    let postTuneUpProgress = planHasTuneUp && (snapMon > thisMonday || prevWeekWasTuneUp)
                     let raceRelated = follows || taperChanged || postTuneUpProgress
                         || live.phase == "대회 주" || snap.phase == "대회 주"
                         || live.breakdown.contains("대회") || snap.breakdown.contains("대회")
