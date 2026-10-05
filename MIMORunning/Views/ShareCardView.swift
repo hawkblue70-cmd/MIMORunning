@@ -1958,7 +1958,7 @@ struct ShareCardScreen: View {
             AnyView(photoStrip.padding(.bottom, 8))
         }
         // Athletic 슬라이드: 사진 스트립만 표시 (문구·데이터 그리드 없음)
-        if !isOneLiner, !isStamp, template == .slide {
+        if !isOneLiner, !isStamp, !isOverlay, template == .slide {
             AnyView(photoStrip.padding(.bottom, storyPhotos.isEmpty ? 4 : 0))
             if !storyPhotos.isEmpty {
                 let clipCnt = storyPhotos.count
@@ -2842,11 +2842,11 @@ struct ShareCardScreen: View {
         if isOneLiner, template == .photo { previewPlayer.pause() }
         // Athletic: .video ↔ .slide 전환 시 videoState 초기화
         // (이전 템플릿 콘텐츠가 새 템플릿 프리뷰 영역에 잔존하는 것을 방지)
-        if !isOneLiner, !isStamp, template == .video || template == .slide {
+        if !isOneLiner, !isStamp, !isOverlay, template == .video || template == .slide {
             athleticVM.athleticVideoState.invalidate()
         }
         // Athletic 영상 템플릿 진입 시 레시피 복원 — sourceVideoURL이 있는데 recipes가 비어 있으면 재구성
-        if !isOneLiner, template == .video,
+        if !isOneLiner, !isOverlay, template == .video,
            let url = sourceVideoURL, athleticVM.athleticClipRecipes.isEmpty {
             Task {
                 let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 30.0
@@ -3959,7 +3959,7 @@ struct ShareCardScreen: View {
         }
 
         // ── Athletic 멀티 클립 합성 (athleticVM.athleticClipRecipes 기반) ──────────────
-        if !isOneLiner, !isStamp, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
+        if !isOneLiner, !isStamp, !isOverlay, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             // 미리보기와 동일한 9:16 비율(216×384pt)로 오버레이 렌더링
@@ -3990,7 +3990,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isStamp, template == .video else { isExportingVideo = false; return }
+            guard !isOneLiner, !isStamp, !isOverlay, template == .video else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
@@ -4037,7 +4037,7 @@ struct ShareCardScreen: View {
 
 
         // ── Athletic 슬라이드 (사진 → 영상) ────────────────────────────────────
-        if !isOneLiner, !isStamp, template == .slide, !storyPhotos.isEmpty {
+        if !isOneLiner, !isStamp, !isOverlay, template == .slide, !storyPhotos.isEmpty {
             let km = activity.distance / 1000
             let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
             let exportH: CGFloat = 384
@@ -4066,7 +4066,7 @@ struct ShareCardScreen: View {
             // Warmup: 첫 번째 ImageRenderer 호출로 SwiftUI 파이프라인 초기화.
             let wuR = ImageRenderer(content: overlayView); wuR.scale = 1.0; _ = wuR.uiImage
             try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms
-            guard !isOneLiner, !isStamp, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
+            guard !isOneLiner, !isStamp, !isOverlay, template == .slide, !storyPhotos.isEmpty else { isExportingVideo = false; return }
             let overlayRenderer = ImageRenderer(content: overlayView)
             overlayRenderer.scale = 5.0
             guard let overlayImage = overlayRenderer.uiImage else {
