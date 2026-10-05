@@ -1,5 +1,5 @@
 // 오버레이 카드 공용 타입·레이어.
-// 기본 사진(또는 영상) 위에 사진 2장을 작게 얹는다. 크기는 카드 폭 기준 10·20·30%.
+// 기본 사진(또는 영상) 위에 사진 2장을 작게 얹는다. 크기는 카드 폭 기준 25·30·35%.
 // OverlayPhotosLayer 하나를 사진 미리보기·사진 출력·영상 미리보기·영상 출력이 함께 쓴다(§5.8 단일 컴포넌트).
 // ⚠️ 오버레이 카드 전용.
 
@@ -9,7 +9,7 @@ import SwiftUI
 
 /// 오버레이 사진 한 변 = 카드 폭 × 비율 (정사각 크롭). 사진 4:5(300pt)·영상 9:16(211pt) 모두 같은 비율.
 enum OverlaySizeLevel: Int, CaseIterable, Equatable {
-    case p10 = 10, p20 = 20, p30 = 30
+    case p25 = 25, p30 = 30, p35 = 35
 
     var fraction: CGFloat { CGFloat(rawValue) / 100 }
     var chipLabel: String { "\(rawValue)%" }
@@ -29,7 +29,7 @@ enum OverlayTarget: Hashable {
 struct OverlayPhotoSlot: Equatable {
     var image: UIImage?
     var position: CardPosition
-    var size: OverlaySizeLevel = .p20
+    var size: OverlaySizeLevel = .p30
 
     static func == (a: OverlayPhotoSlot, b: OverlayPhotoSlot) -> Bool {
         a.image === b.image && a.position == b.position && a.size == b.size
@@ -65,9 +65,9 @@ struct OverlayPhotosLayer: View {
         .allowsHitTesting(false)
     }
 
-    /// 정사각 크롭 + 흰 테두리 + 그림자. 테두리·모서리는 한 변에 비례해 크기가 달라도 같은 모양.
+    /// 정사각 크롭 + 얇은 흰 테두리 + 그림자. 테두리·모서리는 한 변에 비례해 크기가 달라도 같은 모양.
     private func photo(_ img: UIImage, side: CGFloat) -> some View {
-        let border = max(1, side * 0.045)
+        let border = max(0.75, side * 0.018)
         return Image(uiImage: img)
             .resizable()
             .scaledToFill()
@@ -101,7 +101,7 @@ func makeOverlayPhotosImage(slots: [OverlayPhotoSlot], renderSize: CGSize,
 // MARK: - Downscale
 
 extension UIImage {
-    /// 오버레이 원본은 최대 30% 폭(1080px 영상에서 324px)이라 긴 변 1200px이면 충분 — 메모리 절약.
+    /// 오버레이 원본은 최대 35% 폭(1080px 영상에서 378px)이라 긴 변 1200px이면 충분 — 메모리 절약.
     func overlayDownscaled(maxSide: CGFloat = 1200) -> UIImage {
         let longSide = max(size.width, size.height)
         guard longSide > maxSide else { return self }

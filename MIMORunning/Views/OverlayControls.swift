@@ -149,7 +149,7 @@ struct OverlayControlsView: View {
                     .buttonStyle(.plain)
                 }
             }
-            // 크기 — 카드 폭 기준 10·20·30%
+            // 크기 — 카드 폭 기준 25·30·35%
             HStack(spacing: 4) {
                 ForEach(OverlaySizeLevel.allCases, id: \.self) { sz in
                     Button {
@@ -157,12 +157,16 @@ struct OverlayControlsView: View {
                     } label: { stampSmallChip(sz.chipLabel, isSelected: slot.size == sz) }
                     .buttonStyle(.plain)
                 }
+            }
+            // 날짜 + 소리 제거(영상)
+            HStack(spacing: 6) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { vm.media.showDate.toggle() }
                 } label: {
                     stampSmallChip(AppLanguage.shared.s("날짜", "Date", ja: "日付"), isSelected: vm.media.showDate)
                 }
                 .buttonStyle(.plain)
+                if template == .video { muteChip }
             }
             // 등장 애니메이션 — 영상만 (사진 두 장이 함께 등장)
             if template == .video {
@@ -189,6 +193,29 @@ struct OverlayControlsView: View {
     }
 
     // MARK: - 칩
+
+    /// 소리 제거 — 켜면 미리보기와 출력 영상 모두 무음 (스탬프 카드 음소거 칩과 같은 모양)
+    private var muteChip: some View {
+        let isMuted = vm.media.muteAudio
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { vm.media.muteAudio.toggle() }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2")
+                    .font(.system(size: 10))
+                Text(AppLanguage.shared.s("소리 제거", "Mute", ja: "音声オフ"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isMuted ? .white : .white.opacity(0.55))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isMuted ? Theme.violet : Color.white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isMuted)
+    }
 
     private func tabChip(_ label: String, _ t: OverlayTarget) -> some View {
         let on = target == t
