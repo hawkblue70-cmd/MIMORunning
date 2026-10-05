@@ -726,7 +726,12 @@ struct MeView: View {
             },
             uniquingKeysWith: { a, _ in a }
         )
-        engine.recomputePlans(snapshotAnchors: anchors, snapshotWeeks: snapshotWeeks)
+        // 끝난 대회(자기 계획 있음) — 예정 목록에서 지워져도 A 계획이 그 대회의 겹치던 주를 "따른" 것으로 유지
+        let today = Calendar.current.startOfDay(for: Date())
+        let finished = allSnapshots
+            .filter { !$0.isDetached && Calendar.current.startOfDay(for: $0.raceDate) < today && !$0.planWeeks.isEmpty }
+            .map { MRTargetRace(date: $0.raceDate, distanceM: $0.distanceM, name: $0.raceName) }
+        engine.recomputePlans(snapshotAnchors: anchors, snapshotWeeks: snapshotWeeks, finishedRaces: finished)
         saveSnapshotsIfNeeded()
     }
 

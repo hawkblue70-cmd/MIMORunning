@@ -161,4 +161,33 @@ struct MRPlanGovernanceTests {
         let hw = try #require(halfByMonday[cal.startOfDay(for: monday(1))])
         #expect(hw.weeklyKm == own.first { cal.isDate($0.monday, inSameDayAs: monday(1)) }!.weeklyKm)
     }
+    // MARK: - 끝난 10K — 하프 계획을 다시 만들 때도 겹치던 주를 따른 것으로(2026-10-05)
+
+    @Test func halfPlanKeepsFollowingFinishedTenK() throws {
+        let today = Date()
+        let anchor = monday(-5)                                              // 하프·10K 계획 5주 전 시작
+        let tenKDate = cal.date(byAdding: .day, value: 6, to: monday(-1))!   // 지난 주 일요일 = 끝난 대회
+        let halfDate = cal.date(byAdding: .day, value: 6, to: monday(5))!
+        let tenKPlan = try #require(mrBuildPlan(raceDate: tenKDate, distanceM: MRDistance.d10, today: monday(-5),
+                                                profile: makeProfile(), halfEquivMin: 110,
+                                                easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
+                                                runsPerWeek: 4, forcedMonday: anchor))
+        let tune = MRTuneUpRace(date: tenKDate, name: "10K", distanceM: MRDistance.d10,
+                                hasOwnPlan: true, ownPlanWeeks: tenKPlan.weeks)
+        let halfPlan = try #require(mrBuildPlan(raceDate: halfDate, distanceM: MRDistance.dH, today: today,
+                                                profile: makeProfile(), halfEquivMin: 110,
+                                                easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
+                                                runsPerWeek: 4, forcedMonday: anchor, tuneUps: [tune]))
+        let byMonday = Dictionary(halfPlan.weeks.map { (cal.startOfDay(for: $0.monday), $0) },
+                                  uniquingKeysWith: { a, _ in a })
+        // 지난 겹친 주 = 10K 계획 숫자 그대로
+        for w in tenKPlan.weeks {
+            guard let h = byMonday[cal.startOfDay(for: w.monday)] else { continue }
+            #expect(h.phase == "10K 계획", "\(w.monday) 단계 = \(h.phase)")
+            #expect(h.longRunKm == w.longRunKm)
+        }
+        // 대회 뒤 14일 안에 시작하는 주(이번 주·다음 주)는 강도 훈련 없음
+        #expect(byMonday[cal.startOfDay(for: monday(0))]?.point == nil)
+        #expect(byMonday[cal.startOfDay(for: monday(1))]?.point == nil)
+    }
 }

@@ -110,6 +110,9 @@ final class MREngineStore: ObservableObject {
     /// 스냅샷 주차(mrArchiveKey → 확정 주차). 자기 계획 있는 단거리의 "따르는 주"와 이번 주 목표는 이 값을 쓴다 —
     /// 라이브 재계산 값은 오늘 프로필로 다시 만들어져 주차표(스냅샷)와 어긋날 수 있다.
     private var storedSnapshotWeeks: [String: [MRPlanWeekSummary]] = [:]
+    /// 끝난 대회 중 자기 계획(스냅샷)이 있던 것 — 나 탭이 대회 다음 날 예정 목록에서 지워도(deletePastRaces)
+    /// A 계획은 그 대회의 겹치는 주를 계속 "따른" 것으로 다시 만든다. 사용자가 지운 대회(분리 스냅샷)는 넣지 않는다.
+    private var storedFinishedRaces: [MRTargetRace] = []
 
     // v3: 조회 범위 400일 → 1200일(2026-10-02). 옛 캐시는 범위가 좁아 버린다.
     private static let rhrCacheDateKey    = "mimo.rhrCache.fetchedAt.v3"
@@ -283,12 +286,31 @@ final class MREngineStore: ObservableObject {
             let prior = prevPlanInfo.flatMap { p in
                 cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
             }
-            let tune = mrTuneUpCandidates(for: r, among: upcoming, today: now,
+            var tune = mrTuneUpCandidates(for: r, among: upcoming, today: now,
                                           plannedKeys: Set(anchors.keys)).map { t -> MRTuneUpRace in
                 var t = t
                 t.ownPlanWeeks = ownPlanWeeksByKey[mrArchiveKey(raceDate: t.date, distanceM: t.distanceM)] ?? []
                 return t
             }
+            // 끝난 단거리 대회(자기 계획 있음) — 지난 주를 다시 시뮬레이션할 때 그 대회를 모르면
+            // 겹치던 주가 A 계획 자체 진행(17.7→19.4→21)으로 바뀌고, 대회 뒤 재개 진행·"대회 뒤 14일 강도 훈련 없음"도 사라진다(2026-10-05 10K 다음 날).
+            for f in storedFinishedRaces where f.distanceM < MRDistance.dH
+                && cal.startOfDay(for: f.date) < cal.startOfDay(for: now)
+                && cal.startOfDay(for: f.date) < cal.startOfDay(for: r.date)
+                && (prior.map { cal.startOfDay(for: $0.date) < cal.startOfDay(for: f.date) } ?? true)
+                && !tune.contains(where: { cal.isDate($0.date, inSameDayAs: f.date) }) {
+                let snap = storedSnapshotWeeks[mrArchiveKey(raceDate: f.date, distanceM: f.distanceM)] ?? []
+                guard !snap.isEmpty else { continue }
+                let weeks = snap.map { s in
+                    MRPlanWeek(idx: s.idx, monday: s.monday, phase: s.phase,
+                               longRunKm: s.longRunKm, longRunMin: (s.longRunKm * (easyPaceSecPerKm ?? 420) / 60.0).rounded(),
+                               weeklyKm: s.weeklyKm, projectedMin: 0, isNewMax: false,
+                               breakdown: s.breakdown, point: s.point)
+                }
+                tune.append(MRTuneUpRace(date: f.date, name: f.name, distanceM: f.distanceM,
+                                         hasOwnPlan: true, ownPlanWeeks: weeks))
+            }
+            tune.sort { $0.date < $1.date }
             let pl = mrBuildPlan(raceDate: r.date, distanceM: r.distanceM, today: now,
                                  profile: planProfile, halfEquivMin: he,
                                  easyPaceSecPerKm: easyPaceSecPerKm, heat: heat,
@@ -1442,7 +1464,9 @@ final class MREngineStore: ObservableObject {
     /// snapshotWeeks: 대회별 확정 주차 — 따르는 주·이번 주 목표의 단일 소스.
     /// 둘 다 nil이면 마지막에 받은 값을 그대로 쓴다 (언어 전환 재계산이 앵커를 지우지 않게).
     func recomputePlans(snapshotAnchors: [String: Date]? = nil,
-                        snapshotWeeks: [String: [MRPlanWeekSummary]]? = nil) {
+                        snapshotWeeks: [String: [MRPlanWeekSummary]]? = nil,
+                        finishedRaces: [MRTargetRace]? = nil) {
+        if let finishedRaces { storedFinishedRaces = finishedRaces }   // 준비 전이어도 저장 — refreshCore가 쓴다
         guard case .ready = state else { return }
         if let snapshotAnchors { storedSnapshotAnchors = snapshotAnchors }   // refreshCore가 같은 앵커를 쓸 수 있도록 저장
         if let snapshotWeeks { storedSnapshotWeeks = snapshotWeeks }

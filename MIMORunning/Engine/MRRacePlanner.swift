@@ -254,7 +254,7 @@ func mrBuildPlan(raceDate: Date,
         return true
     }.map { t -> Int in
         let d = cal.dateComponents([.day], from: cal.startOfDay(for: today), to: cal.startOfDay(for: t.date)).day ?? 0
-        return max(1, d / 7)
+        return d < 0 ? 0 : max(1, d / 7)   // 이미 끝난 대회(지난 주를 다시 만들 때 넣는다)는 앞으로 멈추게 하지 않는다
     }.max() ?? 0
     // ⚠ 3주 하한 — 이미 목표에 닿아 있어도 3주 미만 계획은 만들지 않는다 (아래 guard와 같은 기준).
     let neededTotal  = max(3, simulateNeeded(fromLong: simStartLong, fromVol: simStartVol) + p.taperWeeks
