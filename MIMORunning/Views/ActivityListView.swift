@@ -836,6 +836,7 @@ private struct ActivityCard: View {
                 HStack(spacing: 4) {
                     // 강도 색 — 값이 없으면 회색(중립). 초록은 강도 4~5 색과 헷갈려 쓰지 않는다
                     Image(systemName: activity.type.icon)
+                        .font(.system(size: 16, weight: .semibold))   // 강도 색이 잘 보이게 글자(12pt)보다 크게
                         .foregroundStyle(effort.map { EffortPalette.color(for: $0) } ?? Color(hex: "8A8A92"))
                     Text(activity.type.label)
                         .foregroundStyle(Theme.violet)
