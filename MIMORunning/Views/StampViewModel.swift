@@ -143,6 +143,9 @@ final class StampViewModel {
     var storyCropOffsetX: CGFloat = 0.5
     /// 사진 인덱스별 가로 크롭 위치 — 사진 전환 시 각자 독립 유지.
     var storyCropOffsets: [Int: CGFloat] = [:]
+    /// 세로 크롭 위치(0=위·1=아래) — 카드보다 세로로 긴 사진만 의미. 기본 0 = 위쪽 정렬(기존 동작).
+    var storyCropOffsetY: CGFloat = 0
+    var storyCropOffsetsY: [Int: CGFloat] = [:]
     var storyPhoto: UIImage? = nil
     var clipRecipes: [ClipRecipe] = []
     var selectedClipIndex: Int = 0 {

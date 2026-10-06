@@ -159,7 +159,7 @@ struct ShareCardScreen: View {
     @State private var didResetMediaLogo = false
     // Overlay card ViewModel
     @State var overlayVM = OverlayViewModel()
-    @State var overlayCropDragBase: CGFloat? = nil
+    @State var overlayCropDragBase: CGPoint? = nil
     @State private var overlayShareImages: [UIImage] = []
     @State private var showOverlayShareSheet = false
     // OneLiner card ViewModel
@@ -207,7 +207,7 @@ struct ShareCardScreen: View {
     @State private var athleticCropDragBase: CGFloat? = nil
     @State var athleticSlideCropOffsets: [Int: CGFloat] = [:]
     @State private var athleticSlideCropDragBase: CGFloat? = nil
-    @State private var stampStoryCropDragBase: CGFloat? = nil
+    @State private var stampStoryCropDragBase: CGPoint? = nil
     @State var stampSlideCropDragBase: CGFloat? = nil
     @State var stampSlideCropOffsets: [Int: CGFloat] = [:]
     @State var stampSlideBrightMap: [Int: Bool] = [:]
@@ -806,21 +806,30 @@ struct ShareCardScreen: View {
         } else if !storyPhotos.isEmpty {
             let selectedIdx = max(0, min(cardPhotoIndex[.stamp] ?? 0, storyPhotos.count - 1))
             let ph = storyPhotos[selectedIdx]
-            let s      = max(300 / ph.size.width, 375 / ph.size.height)
-            let excess = max(0, ph.size.width * s - 300)
+            let s       = max(300 / ph.size.width, 375 / ph.size.height)
+            let excess  = max(0, ph.size.width * s - 300)    // 가로로 남는 양 → 좌우 끌기
+            let excessY = max(0, ph.size.height * s - 375)   // 세로로 남는 양 → 위아래 끌기
             StampStoryRenderView(photo: ph, data: stampPreviewData, vm: stampVM,
                                  cropOffsetX: stampVM.storyCropOffsetX,
+                                 cropOffsetY: stampVM.storyCropOffsetY,
                                  configOverride: stampVM.photoConfig(at: selectedIdx))
-                .gesture(excess > 0 ? DragGesture(minimumDistance: 1)
+                .gesture(excess > 0 || excessY > 0 ? DragGesture(minimumDistance: 1)
                     .onChanged { drag in
-                        if stampStoryCropDragBase == nil { stampStoryCropDragBase = stampVM.storyCropOffsetX }
+                        if stampStoryCropDragBase == nil {
+                            stampStoryCropDragBase = CGPoint(x: stampVM.storyCropOffsetX, y: stampVM.storyCropOffsetY)
+                        }
                         guard let base = stampStoryCropDragBase else { return }
-                        stampVM.storyCropOffsetX = max(0, min(1,
-                            base - drag.translation.width / excess))
+                        if excess > 0 {
+                            stampVM.storyCropOffsetX = max(0, min(1, base.x - drag.translation.width / excess))
+                        }
+                        if excessY > 0 {
+                            stampVM.storyCropOffsetY = max(0, min(1, base.y - drag.translation.height / excessY))
+                        }
                     }
                     .onEnded { _ in
                         stampStoryCropDragBase = nil
                         stampVM.storyCropOffsets[selectedIdx] = stampVM.storyCropOffsetX
+                        stampVM.storyCropOffsetsY[selectedIdx] = stampVM.storyCropOffsetY
                         saveStampConfig()
                     }
                 : nil)
@@ -2372,12 +2381,20 @@ struct ShareCardScreen: View {
             if isOneLiner, template == .photo, old[.oneLiner] != new[.oneLiner] {
                 loadOneLinerSettingsFor(photoIndex: new[.oneLiner] ?? 0)
             }
+            // Overlay: 기본 사진이 바뀌면 크롭 위치를 기본값(가로 가운데·세로 위)으로 — 이전 사진 값이 남지 않게
+            if old[.overlay] != new[.overlay] {
+                overlayVM.media.storyCropOffsetX = 0.5
+                overlayVM.media.storyCropOffsetY = 0
+            }
             if isStamp, old[.stamp] != new[.stamp] {
                 let idx = new[.stamp] ?? 0
                 // selectedClipIndex가 photo 인덱스와 일치해야 currentConfig(get/set)가
                 // 올바른 photoConfigs[idx]를 읽고 쓴다. story·slide 모두 동기화.
                 stampVM.selectedClipIndex = idx
-                if template == .photo { stampVM.storyCropOffsetX = stampVM.storyCropOffsets[idx] ?? 0.5 }
+                if template == .photo {
+                    stampVM.storyCropOffsetX = stampVM.storyCropOffsets[idx] ?? 0.5
+                    stampVM.storyCropOffsetY = stampVM.storyCropOffsetsY[idx] ?? 0
+                }
                 // slide: 선택 사진의 시작 시각(+0.5s)으로 이동해 해당 사진이 미리보기에 보이게 함
                 if template == .slide, previewPlayer.isReady {
                     let t = Double(idx) * PhotoSlideComposition.placeableSlideDuration + 0.5
@@ -3600,12 +3617,13 @@ struct ShareCardScreen: View {
                 var exportCfg  = stampVM.baseConfig
                 exportCfg.text = stampVM.currentConfig.text
                 let exportCropX = stampVM.storyCropOffsetX
+                let exportCropY = stampVM.storyCropOffsetY
                 Task { @MainActor in
                     // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
                     // 1회 워밍업 후 50ms 대기로 파이프라인 초기화 (slide 내보내기와 동일 패턴).
                     let wuPhoto = storyPhotos.first ?? storyPhoto
                     _ = makeStampStoryImage(photo: wuPhoto, data: stampPreviewData, vm: stampVM,
-                                            cropOffsetX: exportCropX,
+                                            cropOffsetX: exportCropX, cropOffsetY: exportCropY,
                                             configOverride: exportCfg)
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     guard isStamp, template == .photo else { return }
@@ -3617,9 +3635,12 @@ struct ShareCardScreen: View {
                         var rendered: [UIImage] = []
                         for (i, photo) in storyPhotos.enumerated() {
                             let cfg = stampVM.photoConfig(at: i)
+                            // 사진마다 저장된 크롭 위치 (선택 사진은 끄는 중인 최신 값)
+                            let cx = i == (cardPhotoIndex[.stamp] ?? 0) ? exportCropX : (stampVM.storyCropOffsets[i] ?? 0.5)
+                            let cy = i == (cardPhotoIndex[.stamp] ?? 0) ? exportCropY : (stampVM.storyCropOffsetsY[i] ?? 0)
                             if let img = makeStampStoryImage(
                                 photo: photo, data: stampPreviewData, vm: stampVM,
-                                cropOffsetX: exportCropX,
+                                cropOffsetX: cx, cropOffsetY: cy,
                                 configOverride: cfg) {
                                 rendered.append(img)
                             }
@@ -3634,7 +3655,7 @@ struct ShareCardScreen: View {
                         }
                     } else if let img = makeStampStoryImage(
                         photo: storyPhoto, data: stampPreviewData, vm: stampVM,
-                        cropOffsetX: exportCropX,
+                        cropOffsetX: exportCropX, cropOffsetY: exportCropY,
                         configOverride: exportCfg) {
                         // previewImage 대신 storyShareImages 사용 — onChange의 previewImage=nil 무관하게 안전.
                         storyShareImages = [img]
@@ -4653,6 +4674,7 @@ struct ShareCardScreen: View {
                 previewImage = makeStampStoryImage(
                     photo: photo, data: stampPreviewData, vm: stampVM,
                     cropOffsetX: stampVM.storyCropOffsetX,
+                    cropOffsetY: stampVM.storyCropOffsetY,
                     configOverride: cfg)
             }
             isRendering = false; return

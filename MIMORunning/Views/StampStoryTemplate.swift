@@ -52,6 +52,8 @@ struct StampStoryRenderView: View {
     let data: StampData
     @Bindable var vm: StampViewModel
     var cropOffsetX: CGFloat = 0.5
+    /// 세로로 긴 사진의 세로 크롭 위치(0=위·1=아래). 기본 0 = 위쪽 정렬.
+    var cropOffsetY: CGFloat = 0
     /// 이 사진에 적용할 속성 전체. nil이면 vm.currentConfig 사용 (selectedClipIndex 기반).
     var configOverride: StampPhotoConfig? = nil
     /// 렌더 높이: 스토리 4:5 = 375, 슬라이드 9:16 ≈ 533
@@ -83,10 +85,11 @@ struct StampStoryRenderView: View {
                 let iW  = photo.size.width  * s
                 let iH  = photo.size.height * s
                 let ox  = -(cropOffsetX * max(0, iW - renderWidth))
+                let oy  = -(cropOffsetY * max(0, iH - renderHeight))
                 Image(uiImage: photo)
                     .resizable()
                     .frame(width: iW, height: iH)
-                    .offset(x: ox)
+                    .offset(x: ox, y: oy)
                     .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                     .clipped()
             } else {
@@ -304,11 +307,13 @@ struct StampAnimPreviewCard: View {
 @MainActor
 func makeStampStoryImage(photo: UIImage?, data: StampData, vm: StampViewModel,
                          cropOffsetX: CGFloat = 0.5,
+                         cropOffsetY: CGFloat = 0,
                          configOverride: StampPhotoConfig? = nil,
                          replacementLayer: AnyView? = nil) -> UIImage? {
     FontLoader.registerBundledFonts()
     let view = StampStoryRenderView(photo: photo, data: data, vm: vm,
                                     cropOffsetX: cropOffsetX,
+                                    cropOffsetY: cropOffsetY,
                                     configOverride: configOverride,
                                     replacementLayer: replacementLayer)
         .frame(width: 300, height: 375)

@@ -113,6 +113,8 @@ extension ShareCardScreen {
         // 스토리 사진별 크롭 오프셋
         let storyCropDict = Dictionary(uniqueKeysWithValues: stampVM.storyCropOffsets.map { (String($0.key), Double($0.value)) })
         if let data = try? JSONEncoder().encode(storyCropDict) { ud.set(data, forKey: p + "storyCropOffsets") }
+        let storyCropYDict = Dictionary(uniqueKeysWithValues: stampVM.storyCropOffsetsY.map { (String($0.key), Double($0.value)) })
+        if let data = try? JSONEncoder().encode(storyCropYDict) { ud.set(data, forKey: p + "storyCropOffsetsY") }
         // 슬라이드 사진별 크롭 오프셋
         let slideCropDict = Dictionary(uniqueKeysWithValues: stampSlideCropOffsets.map { (String($0.key), Double($0.value)) })
         if let data = try? JSONEncoder().encode(slideCropDict) { ud.set(data, forKey: p + "slideCropOffsets") }
@@ -137,6 +139,12 @@ extension ShareCardScreen {
             stampVM.storyCropOffsets = Dictionary(uniqueKeysWithValues:
                 dict.compactMap { k, v in Int(k).map { ($0, CGFloat(v)) } })
             stampVM.storyCropOffsetX = stampVM.storyCropOffsets[0] ?? 0.5
+        }
+        if let data = ud.data(forKey: p + "storyCropOffsetsY"),
+           let dict = try? JSONDecoder().decode([String: Double].self, from: data) {
+            stampVM.storyCropOffsetsY = Dictionary(uniqueKeysWithValues:
+                dict.compactMap { k, v in Int(k).map { ($0, CGFloat(v)) } })
+            stampVM.storyCropOffsetY = stampVM.storyCropOffsetsY[0] ?? 0
         }
         // 슬라이드 사진별 크롭 오프셋 복원
         if let data = ud.data(forKey: p + "slideCropOffsets"),

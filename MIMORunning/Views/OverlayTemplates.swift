@@ -49,18 +49,27 @@ extension ShareCardScreen {
     private var overlayPhotoPreview: some View {
         let media = overlayVM.media
         if let ph = overlayBasePhoto {
-            let s      = max(300 / ph.size.width, 375 / ph.size.height)
-            let excess = max(0, ph.size.width * s - 300)
+            let s       = max(300 / ph.size.width, 375 / ph.size.height)
+            let excess  = max(0, ph.size.width * s - 300)
+            let excessY = max(0, ph.size.height * s - 375)
             StampStoryRenderView(photo: ph, data: overlayPreviewData, vm: media,
                                  cropOffsetX: media.storyCropOffsetX,
+                                 cropOffsetY: media.storyCropOffsetY,
                                  configOverride: media.currentConfig,
                                  replacementLayer: overlayPhotosLayer(isVideo: false))
-                // 가로로 긴 사진은 좌우로 끌어 크롭 위치 조절 (스탬프 카드와 같은 동작)
-                .gesture(excess > 0 ? DragGesture(minimumDistance: 1)
+                // 가로로 긴 사진은 좌우, 세로로 긴 사진은 위아래로 끌어 크롭 위치 조절 (스탬프 카드와 같은 동작)
+                .gesture(excess > 0 || excessY > 0 ? DragGesture(minimumDistance: 1)
                     .onChanged { drag in
-                        if overlayCropDragBase == nil { overlayCropDragBase = media.storyCropOffsetX }
+                        if overlayCropDragBase == nil {
+                            overlayCropDragBase = CGPoint(x: media.storyCropOffsetX, y: media.storyCropOffsetY)
+                        }
                         guard let base = overlayCropDragBase else { return }
-                        media.storyCropOffsetX = max(0, min(1, base - drag.translation.width / excess))
+                        if excess > 0 {
+                            media.storyCropOffsetX = max(0, min(1, base.x - drag.translation.width / excess))
+                        }
+                        if excessY > 0 {
+                            media.storyCropOffsetY = max(0, min(1, base.y - drag.translation.height / excessY))
+                        }
                     }
                     .onEnded { _ in overlayCropDragBase = nil }
                 : nil)
@@ -82,10 +91,12 @@ extension ShareCardScreen {
         // 첫 ImageRenderer 호출은 잘못된 이미지를 낼 수 있어 워밍업 후 50ms 대기(스탬프와 같은 패턴)
         _ = makeStampStoryImage(photo: photo, data: overlayPreviewData, vm: media,
                                 cropOffsetX: media.storyCropOffsetX,
+                                cropOffsetY: media.storyCropOffsetY,
                                 configOverride: cfg, replacementLayer: layer)
         try? await Task.sleep(nanoseconds: 50_000_000)
         return makeStampStoryImage(photo: photo, data: overlayPreviewData, vm: media,
                                    cropOffsetX: media.storyCropOffsetX,
+                                   cropOffsetY: media.storyCropOffsetY,
                                    configOverride: cfg, replacementLayer: layer)
     }
 }
