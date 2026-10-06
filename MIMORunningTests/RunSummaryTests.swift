@@ -371,7 +371,7 @@ struct RunSummaryTests {
 
     @Test func evidenceAndNextForTodayRun() {
         let out = lines(todayInput())
-        #expect(out[0].evidence == "케이던스 175 유지 · 마지막 5km 보폭 0.92 범위 안 · 지면접촉 255 범위 안")
+        #expect(out[0].evidence == "마지막 5km 케이던스 175 유지 · 보폭 0.92 평소 범위 안 · 지면접촉 255 평소 범위 안")
         #expect(out[0].next == nil)
         #expect(out[1].evidence == "평소 7.6km · 최근 10회 중 가장 긴 거리")
         #expect(out[1].next == "계획한 거리를 채운 러닝입니다. 다음 1~2일은 이지런이나 휴식으로 회복하세요.")
@@ -648,7 +648,7 @@ struct RunSummaryTests {
     @Test func heavierFormSuggestsWatchingLateStride() {
         var i = todayInput(); i.form = heavierForm10km()
         #expect(lines(i)[0].next == "다음 롱런은 같은 거리에서 후반 보폭만 지켜보세요.")
-        #expect(lines(i)[0].evidence == "케이던스 175 유지 · 마지막 3km 보폭 0.85 범위(0.88~0.96) 아래 · 지면접촉 272 범위(245~265) 위")
+        #expect(lines(i)[0].evidence == "마지막 3km 케이던스 175 유지 · 보폭 0.85 평소 범위(0.88~0.96) 아래 · 지면접촉 272 평소 범위(245~265) 위")
     }
 
     @Test func heavierCadenceSuggestsWatchingCadence() {
@@ -658,7 +658,7 @@ struct RunSummaryTests {
 
     @Test func unknownCadenceIsNotReported() {
         var i = RunSummaryInput(); i.form = heldFormUnknownCadence16km()
-        #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 범위 안 · 지면접촉 255 범위 안")
+        #expect(lines(i).first?.evidence == "마지막 5km 보폭 0.92 평소 범위 안 · 지면접촉 255 평소 범위 안")
     }
 
     // MARK: 페이스 무너짐

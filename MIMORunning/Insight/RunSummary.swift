@@ -177,18 +177,18 @@ enum RunSummary {
                               held ? "cadence held at \(n)" : "cadence dropped to \(n)",
                               ja: held ? "ケイデンス\(n)を維持" : "ケイデンス\(n)に低下"))
         }
+        // 범위 밖이면 비교한 범위를 숫자로 — 말기 페이스 기준 **평소** 범위라 상세 타일(이번 러닝 최저~최고)과 다르다
         if let sl = late.stride, sig.stride != .unknown {
             let s = String(format: "%.2f", sl)
             switch sig.stride {
             case .inRange:
-                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위 안", "stride \(s) in range over the last \(lateKm) km", ja: "最後の\(lateKm)km ストライド\(s) 範囲内"))
-            // 범위 밖이면 비교한 범위를 숫자로 — 말기 페이스 기준 범위라 폼 카드(전체 러닝 기준)의 범위와 다를 수 있다
+                pieces.append(L.s("보폭 \(s) 평소 범위 안", "stride \(s) within usual range", ja: "ストライド\(s) 普段の範囲内"))
             case .above:
                 let r = f.lateStrideRange.map { String(format: "(%.2f~%.2f)", $0.lowerBound, $0.upperBound) } ?? ""
-                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위\(r) 위", "stride \(s) above range\(r.isEmpty ? "" : " " + r) over the last \(lateKm) km", ja: "最後の\(lateKm)km ストライド\(s) 範囲\(r)より上"))
+                pieces.append(L.s("보폭 \(s) 평소 범위\(r) 위", "stride \(s) above usual range\(r.isEmpty ? "" : " " + r)", ja: "ストライド\(s) 普段の範囲\(r)より上"))
             case .below:
                 let r = f.lateStrideRange.map { String(format: "(%.2f~%.2f)", $0.lowerBound, $0.upperBound) } ?? ""
-                pieces.append(L.s("마지막 \(lateKm)km 보폭 \(s) 범위\(r) 아래", "stride \(s) below range\(r.isEmpty ? "" : " " + r) over the last \(lateKm) km", ja: "最後の\(lateKm)km ストライド\(s) 範囲\(r)より下"))
+                pieces.append(L.s("보폭 \(s) 평소 범위\(r) 아래", "stride \(s) below usual range\(r.isEmpty ? "" : " " + r)", ja: "ストライド\(s) 普段の範囲\(r)より下"))
             case .unknown:
                 break
             }
@@ -197,11 +197,15 @@ enum RunSummary {
             let inRange = sig.groundContact != .above
             let n = Int(gct.rounded())
             let r = inRange ? "" : (f.lateGroundContactRange.map { "(\(Int($0.lowerBound))~\(Int($0.upperBound)))" } ?? "")
-            pieces.append(L.s(inRange ? "지면접촉 \(n) 범위 안" : "지면접촉 \(n) 범위\(r) 위",
-                              inRange ? "ground contact \(n) in range" : "ground contact \(n) above range\(r.isEmpty ? "" : " " + r)",
-                              ja: inRange ? "接地時間\(n) 範囲内" : "接地時間\(n) 範囲\(r)より上"))
+            pieces.append(L.s(inRange ? "지면접촉 \(n) 평소 범위 안" : "지면접촉 \(n) 평소 범위\(r) 위",
+                              inRange ? "ground contact \(n) within usual range" : "ground contact \(n) above usual range\(r.isEmpty ? "" : " " + r)",
+                              ja: inRange ? "接地時間\(n) 普段の範囲内" : "接地時間\(n) 普段の範囲\(r)より上"))
         }
-        return pieces.isEmpty ? nil : pieces.joined(separator: " · ")
+        guard !pieces.isEmpty else { return nil }
+        // 값은 모두 마지막 구간 것이다 — 상세 타일(러닝 전체 평균)과 숫자가 다른 까닭을 맨 앞에 한 번 밝힌다.
+        // 예전엔 보폭에만 "마지막 2km"가 붙어 케이던스·지면접촉이 전체 평균처럼 읽혔다(173 vs 175).
+        let joined = pieces.joined(separator: " · ")
+        return L.s("마지막 \(lateKm)km \(joined)", "Last \(lateKm) km: \(joined)", ja: "最後の\(lateKm)km \(joined)")
     }
 
     /// `.heavier`는 피로 방향으로 처음 벗어난 지표(순서 고정: 케이던스 → 보폭 → 접지)만 짚어 다음 행동을 준다 —
