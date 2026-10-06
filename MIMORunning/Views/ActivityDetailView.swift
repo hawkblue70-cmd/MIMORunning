@@ -375,7 +375,10 @@ struct ActivityDetailView: View {
                         activity: activity,
                         confirmedRace: confirmedRaceMatch,
                         onRaceRevoke: {
-                            raceDetector.removeMatch(activityID: activity.id)
+                            // '대회 아님'으로 남긴다 — 매칭을 지우기만(removeMatch) 하면 다음 진입의 대회 감지가
+                            // 기록 없는 러닝으로 보고 다시 자동 확정해 기록 탭에 대회 이름이 되살아났다.
+                            // 되돌리기는 상세의 '대회 기록 추가' 버튼(resetDismissed)으로.
+                            raceDetector.markAsNotRace(activityID: activity.id)
                             Task { await recomputeInsightWithRaceMatch() }
                         },
                         workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,

@@ -410,11 +410,6 @@ final class RaceDetector {
         saveMatches()
     }
 
-    func removeMatch(activityID: UUID) {
-        matches.removeValue(forKey: activityID.uuidString)
-        saveMatches()
-    }
-
     func resetDismissed(activityID: UUID) {
         matches.removeValue(forKey: activityID.uuidString)
         saveMatches()
