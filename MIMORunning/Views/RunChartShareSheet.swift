@@ -16,6 +16,8 @@ struct RunChartShareCard: View {
     let startTimeText: String?
     let shoeText: String?
     let paceText: String?
+    /// 확정된 대회명 — 있으면 헤더 워드마크 아래 대회 뱃지(다른 공유 카드와 같은 자리·같은 RaceBadge)
+    var raceName: String? = nil
     var playProgress: Double? = nil
     /// 차트 높이 — 카드 전체가 영상과 같은 4:5(375pt)에 떨어지도록 시트가 계산해 넣는다.
     /// 기본값은 실측 전 첫 프레임용.
@@ -37,7 +39,7 @@ struct RunChartShareCard: View {
                     weatherText: weatherText, weatherIcon: weatherIcon,
                     dateText: dateText, weekdayText: weekdayText,
                     startTimeText: startTimeText, shoeText: shoeText,
-                    paceText: paceText, palette: palette)
+                    paceText: paceText, raceName: raceName, palette: palette)
 
                 RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: chartHeight,
                                     playProgress: playProgress)
@@ -68,6 +70,8 @@ struct RunChartShareHeader: View {
     let startTimeText: String?
     let shoeText: String?
     let paceText: String?
+    /// 확정된 대회명 — 있으면 헤더 워드마크 아래 대회 뱃지(다른 공유 카드와 같은 자리·같은 RaceBadge)
+    var raceName: String? = nil
     var palette: ShareChartPalette = .dark
 
     var body: some View {
@@ -120,6 +124,10 @@ struct RunChartShareHeader: View {
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            }
+            // 대회 — 워드마크 바로 아래(스탬프·애슬레틱·사진·영상 카드와 같은 자리). 이 헤더 글자(9pt)에 맞춰 0.9배
+            if let race = raceName {
+                RaceBadge(name: race, scale: 0.9, onLight: palette.isLight)
             }
             HStack(alignment: .center, spacing: 0) {
                 // 중립 위계 — 지표 색을 쓰지 않는다
@@ -199,6 +207,8 @@ struct RunChartShareSheet: View {
     let startTimeText: String?
     let shoeText: String?
     let paceText: String?
+    /// 확정된 대회명 — 있으면 헤더 워드마크 아래 대회 뱃지(다른 공유 카드와 같은 자리·같은 RaceBadge)
+    var raceName: String? = nil
     var totalDuration: TimeInterval = 0
     var routeCoordinates: [CLLocationCoordinate2D] = []
 
@@ -320,7 +330,7 @@ struct RunChartShareSheet: View {
                                 weekdayText: weekdayText,
                                 startTimeText: startTimeText,
                                 shoeText: shoeText,
-                                paceText: paceText,
+                                paceText: paceText, raceName: raceName,
                                 chartHeight: fittedChartH,
                                 palette: shareTheme.palette
                             )
@@ -541,7 +551,7 @@ struct RunChartShareSheet: View {
                     weekdayText: weekdayText,
                     startTimeText: startTimeText,
                     shoeText: shoeText,
-                    paceText: paceText,
+                    paceText: paceText, raceName: raceName,
                     totalDuration: totalDuration,
                     routeCoordinates: routeCoordinates,
                     content: videoContent,
@@ -587,7 +597,7 @@ struct RunChartShareSheet: View {
                 weatherText: weatherText, weatherIcon: weatherIcon,
                 dateText: dateText, weekdayText: weekdayText,
                 startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText,
+                paceText: paceText, raceName: raceName,
                 totalDuration: totalDuration,
                 routeCoordinates: routeCoordinates,
                 content: videoContent,
@@ -613,7 +623,7 @@ struct RunChartShareSheet: View {
             weatherText: weatherText, weatherIcon: weatherIcon,
             dateText: dateText, weekdayText: weekdayText,
             startTimeText: startTimeText, shoeText: shoeText,
-            paceText: paceText, chartHeight: probeChartH, palette: shareTheme.palette
+            paceText: paceText, raceName: raceName, chartHeight: probeChartH, palette: shareTheme.palette
         )
         .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
         let r = ImageRenderer(content: probe)
@@ -670,7 +680,7 @@ struct RunChartShareSheet: View {
             weekdayText: weekdayText,
             startTimeText: startTimeText,
             shoeText: shoeText,
-            paceText: paceText,
+            paceText: paceText, raceName: raceName,
             chartHeight: fittedChartH,
             palette: palette
         )

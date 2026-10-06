@@ -591,6 +591,9 @@ struct ActivityDetailView: View {
                 startTimeText: panelTimeText,
                 shoeText: panelShoeText,
                 paceText: activity.formattedPace,
+                // 확정된 대회만 — 공유 카드와 같은 규칙
+                raceName: raceDetector.matchFor(activityID: activity.id)
+                    .flatMap { $0.isConfirmed ? $0.raceName : nil },
                 totalDuration: activity.duration,
                 routeCoordinates: detail?.routeCoordinates ?? []
             )

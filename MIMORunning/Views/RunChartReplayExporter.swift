@@ -320,6 +320,7 @@ enum RunChartReplayExporter {
         startTimeText: String?,
         shoeText: String?,
         paceText: String? = nil,
+        raceName: String? = nil,
         totalDuration: TimeInterval = 0,
         routeCoordinates: [CLLocationCoordinate2D] = [],
         content: ReplayContent = .chartData,
@@ -380,7 +381,7 @@ enum RunChartReplayExporter {
             distanceText: distanceText, durationText: durationText,
             weatherText: weatherText, weatherIcon: weatherIcon,
             dateText: dateText, weekdayText: weekdayText,
-            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText,
+            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText, raceName: raceName,
             palette: palette)
         let headerImg = strips.header
         let tilesImg  = strips.tiles
@@ -522,6 +523,7 @@ enum RunChartReplayExporter {
         startTimeText: String?,
         shoeText: String?,
         paceText: String? = nil,
+        raceName: String? = nil,
         totalDuration: TimeInterval = 0,
         routeCoordinates: [CLLocationCoordinate2D] = [],
         content: ReplayContent,
@@ -539,7 +541,7 @@ enum RunChartReplayExporter {
             distanceText: distanceText, durationText: durationText,
             weatherText: weatherText, weatherIcon: weatherIcon,
             dateText: dateText, weekdayText: weekdayText,
-            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText,
+            startTimeText: startTimeText, shoeText: shoeText, paceText: paceText, raceName: raceName,
             palette: palette)
         let headerImg = strips.header
         let tilesImg  = strips.tiles
@@ -1191,6 +1193,7 @@ enum RunChartReplayExporter {
         weatherText: String?, weatherIcon: String?,
         dateText: String?, weekdayText: String?,
         startTimeText: String?, shoeText: String?, paceText: String?,
+        raceName: String? = nil,
         palette: ShareChartPalette
     ) -> (header: CGImage?, tiles: CGImage?) {
         let header = renderCGImage(
@@ -1199,7 +1202,7 @@ enum RunChartReplayExporter {
                 weatherText: weatherText, weatherIcon: weatherIcon,
                 dateText: dateText, weekdayText: weekdayText,
                 startTimeText: startTimeText, shoeText: shoeText,
-                paceText: paceText, palette: palette)
+                paceText: paceText, raceName: raceName, palette: palette)
                 .frame(width: cardW)
                 .background(palette.sectionBackground),
             width: cardW, height: nil, palette: palette)
