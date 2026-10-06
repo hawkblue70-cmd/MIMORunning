@@ -245,6 +245,8 @@ struct MeView: View {
                             navPath.append(a)
                         }
                             .padding(.horizontal, 16)
+                        MRMonthlyPlanCard()
+                            .padding(.horizontal, 16)
                         statsSection
                         shoesSection
                         crewNicknameSection

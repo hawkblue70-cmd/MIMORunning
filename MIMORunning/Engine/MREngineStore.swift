@@ -86,6 +86,8 @@ final class MREngineStore: ObservableObject {
         guard intenseRunsInjected else { return nil }   // 모름 → 주당 횟수 규칙만(폴백)
         return mrHabitualPointEveryWeeks(runs: runs, intenseStarts: Set(intenseRuns.keys), asOf: Date())
     }
+    /// 월간 계획 카드용(읽기 전용) — 강도 훈련 습관 간격. 설계 2026-10-07-monthly-volume-goal-design.md
+    var monthlyPlanPointHabit: Int? { pointHabitEveryWeeks }
     @Published private(set) var todayCard: MRTodayCard?
     @Published private(set) var raceDayCard: MRRaceDayCard?
     @Published private(set) var backtest: [MRBacktestRow] = []
