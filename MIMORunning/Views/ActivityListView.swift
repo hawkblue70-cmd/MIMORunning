@@ -336,7 +336,8 @@ private struct ActivityListContent: View {
                                             isProvisionalType: manager.isProvisionalWorkoutType(for: activity.id),
                                             raceName: raceDetector.matchFor(activityID: activity.id).flatMap {
                                                 $0.isConfirmed ? $0.raceName : nil
-                                            }
+                                            },
+                                            effort: manager.effortIndex.resolve(activity.id)?.value
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -383,7 +384,11 @@ private struct ActivityListContent: View {
         .onChange(of: showHiking)   { _, _ in displayCount = 50 }
         // ⚠ `.onChange(of: stories.map(\.effortRPE))`는 쓰지 않는다 — 스토리 전체를 매 갱신마다 훑어(SwiftData 폴트) CloudKit 동기화 중엔
         //   재갱신이 꼬리를 물어 메인이 서 버린다(2026-09-23 홈 터치 불능). 강도 입력 반영은 화면에 돌아올 때(onAppear)로 충분하다.
-        .onAppear { pushHardRunStarts() }
+        .onAppear {
+            // 행 아이콘 강도 색이 내 입력을 먼저 보게 — 상세에서 고치고 돌아올 때 반영(변경 없으면 매니저가 무시)
+            manager.syncUserEfforts(from: stories)
+            pushHardRunStarts()
+        }
         .onChange(of: manager.activities.count) { _, _ in
             pushHardRunStarts()
             // 새 러닝이 목록에 들어오면 오늘 카드의 거리 행(이번 주·이번 달·올해·누적)도 같은 러닝을 보게 — 앱 재시작 없이
@@ -805,6 +810,8 @@ private struct ActivityCard: View {
     var workoutTypeLabel: String? = nil
     var isProvisionalType: Bool = false
     var raceName: String? = nil
+    /// 운동 강도 1~10 (내 입력 > Apple 수동 > Apple 추정). 아이콘을 상세 화면 강도 막대와 같은 10색으로 칠한다.
+    var effort: Int? = nil
 
     private static let datePart: DateFormatter = {
         let df = DateFormatter()
@@ -827,8 +834,9 @@ private struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top) {
                 HStack(spacing: 4) {
+                    // 강도 색 — 값이 없으면 회색(중립). 초록은 강도 4~5 색과 헷갈려 쓰지 않는다
                     Image(systemName: activity.type.icon)
-                        .foregroundStyle(Color(hex: "3DFF7A"))
+                        .foregroundStyle(effort.map { EffortPalette.color(for: $0) } ?? Color(hex: "8A8A92"))
                     Text(activity.type.label)
                         .foregroundStyle(Theme.violet)
                     if let wt = workoutType {
