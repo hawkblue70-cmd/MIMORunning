@@ -31,6 +31,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case summaryGrid
     case summaryGridPace
     case summaryGridHR
+    case summaryGridPaceHR
     case distanceHero
     case labeledRows
     case inlineTriple
@@ -86,6 +87,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid", ja: "サマリーグリッド")
         case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace", ja: "サマリーグリッド+ペース")
         case .summaryGridHR: return L.s("요약 그리드+심박", "Summary Grid + HR", ja: "サマリーグリッド+心拍")
+        case .summaryGridPaceHR: return L.s("요약 그리드+페이스+심박", "Summary Grid + Pace + HR", ja: "サマリーグリッド+ペース+心拍")
         case .hrWave:        return L.s("심박 파형",       "HR Wave", ja: "心拍波形")
         case .hrZone:        return L.s("심박 존",         "HR Zones", ja: "心拍ゾーン")
         case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile", ja: "標高プロファイル")
@@ -156,6 +158,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
         case .summaryGridPace: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)   // 요약 그리드와 같은 배율. 특대 없음(supportsXLarge) — 차트가 붙어 높이 상한을 넘는다
         case .summaryGridHR: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)     // 요약 그리드+페이스와 같은 규칙 — 폭은 격자, 특대 없음
+        case .summaryGridPaceHR: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68) // 같은 폭 규칙. 세로가 길어 카드에 안 들어가면 fitsCardHeight로 줄인다
         case .hud:          return (small: 0.50, medium: 0.65, large: 0.80, xlarge: 1.00)
         case .hrWave:       return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
         case .hrZone:       return (small: 0.55, medium: 0.76, large: 1.00, xlarge: 1.25)
@@ -169,7 +172,13 @@ enum StampTemplate: String, CaseIterable, Identifiable {
 
     /// 특대 크기를 고를 수 있는가. 요약 그리드+페이스는 격자 아래 차트가 붙어 특대면 높이 상한을 넘으므로
     /// 특대 칩을 숨기고, 특대가 저장돼 있어도 대(large)로 그린다.
-    var supportsXLarge: Bool { self != .summaryGridPace && self != .summaryGridHR }
+    var supportsXLarge: Bool { !fitsCardHeight }
+
+    /// 세로로 긴 스탬프(격자 + 구간 목록·심박 곡선) — 카드 높이에 다 안 들어가면 들어갈 때까지 배율을 줄인다.
+    /// 넘친 채 그리면 로고·문구와 겹치거나 잘린다. 들어가면 배율표 그대로.
+    var fitsCardHeight: Bool {
+        self == .summaryGridPace || self == .summaryGridHR || self == .summaryGridPaceHR
+    }
 
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
@@ -201,6 +210,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .routeHero, .routeSide:     return [.route]
         case .summaryGridPace:           return [.splits]
         case .summaryGridHR:             return [.hrSamples]
+        case .summaryGridPaceHR:         return [.splits, .hrSamples]
         default:                         return [.none]
         }
     }

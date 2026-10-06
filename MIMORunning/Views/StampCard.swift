@@ -24,10 +24,16 @@ struct StampSplit {
         totalKm > 40 ? 3 : totalKm > 16 ? 2 : 1
     }
 
+    /// 촘촘한 묶음 — 15km 이하 1km, 30km 이하 2km, 그 이상 3km (줄 수 ≈ 15 이하).
+    /// 요약 그리드+페이스+심박: 심박 곡선까지 붙어 세로가 길어 줄을 더 줄인다.
+    static func compactBucketKm(totalKm: Double) -> Int {
+        totalKm > 30 ? 3 : totalKm > 15 ? 2 : 1
+    }
+
     /// 스플릿을 묶어 줄로 — 페이스는 합친 시간/거리, 심박은 심박 있는 구간의 시간 가중 평균.
-    static func rows(_ splits: [StampSplit]) -> [Row] {
+    static func rows(_ splits: [StampSplit], bucket: (Double) -> Int = bucketKm(totalKm:)) -> [Row] {
         let total = splits.reduce(0) { $0 + $1.distanceM } / 1000
-        let n = bucketKm(totalKm: total)
+        let n = bucket(total)
         var out: [Row] = []
         var cum = 0.0
         for start in stride(from: 0, to: splits.count, by: n) {
@@ -435,6 +441,8 @@ struct StampCard: View {
                 if template.positionMode == .fixed {
                     stampContent(fill: fill, outline: outline, scale: scale, topClearance: topInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if template.fitsCardHeight {
+                    fittedTallStamp(fill: fill, outline: outline, scale: scale, topInset: topInset)
                 } else {
                     // ImageRenderer에서 .frame(alignment:)의 bottom 앵커가 무시되는 SwiftUI 버그를
                     // 회피하기 위해 VStack/HStack/Spacer로 9격 위치 결정.
@@ -478,6 +486,30 @@ struct StampCard: View {
                     if !stampTextPosition.isBottom { Spacer(minLength: 0) }
                 }
             }
+        }
+    }
+
+    /// 세로로 긴 스탬프 — 위(로고 아래)·아래 여백 안에 들어가는 가장 큰 배율로 그린다.
+    /// 배율표 값부터 5%씩 줄여 가며 ViewThatFits가 처음 들어가는 것을 고른다(레이아웃만이라 ImageRenderer에서도 같다).
+    /// 들어갈 높이를 통째로 잡고 그 안에서 위·가운데·아래로 정렬하므로 9칸 위치는 그대로 따른다.
+    private func fittedTallStamp(fill: Color, outline: Color, scale: CGFloat, topInset: CGFloat) -> some View {
+        let sideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
+        let vAlign: VerticalAlignment = position.isTop ? .top : position.isBottom ? .bottom : .center
+        let candidates = (0...10).map { scale * (1 - 0.05 * CGFloat($0)) }   // 100% → 50%
+        return GeometryReader { geo in
+            let avail = max(0, geo.size.height - topInset - 12)
+            HStack(spacing: 0) {
+                if !position.isLeading { Spacer(minLength: 0) }
+                ViewThatFits(in: .vertical) {
+                    ForEach(candidates.indices, id: \.self) { i in
+                        stampContent(fill: fill, outline: outline, scale: candidates[i])
+                            .fixedSize()
+                    }
+                }
+                .frame(height: avail, alignment: Alignment(horizontal: .leading, vertical: vAlign))
+                if !position.isTrailing { Spacer(minLength: 0) }
+            }
+            .padding(EdgeInsets(top: topInset, leading: sideInset, bottom: 12, trailing: sideInset))
         }
     }
 
@@ -542,6 +574,22 @@ struct StampCard: View {
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits), fill: fill, outline: outline,
                                        scale: scale, showTextOutline: showTextOutline)
+                }
+            }
+        case .summaryGridPaceHR:
+            // 요약 그리드 + 구간 목록(15·30km 묶음) + 심박 곡선 — 세 스탬프의 같은 부품을 그대로 쌓는다
+            VStack(alignment: .leading, spacing: sz(10, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                if let splits = data.splits, splits.count >= 2 {
+                    StampSplitRowsView(rows: StampSplit.rows(splits, bucket: StampSplit.compactBucketKm(totalKm:)),
+                                       fill: fill, outline: outline,
+                                       scale: scale, showTextOutline: showTextOutline)
+                }
+                if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
+                    StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
+                                     scale: scale, showTextOutline: showTextOutline,
+                                     isWhiteBackground: isWhiteBackground)
                 }
             }
         case .summaryGridHR:
