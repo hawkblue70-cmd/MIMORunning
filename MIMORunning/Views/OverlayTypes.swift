@@ -7,7 +7,7 @@ import SwiftUI
 
 // MARK: - Size
 
-/// 오버레이 사진 한 변 = 카드 폭 × 비율 (정사각 크롭). 사진 4:5(300pt)·영상 9:16(211pt) 모두 같은 비율.
+/// 오버레이 사진 긴 변 = 카드 폭 × 비율 (원본 비율 유지, 잘림 없음). 사진 4:5(300pt)·영상 9:16(211pt) 모두 같은 비율.
 enum OverlaySizeLevel: Int, CaseIterable, Equatable {
     case p25 = 25, p30 = 30, p35 = 35
 
@@ -38,7 +38,7 @@ struct OverlayPhotoSlot: Equatable {
 
 // MARK: - Layer (단일 컴포넌트)
 
-/// 오버레이 사진 레이어. 캔버스 전체를 덮는 투명 뷰 — 사진마다 9칸 위치에 정사각 폴라로이드로 놓는다.
+/// 오버레이 사진 레이어. 캔버스 전체를 덮는 투명 뷰 — 사진마다 9칸 위치에 원본 비율 그대로(흰 테두리) 놓는다.
 /// 여백은 같은 카드의 문구(OneLinerCard)와 같은 값을 받는다: 위=워드마크 아래, 아래·좌우=문구 여백.
 struct OverlayPhotosLayer: View {
     let slots: [OverlayPhotoSlot]
@@ -52,7 +52,7 @@ struct OverlayPhotosLayer: View {
         ZStack {
             ForEach(slots.indices, id: \.self) { i in
                 if let img = slots[i].image {
-                    photo(img, side: canvasWidth * slots[i].size.fraction)
+                    photo(img, longSide: canvasWidth * slots[i].size.fraction)
                         .frame(maxWidth: .infinity, maxHeight: .infinity,
                                alignment: slots[i].position.alignment)
                 }
@@ -65,18 +65,22 @@ struct OverlayPhotosLayer: View {
         .allowsHitTesting(false)
     }
 
-    /// 정사각 크롭 + 얇은 흰 테두리 + 그림자. 테두리·모서리는 한 변에 비례해 크기가 달라도 같은 모양.
-    private func photo(_ img: UIImage, side: CGFloat) -> some View {
-        let border = max(0.75, side * 0.018)
+    /// 원본 비율 유지 — 긴 변(테두리 포함)을 longSide에 맞추고 짧은 변은 비율대로. 세로·가로 사진 모두
+    /// 같은 범위(longSide 정사각) 안에 들어와 9칸 배치가 예측 가능하다. 얇은 흰 테두리 + 그림자.
+    /// 테두리·모서리·그림자는 긴 변에 비례해 크기가 달라도 같은 모양.
+    private func photo(_ img: UIImage, longSide: CGFloat) -> some View {
+        let border = max(0.75, longSide * 0.018)
+        let aspect = img.size.height > 0 ? img.size.width / img.size.height : 1   // 폭/높이
+        let inner  = longSide - border * 2
+        let w = aspect >= 1 ? inner : inner * aspect
+        let h = aspect >= 1 ? inner / aspect : inner
         return Image(uiImage: img)
             .resizable()
-            .scaledToFill()
-            .frame(width: side - border * 2, height: side - border * 2)
-            .clipped()
+            .frame(width: w, height: h)
             .padding(border)
             .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: side * 0.04))
-            .shadow(color: .black.opacity(0.35), radius: max(2, side * 0.05), y: 1)
+            .clipShape(RoundedRectangle(cornerRadius: longSide * 0.04))
+            .shadow(color: .black.opacity(0.35), radius: max(2, longSide * 0.05), y: 1)
     }
 }
 
