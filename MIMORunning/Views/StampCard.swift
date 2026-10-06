@@ -1204,10 +1204,12 @@ private struct StampHRChartView: View {
     private var lo: Double { minV - (maxV - minV) * 0.06 }
     private var hi: Double { maxV + (maxV - minV) * 0.06 }
     private func frac(_ v: Double) -> CGFloat { hi > lo ? CGFloat((v - lo) / (hi - lo)) : 0.5 }
+    /// 범례(세로축 숫자·HR·시간) — 스탬프 색과 무관하게 흰색 굵게(2026-10-06 요청)
+    private let legend = Color.white
 
     private func yLabel(_ v: Double) -> some View {
         Text("\(Int(v.rounded()))")
-            .font(.system(size: sz(7, scale), weight: .semibold).monospacedDigit())
+            .font(.system(size: sz(7, scale), weight: .bold).monospacedDigit())
             .fixedSize()
             .frame(width: labelW, alignment: .trailing)
             .frame(height: sz(8, scale))
@@ -1226,8 +1228,7 @@ private struct StampHRChartView: View {
                     yLabel(minV)
                 }
                 .frame(width: labelW, height: chartH, alignment: .topTrailing)
-                .opacity(0.62)
-                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+                .stampTextOutline(show: showTextOutline, fill: legend, outline: outline)
 
                 ZStack {
                     HRLevelShape(fraction: frac(avgV))
@@ -1246,11 +1247,10 @@ private struct StampHRChartView: View {
                 Text(timeText).monospacedDigit()
             }
             .padding(.leading, labelW + gap)
-            .font(.system(size: sz(7, scale), weight: .semibold))
+            .font(.system(size: sz(7, scale), weight: .bold))
             .tracking(0.9)
             .lineLimit(1)
-            .opacity(0.62)
-            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+            .stampTextOutline(show: showTextOutline, fill: legend, outline: outline)
         }
         .frame(width: width, alignment: .leading)
     }
