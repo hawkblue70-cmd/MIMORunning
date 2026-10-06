@@ -565,26 +565,31 @@ struct StampCard: View {
             // 심박·칼로리 토글을 받지 않는다 — 이 스탬프는 격자를 채우는 게 목적이라
             // 있는 지표를 모두(최대 6칸) 보여준다.
             StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showTextOutline: showTextOutline)
+                                 showTextOutline: showTextOutline,
+                                 isWhiteBackground: isWhiteBackground)
         case .summaryGridPace:
             // 요약 그리드 그대로 + 아래에 구간별 세로 목록(km · 막대 · 페이스 · 심박)
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline)
+                                     showTextOutline: showTextOutline,
+                                     isWhiteBackground: isWhiteBackground)
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits), fill: fill, outline: outline,
-                                       scale: scale, showTextOutline: showTextOutline)
+                                       scale: scale, showTextOutline: showTextOutline,
+                                       isWhiteBackground: isWhiteBackground)
                 }
             }
         case .summaryGridPaceHR:
             // 요약 그리드 + 구간 목록(15·30km 묶음) + 심박 곡선 — 세 스탬프의 같은 부품을 그대로 쌓는다
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline)
+                                     showTextOutline: showTextOutline,
+                                     isWhiteBackground: isWhiteBackground)
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits, bucket: StampSplit.compactBucketKm(totalKm:)),
                                        fill: fill, outline: outline,
-                                       scale: scale, showTextOutline: showTextOutline)
+                                       scale: scale, showTextOutline: showTextOutline,
+                                       isWhiteBackground: isWhiteBackground)
                 }
                 if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
@@ -596,7 +601,8 @@ struct StampCard: View {
             // 요약 그리드 그대로 + 아래에 심박 곡선(최저·평균·최고 라벨, 평균 점선)
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline)
+                                     showTextOutline: showTextOutline,
+                                     isWhiteBackground: isWhiteBackground)
                 if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
                                      scale: scale, showTextOutline: showTextOutline,
@@ -985,6 +991,11 @@ private struct StampSummaryGridView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
+    var isWhiteBackground: Bool = false
+
+    /// 거리 숫자·라벨(KM·AVG PACE·TIME…) — 흰색, 라벨은 굵게(2026-10-06, 스탬프 색·62% 흐림이라 사진 위에서 묻혔다).
+    /// 흰 배경만 스탬프 색. 나머지 값(페이스·시간 등)은 스탬프 색 그대로
+    private var labelColor: Color { isWhiteBackground ? fill : .white }
 
     private struct Metric: Identifiable {
         let id = UUID()
@@ -1007,8 +1018,9 @@ private struct StampSummaryGridView: View {
         if let v = data.calories  { m.append(Metric(value: v, unit: "CAL", label: "CALORIES")) }
         if let v = data.elevGain  { m.append(Metric(value: v, unit: "M",   label: "ELEV GAIN")) }
         if let v = data.heartRate {
+            // 심박 숫자는 심박 빨강(지표 의미색) — 경로 영상은 그 시점 존 색이 우선
             m.append(Metric(value: v, unit: "BPM", label: data.heartRateLabel ?? "AVG HR",
-                            color: data.heartRateColor))
+                            color: data.heartRateColor ?? Theme.heartRate))
         }
         if let v = data.cadence   { m.append(Metric(value: v, unit: "SPM", label: "CADENCE")) }
         return Array(m.prefix(6))
@@ -1030,11 +1042,12 @@ private struct StampSummaryGridView: View {
                     .font(.system(size: sz(52, scale), weight: .black).width(.compressed))
                     .italic()
                     .tracking(sz(-1, scale))
+                    .foregroundStyle(labelColor)   // 거리도 흰색(라벨과 함께, 2026-10-06)
                     .lineLimit(1).fixedSize()
                 Text(data.distanceUnit)
-                    .font(.system(size: sz(8, scale), weight: .semibold))
+                    .font(.system(size: sz(8, scale), weight: .bold))
                     .tracking(1.4)
-                    .opacity(0.62)
+                    .foregroundStyle(labelColor)
                     .lineLimit(1).fixedSize()
             }
             VStack(alignment: .leading, spacing: sz(7, scale)) {
@@ -1070,9 +1083,9 @@ private struct StampSummaryGridView: View {
                 }
             }
             Text(m.label)
-                .font(.system(size: sz(7, scale), weight: .semibold))
+                .font(.system(size: sz(7, scale), weight: .bold))
                 .tracking(0.9)
-                .opacity(0.62)
+                .foregroundStyle(labelColor)
                 .lineLimit(1).fixedSize()
         }
         .frame(width: columnWidth, alignment: .leading)
@@ -1087,6 +1100,10 @@ private struct StampSplitRowsView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
+    var isWhiteBackground: Bool = false
+
+    /// 머리(KM·PACE·HR)·km 열 — 흰색 굵게, 흰 배경만 스탬프 색. 구간 심박 숫자는 심박 빨강
+    private var labelColor: Color { isWhiteBackground ? fill : .white }
 
     /// 요약 그리드 3열 폭(54×3 + 8×2)과 같게 — 격자 왼쪽·오른쪽 선에 맞춘다.
     private var width: CGFloat { sz(178, scale) }
@@ -1125,8 +1142,8 @@ private struct StampSplitRowsView: View {
                     let r = rows[i]
                     HStack(spacing: colGap) {
                         Text(kmLabel(r.endKm))
-                            .font(.system(size: sz(7, scale), weight: .semibold).monospacedDigit())
-                            .opacity(0.62)
+                            .font(.system(size: sz(7, scale), weight: .bold).monospacedDigit())
+                            .foregroundStyle(labelColor)
                             .frame(width: kmW, alignment: .leading)
                         // 가장 빠른 구간만 페이스 색(청록) — 어디서 빨랐는지 한눈에
                         Rectangle()
@@ -1140,8 +1157,8 @@ private struct StampSplitRowsView: View {
                             .frame(width: paceW, alignment: .trailing)
                         if hasHR {
                             Text(r.heartRate.map { "\($0)" } ?? "–")
-                                .font(.system(size: sz(8, scale), weight: .semibold).monospacedDigit())
-                                .opacity(0.62)
+                                .font(.system(size: sz(8, scale), weight: .bold).monospacedDigit())
+                                .foregroundStyle(Theme.heartRate)
                                 .fixedSize()
                                 .frame(width: hrW, alignment: .trailing)
                         }
@@ -1156,10 +1173,10 @@ private struct StampSplitRowsView: View {
                 Text("PACE").frame(width: paceW, alignment: .trailing)
                 if hasHR { Text("HR").frame(width: hrW, alignment: .trailing) }
             }
-            .font(.system(size: sz(7, scale), weight: .semibold))
+            .font(.system(size: sz(7, scale), weight: .bold))
             .tracking(0.9)
             .lineLimit(1)
-            .opacity(0.62)
+            .foregroundStyle(labelColor)
         }
         .frame(width: width, alignment: .leading)
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
