@@ -530,7 +530,7 @@ private struct RestDayListRow: View {
                     } else if !hasEntry {
                         Text(AppLanguage.shared.s("이야기 추가하기", "Add your story", ja: "ストーリーを追加"))
                             .font(.system(size: 13))
-                            .foregroundStyle(Theme.violet.opacity(0.8))
+                            .foregroundStyle(Theme.violetText)
                     }
                 }
 
@@ -839,7 +839,7 @@ private struct ActivityCard: View {
                         .font(.system(size: 16, weight: .semibold))   // 강도 색이 잘 보이게 글자(12pt)보다 크게
                         .foregroundStyle(effort.map { EffortPalette.color(for: $0) } ?? Color(hex: "8A8A92"))
                     Text(activity.type.label)
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(Theme.violetText)   // 어두운 카드 위 글자 — 브랜드 바이올렛은 어둡다
                     if let wt = workoutType {
                         Text("- \(workoutTypeLabel ?? wt.koreanLabel)")
                             .foregroundStyle(Color(hex: "FFC74D").opacity(isProvisionalType ? 0.45 : 1.0))

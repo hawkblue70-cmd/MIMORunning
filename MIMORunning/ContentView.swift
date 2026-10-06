@@ -37,7 +37,8 @@ struct ContentView: View {
                     Text(AppLanguage.shared.s("나", "Me", ja: "マイ"))
                 }
         }
-        .tint(Theme.violet)
+        // 탭 선택 색 — 어두운 탭바 위라 밝은 보라(violetText). 하위 화면의 기본 tint(버튼·토글 등)도 이 색을 물려받는다
+        .tint(Theme.violetText)
         .preferredColorScheme(.dark)
         .task {
             // 확정 대회 → 엔진 백테스트. 예전엔 성장 탭만 넣어서, 앱을 켜고 곧장 나 탭(참가 대회 기록)으로 가면

@@ -98,7 +98,7 @@ struct MRTodayCardView: View {
                     if let link = c.linkLine {
                         Text(link)
                             .font(.system(size: 14))
-                            .foregroundStyle(Color(red: 0.55, green: 0.42, blue: 0.98))
+                            .foregroundStyle(Theme.violetText)
                             .padding(.top, c.sessionLine != nil ? 8 : 0)
                     }
 
