@@ -160,8 +160,9 @@ struct ShareCardScreen: View {
     // Overlay card ViewModel
     @State var overlayVM = OverlayViewModel()
     @State var overlayCropDragBase: CGPoint? = nil
-    @State private var overlayShareImages: [UIImage] = []
-    @State private var showOverlayShareSheet = false
+    /// 오버레이 공유 시트 — 이미지를 item으로 넘긴다. 배열 상태 + isPresented로 띄우면 시트 안에서만 읽히는
+    /// 상태라 첫 표시 때 이전 값(빈 배열)으로 열려 공유 화면에 앱 줄만 나왔다(두 번째부터 정상).
+    @State private var overlayShareItem: OverlayShareItem?
     // OneLiner card ViewModel
     @State var oneLinerVM = OneLinerViewModel()
     // Athletic card ViewModel
@@ -3571,9 +3572,7 @@ struct ShareCardScreen: View {
             Button {
                 Task { @MainActor in
                     guard let img = await makeOverlayStoryImage(), isOverlay, template == .photo else { return }
-                    overlayShareImages = [img]
-                    await Task.yield()
-                    showOverlayShareSheet = true
+                    overlayShareItem = OverlayShareItem(images: [img])
                 }
             } label: {
                 Label(AppLanguage.shared.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
@@ -3583,8 +3582,8 @@ struct ShareCardScreen: View {
                     .background(Theme.violet)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .sheet(isPresented: $showOverlayShareSheet) {
-                ShareSheet(images: overlayShareImages)
+            .sheet(item: $overlayShareItem) { item in
+                ShareSheet(images: item.images)
             }
         } else if isRendering {
             HStack(spacing: 10) {

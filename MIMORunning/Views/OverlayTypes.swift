@@ -102,6 +102,14 @@ func makeOverlayPhotosImage(slots: [OverlayPhotoSlot], renderSize: CGSize,
     return renderer.uiImage
 }
 
+// MARK: - Share item
+
+/// 공유 시트 표시용 — 시트가 열리는 순간 이미지가 함께 전달된다.
+struct OverlayShareItem: Identifiable {
+    let id = UUID()
+    let images: [UIImage]
+}
+
 // MARK: - Downscale
 
 extension UIImage {
