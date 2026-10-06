@@ -70,6 +70,8 @@ enum StampSlideError: Error {
 func exportStampSlide(
     photos: [UIImage],
     cropOffsets: [CGFloat] = [],
+    /// 세로로 긴 사진의 상하 크롭 위치(0=위·0.5=가운데·1=아래). 비면 가운데.
+    cropOffsetsY: [CGFloat] = [],
     stampOverlays: [UIImage],
     entranceModes: [StampEntranceMode],
     flyDirections: [FlyInDirection] = [],
@@ -118,7 +120,8 @@ func exportStampSlide(
 
     for (i, photo) in photos.enumerated() {
         let cropX = i < cropOffsets.count ? cropOffsets[i] : 0.5
-        let cg = PhotoSlideComposition.scaleFill(photo, to: sz, cropOffsetX: cropX)
+        let cropY = i < cropOffsetsY.count ? cropOffsetsY[i] : 0.5
+        let cg = PhotoSlideComposition.scaleFill(photo, to: sz, cropOffsetX: cropX, cropOffsetY: cropY)
         let sf = Double(i) * clipDuration / total
         let ef = Double(i + 1) * clipDuration / total
 

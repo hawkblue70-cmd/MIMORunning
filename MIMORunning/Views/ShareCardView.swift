@@ -208,8 +208,10 @@ struct ShareCardScreen: View {
     @State var athleticSlideCropOffsets: [Int: CGFloat] = [:]
     @State private var athleticSlideCropDragBase: CGFloat? = nil
     @State private var stampStoryCropDragBase: CGPoint? = nil
-    @State var stampSlideCropDragBase: CGFloat? = nil
+    @State var stampSlideCropDragBase: CGPoint? = nil
     @State var stampSlideCropOffsets: [Int: CGFloat] = [:]
+    /// 슬라이드 사진별 상하 크롭 위치 — 기본 0.5(가운데, 출력 합성 scaleFill 기본값과 같음)
+    @State var stampSlideCropOffsetsY: [Int: CGFloat] = [:]
     @State var stampSlideBrightMap: [Int: Bool] = [:]
     // 스탬프 지명·지도 비동기 캐시 (위치/경로 템플릿용)
     @State private var stampPlaceName: String?      = nil
@@ -4129,6 +4131,7 @@ struct ShareCardScreen: View {
             }
             var photos:       [UIImage]   = []
             var cropOffsets:      [CGFloat]             = []
+            var cropOffsetsY:     [CGFloat]             = []
             var overlays:         [UIImage]             = []
             var textOverlays:     [UIImage?]            = []
             var entranceModes:    [StampEntranceMode]   = []
@@ -4147,6 +4150,7 @@ struct ShareCardScreen: View {
                 else { continue }
                 photos.append(photo)
                 cropOffsets.append(stampSlideCropOffsets[i] ?? 0.5)
+                cropOffsetsY.append(stampSlideCropOffsetsY[i] ?? 0.5)
                 overlays.append(img)
                 entranceModes.append(cfg.entranceMode)
                 flyDirections.append(cfg.flyDirection)
@@ -4167,6 +4171,7 @@ struct ShareCardScreen: View {
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
+                cropOffsetsY: cropOffsetsY,
                 stampOverlays: overlays,
                 entranceModes: entranceModes,
                 flyDirections: flyDirections,

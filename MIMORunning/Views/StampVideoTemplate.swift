@@ -761,6 +761,7 @@ extension ShareCardScreen {
         let bgIdx         = previewPlayer.isPlaying ? playingIdx : selectedIdx
         let bgPhoto       = photos.isEmpty ? nil : photos[bgIdx]
         let bgCropOffsetX = stampSlideCropOffsets[bgIdx] ?? 0.5
+        let bgCropOffsetY = stampSlideCropOffsetsY[bgIdx] ?? 0.5
         // Ken Burns: PhotoSlideComposition.kenBurns와 동일한 상수·공식으로 SwiftUI 구동.
         // previewPlayer.progress가 @Observable로 매 프레임 변경 → 자동 재계산.
         let kbEndScale: CGFloat = 1.08
@@ -783,25 +784,35 @@ extension ShareCardScreen {
                 let scaledW = photo.size.width  * scale
                 let scaledH = photo.size.height * scale
                 let xOffset = (kClipW - scaledW) * bgCropOffsetX
+                let yOffset = (cardSectionH - scaledH) * bgCropOffsetY   // 출력 scaleFill과 같은 공식
                 let excess  = max(0.0, scaledW - kClipW)
+                let excessY = max(0.0, scaledH - cardSectionH)
                 Image(uiImage: photo)
                     .resizable()
                     .frame(width: scaledW, height: scaledH)
                     // Ken Burns: 재생 중에만 scaleEffect 적용. .clipped()가 넘치는 부분 잘라냄.
                     .scaleEffect(isKB ? kbScale : 1.0, anchor: .center)
-                    .offset(x: xOffset)
+                    .offset(x: xOffset, y: yOffset)
                     .frame(width: kClipW, height: cardSectionH, alignment: .topLeading)
                     .clipped()
                     .brightness(CardVisual.videoBrightnessBoost)
                     // 크롭 드래그: 재생 중에는 비활성화
-                    .gesture(!isKB && excess > 1 ? DragGesture(minimumDistance: 1)
+                    // 가로 사진=좌우, 세로로 긴 사진(9:16보다 긴 사진)=위아래
+                    .gesture(!isKB && (excess > 1 || excessY > 1) ? DragGesture(minimumDistance: 1)
                         .onChanged { drag in
                             if stampSlideCropDragBase == nil {
-                                stampSlideCropDragBase = stampSlideCropOffsets[selectedIdx] ?? 0.5
+                                stampSlideCropDragBase = CGPoint(x: stampSlideCropOffsets[selectedIdx] ?? 0.5,
+                                                                 y: stampSlideCropOffsetsY[selectedIdx] ?? 0.5)
                             }
                             guard let base = stampSlideCropDragBase else { return }
-                            stampSlideCropOffsets[selectedIdx] = max(0, min(1,
-                                base - drag.translation.width / excess))
+                            if excess > 1 {
+                                stampSlideCropOffsets[selectedIdx] = max(0, min(1,
+                                    base.x - drag.translation.width / excess))
+                            }
+                            if excessY > 1 {
+                                stampSlideCropOffsetsY[selectedIdx] = max(0, min(1,
+                                    base.y - drag.translation.height / excessY))
+                            }
                         }
                         .onEnded { _ in stampSlideCropDragBase = nil; saveStampConfig() }
                     : nil)
@@ -932,6 +943,7 @@ extension ShareCardScreen {
         let recipes  = photos.indices.map { i -> ClipRecipe in
             var r = ClipRecipe(url: dummyURL, fullDuration: dur)
             r.cropOffsetX = stampSlideCropOffsets[i] ?? 0.5
+            r.cropOffsetY = stampSlideCropOffsetsY[i] ?? 0.5
             return r
         }
         await previewPlayer.buildForPhotoSlides(
