@@ -86,6 +86,8 @@ struct StampData {
     var shoeName: String?        = nil
     /// 대회명 — 대회 확정 + 대회 칩 ON일 때만. 좌측 상단 로고 아래 뱃지(`StampHeaderMark`)
     var raceName: String?        = nil
+    /// 심박 곡선(bpm) — 다듬고 줄인 값(`StampHRChart.prepare`). 요약 그리드+심박. 부족하면 그 스탬프를 고를 수 없다
+    var hrSamples: [Double]?     = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -124,7 +126,11 @@ struct StampData {
             .map { StampSplit(distanceM: 1000, duration: $0.0, heartRate: $0.1) },
         weatherIcon: "sun.max",
         weatherText: "18°C",
-        shoeName: "Pegasus 41"
+        shoeName: "Pegasus 41",
+        hrSamples: (0..<120).map { i in
+            let t = Double(i) / 119
+            return 128 + 18 * t + 4 * sin(t * 40) - (i < 6 ? Double(6 - i) * 5 : 0)
+        }
     )
 }
 
@@ -534,6 +540,16 @@ struct StampCard: View {
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits), fill: fill, outline: outline,
                                        scale: scale, showTextOutline: showTextOutline)
+                }
+            }
+        case .summaryGridHR:
+            // 요약 그리드 그대로 + 아래에 심박 곡선(최저·평균·최고 라벨, 평균 점선)
+            VStack(alignment: .leading, spacing: sz(10, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
+                    StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
+                                     scale: scale, showTextOutline: showTextOutline)
                 }
             }
         case .hud:
@@ -1096,6 +1112,147 @@ private struct StampSplitRowsView: View {
         }
         .frame(width: width, alignment: .leading)
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+}
+
+// MARK: - HR Chart (요약 그리드+심박 — 실제 심박 곡선 · 최저/평균/최고 · 평균 점선)
+
+enum StampHRChart {
+    /// 이보다 적으면 곡선이 아니라 몇 개 점이라 스탬프를 고를 수 없다.
+    static let minSamples = 30
+    /// 그리는 점 수 — 178pt 폭에 이 정도면 촘촘하면서 가볍다.
+    static let points = 120
+    /// 이동평균 창(초) — 원시 샘플의 계단·튐을 다듬는다(작은 크기에서 지저분해 보이지 않게).
+    static let smoothingWindow: TimeInterval = 15
+
+    /// (경과 초, bpm) → 15초 이동평균 → 시간축 균등 120구간 평균. 샘플이 적으면 nil.
+    static func prepare(_ samples: [(offset: TimeInterval, bpm: Int)]) -> [Double]? {
+        let s = samples.sorted { $0.offset < $1.offset }
+        guard s.count >= minSamples, let t0 = s.first?.offset, let t1 = s.last?.offset, t1 > t0 else { return nil }
+        // 이동평균 (두 포인터)
+        var smoothed: [(t: TimeInterval, v: Double)] = []
+        smoothed.reserveCapacity(s.count)
+        var lo = 0, sum = 0.0
+        for hi in s.indices {
+            sum += Double(s[hi].bpm)
+            while s[hi].offset - s[lo].offset > smoothingWindow { sum -= Double(s[lo].bpm); lo += 1 }
+            smoothed.append((s[hi].offset, sum / Double(hi - lo + 1)))
+        }
+        // 시간축 균등 구간 평균 — 빈 구간은 앞 값을 잇는다
+        let span = t1 - t0
+        var buckets = [Double](repeating: 0, count: points)
+        var counts  = [Int](repeating: 0, count: points)
+        for p in smoothed {
+            let i = min(points - 1, Int((p.t - t0) / span * Double(points)))
+            buckets[i] += p.v; counts[i] += 1
+        }
+        var out: [Double] = []
+        var last = smoothed[0].v
+        for i in 0..<points {
+            if counts[i] > 0 { last = buckets[i] / Double(counts[i]) }
+            out.append(last)
+        }
+        return out
+    }
+}
+
+private struct HRLineShape: Shape {
+    let values: [Double]
+    let lo: Double
+    let hi: Double
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        guard values.count > 1, hi > lo else { return p }
+        for (i, v) in values.enumerated() {
+            let x = rect.minX + rect.width * CGFloat(i) / CGFloat(values.count - 1)
+            let y = rect.maxY - rect.height * CGFloat((v - lo) / (hi - lo))
+            if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        return p
+    }
+}
+
+private struct HRLevelShape: Shape {
+    let fraction: CGFloat   // 0 = 아래, 1 = 위
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let y = rect.maxY - rect.height * fraction
+        p.move(to: CGPoint(x: rect.minX, y: y))
+        p.addLine(to: CGPoint(x: rect.maxX, y: y))
+        return p
+    }
+}
+
+private struct StampHRChartView: View {
+    let samples: [Double]
+    let timeText: String
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    /// 요약 그리드 3열 폭과 같게 (StampSplitRowsView와 같은 값)
+    private var width: CGFloat { sz(178, scale) }
+    private var chartH: CGFloat { sz(52, scale) }
+    private var labelW: CGFloat { sz(16, scale) }
+    private var gap: CGFloat { sz(4, scale) }
+
+    private var minV: Double { samples.min() ?? 0 }
+    private var maxV: Double { samples.max() ?? 0 }
+    private var avgV: Double { samples.reduce(0, +) / Double(max(1, samples.count)) }
+    /// 위아래 6% 여유 — 선이 테두리에 붙지 않게
+    private var lo: Double { minV - (maxV - minV) * 0.06 }
+    private var hi: Double { maxV + (maxV - minV) * 0.06 }
+    private func frac(_ v: Double) -> CGFloat { hi > lo ? CGFloat((v - lo) / (hi - lo)) : 0.5 }
+
+    private func yLabel(_ v: Double) -> some View {
+        Text("\(Int(v.rounded()))")
+            .font(.system(size: sz(7, scale), weight: .semibold).monospacedDigit())
+            .fixedSize()
+            .frame(width: labelW, alignment: .trailing)
+            .frame(height: sz(8, scale))
+            .offset(y: chartH * (1 - frac(v)) - sz(4, scale))   // 라벨 가운데를 그 값 높이에
+    }
+
+    var body: some View {
+        // 평균 라벨이 최저·최고 라벨과 겹치면 숨긴다(점선은 그대로)
+        let avgGap = min(frac(maxV) - frac(avgV), frac(avgV) - frac(minV)) * chartH
+        let showAvgLabel = avgGap >= sz(8, scale)
+        VStack(alignment: .leading, spacing: sz(3, scale)) {
+            HStack(alignment: .top, spacing: gap) {
+                ZStack(alignment: .topTrailing) {
+                    yLabel(maxV)
+                    if showAvgLabel { yLabel(avgV) }
+                    yLabel(minV)
+                }
+                .frame(width: labelW, height: chartH, alignment: .topTrailing)
+                .opacity(0.62)
+                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+
+                ZStack {
+                    HRLevelShape(fraction: frac(avgV))
+                        .stroke(fill.opacity(0.55),
+                                style: StrokeStyle(lineWidth: max(0.5, sz(0.8, scale)), dash: [sz(2, scale), sz(2, scale)]))
+                    HRLineShape(values: samples, lo: lo, hi: hi)
+                        .stroke(Theme.heartRate,
+                                style: StrokeStyle(lineWidth: max(1, sz(1.4, scale)), lineCap: .round, lineJoin: .round))
+                        .shadow(color: CardVisual.routeShadowColor, radius: max(1, sz(1.5, scale)), y: 0.5)
+                }
+                .frame(height: chartH)
+            }
+            HStack(spacing: gap) {
+                Text("HR")
+                Spacer(minLength: 0)
+                Text(timeText).monospacedDigit()
+            }
+            .padding(.leading, labelW + gap)
+            .font(.system(size: sz(7, scale), weight: .semibold))
+            .tracking(0.9)
+            .lineLimit(1)
+            .opacity(0.62)
+            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+        }
+        .frame(width: width, alignment: .leading)
     }
 }
 

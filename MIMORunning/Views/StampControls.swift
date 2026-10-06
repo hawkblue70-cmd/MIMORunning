@@ -607,6 +607,7 @@ struct StampVisualPickerSheet: View {
                     case .location:
                         if data.placeName == nil && data.coordText == nil { return false }
                     case .splits:    if (data.splits?.count ?? 0) < 2 { return false }
+                    case .hrSamples: if (data.hrSamples?.count ?? 0) < StampHRChart.minSamples { return false }
                     case .route:
                         let hasMap   = data.routePoints != nil || data.mapImage != nil
                         let hasCoord = (data.routeCoordinates?.count ?? 0) >= 2

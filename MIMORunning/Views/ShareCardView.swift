@@ -194,7 +194,11 @@ struct ShareCardScreen: View {
     @State private var cardPanel: CardChartPanel = .map
     /// 애슬레틱 차트 세로 위치(상·중·하) — 기록·사진·영상·슬라이드 공통
     @State private var cardChartPosition: CardChartPosition = .bottom
-    @State var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = []
+    @State var shareHRSamples: [(offset: TimeInterval, bpm: Int)] = [] {
+        didSet { stampHRChartSamples = StampHRChart.prepare(shareHRSamples) }
+    }
+    /// 요약 그리드+심박 스탬프 곡선 — 샘플이 들어올 때 한 번만 다듬는다(stampPreviewData는 매 렌더 평가)
+    @State var stampHRChartSamples: [Double]? = nil
     @State private var shareWorkoutSeries: [(offset: TimeInterval, value: Double)] = []
     @State var chartSeriesData: [ChartOverlayType: [(offset: TimeInterval, value: Double)]] = [:]
     // 현재 캐러셀 카드
@@ -1027,6 +1031,7 @@ struct ShareCardScreen: View {
         d.elevGain      = detail?.elevationGain.map { String(format: "%.0f", $0) }
         d.elevSeries    = elevSeries
         d.hrSeries      = hrSeries
+        d.hrSamples     = stampHRChartSamples
         d.placeName     = stampPlaceName
         d.placeRegion   = stampPlaceRegion
         d.coordText     = stampCoordText

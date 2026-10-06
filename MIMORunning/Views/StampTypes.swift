@@ -9,6 +9,8 @@ enum StampRequirement {
     case none, heartRate, hrZone, cadence, elevation, location, route
     /// km 스플릿 2개 이상 (요약 그리드+페이스의 막대 차트)
     case splits
+    /// 심박 시계열 (요약 그리드+심박의 곡선) — 워치 기록
+    case hrSamples
 }
 
 // MARK: - Position / Occupancy
@@ -28,6 +30,7 @@ enum StampOccupancy {
 enum StampTemplate: String, CaseIterable, Identifiable {
     case summaryGrid
     case summaryGridPace
+    case summaryGridHR
     case distanceHero
     case labeledRows
     case inlineTriple
@@ -82,6 +85,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero", ja: "距離を主役に")
         case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid", ja: "サマリーグリッド")
         case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace", ja: "サマリーグリッド+ペース")
+        case .summaryGridHR: return L.s("요약 그리드+심박", "Summary Grid + HR", ja: "サマリーグリッド+心拍")
         case .hrWave:        return L.s("심박 파형",       "HR Wave", ja: "心拍波形")
         case .hrZone:        return L.s("심박 존",         "HR Zones", ja: "心拍ゾーン")
         case .elevProfile:   return L.s("고도 프로파일",   "Elevation Profile", ja: "標高プロファイル")
@@ -151,6 +155,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
         case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
         case .summaryGridPace: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)   // 요약 그리드와 같은 배율. 특대 없음(supportsXLarge) — 차트가 붙어 높이 상한을 넘는다
+        case .summaryGridHR: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)     // 요약 그리드+페이스와 같은 규칙 — 폭은 격자, 특대 없음
         case .hud:          return (small: 0.50, medium: 0.65, large: 0.80, xlarge: 1.00)
         case .hrWave:       return (small: 0.56, medium: 0.77, large: 1.01, xlarge: 1.27)
         case .hrZone:       return (small: 0.55, medium: 0.76, large: 1.00, xlarge: 1.25)
@@ -164,7 +169,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
 
     /// 특대 크기를 고를 수 있는가. 요약 그리드+페이스는 격자 아래 차트가 붙어 특대면 높이 상한을 넘으므로
     /// 특대 칩을 숨기고, 특대가 저장돼 있어도 대(large)로 그린다.
-    var supportsXLarge: Bool { self != .summaryGridPace }
+    var supportsXLarge: Bool { self != .summaryGridPace && self != .summaryGridHR }
 
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
@@ -195,6 +200,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .placeHeadline:             return [.location]
         case .routeHero, .routeSide:     return [.route]
         case .summaryGridPace:           return [.splits]
+        case .summaryGridHR:             return [.hrSamples]
         default:                         return [.none]
         }
     }
