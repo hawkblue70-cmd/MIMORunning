@@ -16,18 +16,6 @@ enum SleepGrade: String, Codable {
         case .poor:         L.s("매우낮음", "Very Poor", ja: "とても低い")
         }
     }
-
-    // 수면 등급별 러닝 의견 (숫자 없이 등급만 표시하는 칩 옆에 노출)
-    var runningComment: String {
-        let L = AppLanguage.shared
-        return switch self {
-        case .excellent:    L.s("오늘 힘껏 달려도 좋습니다",     "Great day to push hard", ja: "今日は思いきり走っても大丈夫です")
-        case .good:         L.s("컨디션이 좋습니다",             "Good condition today", ja: "コンディションは良好です")
-        case .fair:         L.s("무리하지 않게 달리세요",       "Keep it comfortable", ja: "無理せず走ってください")
-        case .insufficient: L.s("가볍게 달리는 걸 추천합니다",   "Easy run recommended", ja: "軽めに走ることをおすすめします")
-        case .poor:         L.s("충분한 휴식 후 달리세요",     "Rest up before running", ja: "十分に休んでから走ってください")
-        }
-    }
 }
 
 /// 애플 수면 점수와 동일한 3요소 구조(시간 50 / 일관성 30 / 중단 20)를

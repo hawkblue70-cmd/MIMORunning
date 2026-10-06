@@ -1714,7 +1714,13 @@ private struct InsightCard: View {
         return MiniMeVariant.from(theme: insight.theme, workoutType: insight.workoutType)
     }
 
-    // ── 컨디션 행: 날씨 칩 + 수면 칩(등급) + 러닝 의견 ──
+    private func sleepDurationText(_ hours: Double) -> String {
+        let total = Int((hours * 60).rounded())
+        let h = total / 60, m = total % 60
+        return AppLanguage.shared.s("수면 시간 \(h)시간 \(m)분", "Slept \(h)h \(m)m", ja: "睡眠時間 \(h)時間\(m)分")
+    }
+
+    // ── 컨디션 행: 날씨 칩 + 수면 칩(등급) + 수면 시간 ──
     @ViewBuilder
     private var conditionRow: some View {
         if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
@@ -1742,8 +1748,10 @@ private struct InsightCard: View {
                         ),
                         color: slp.isInsufficient ? Theme.time : .secondary
                     )
-                    // 등급별 러닝 의견
-                    Text(slp.grade.runningComment)
+                    // 수면 시간 — 사실만. 예전 등급별 처방("오늘 힘껏 달려도 좋습니다")은 수면만 보고 부하(대회 다음 날·
+                    // 고강도 연속)를 몰라 홈 아침 제안("오늘은 이지런")과 어긋났고, 끝난 러닝에 처방이라 맞지도 않았다.
+                    // "오늘 어떻게 달릴지"는 홈 카드(MRReadiness) 한 곳에서만 말한다.
+                    Text(sleepDurationText(slp.sleepHours))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
