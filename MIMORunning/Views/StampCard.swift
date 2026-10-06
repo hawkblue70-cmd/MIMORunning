@@ -419,6 +419,8 @@ struct StampCard: View {
     var renderOnlyStamp: Bool = false
     /// true 시 스탬프 레이어 숨김 — 문구만 렌더 (애니메이션 분리 출력용)
     var renderOnlyText: Bool = false
+    /// 사진 없는 흰 배경 — 흰색 고정 요소(심박 차트 범례)를 스탬프 색으로 바꾼다
+    var isWhiteBackground: Bool = false
 
     var body: some View {
         let (fill, outline) = stampColors(colorMode, isBrightBackground: isBrightBackground)
@@ -549,7 +551,8 @@ struct StampCard: View {
                                      showTextOutline: showTextOutline)
                 if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
-                                     scale: scale, showTextOutline: showTextOutline)
+                                     scale: scale, showTextOutline: showTextOutline,
+                                     isWhiteBackground: isWhiteBackground)
                 }
             }
         case .hud:
@@ -1190,6 +1193,7 @@ private struct StampHRChartView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
+    var isWhiteBackground: Bool = false
 
     /// 요약 그리드 3열 폭과 같게 (StampSplitRowsView와 같은 값)
     private var width: CGFloat { sz(178, scale) }
@@ -1204,8 +1208,8 @@ private struct StampHRChartView: View {
     private var lo: Double { minV - (maxV - minV) * 0.06 }
     private var hi: Double { maxV + (maxV - minV) * 0.06 }
     private func frac(_ v: Double) -> CGFloat { hi > lo ? CGFloat((v - lo) / (hi - lo)) : 0.5 }
-    /// 범례(세로축 숫자·HR·시간) — 스탬프 색과 무관하게 흰색 굵게(2026-10-06 요청)
-    private let legend = Color.white
+    /// 범례(세로축 숫자·HR·시간) — 흰색 굵게(2026-10-06 요청). 사진 없는 흰 배경에서만 스탬프 색(안 보이므로)
+    private var legend: Color { isWhiteBackground ? fill : .white }
 
     private func yLabel(_ v: Double) -> some View {
         Text("\(Int(v.rounded()))")
