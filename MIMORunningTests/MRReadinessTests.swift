@@ -221,12 +221,12 @@ struct MRReadinessTests {
         #expect(r?.line == "오늘은 휴식이나 짧은 이지 · HRV 낮음")
     }
 
-    @Test func volatileHRVIsRest() {
+    @Test func volatileHRVIsEasy() {
         var n = nights(base: 30, recent: 30)
         // 7일을 크게 흔든다(±7) — 4주(±1)의 1.5배 초과
         n = n.map { $0.date >= day(-6) ? ($0.date, 30 + (cal.component(.day, from: $0.date) % 2 == 0 ? 7 : -7)) : $0 }
         let r = readiness(runs: steadyRuns(), nights: n)
-        #expect(r?.level == .rest)
+        #expect(r?.level == .easy)   // 불안정은 휴식이 아니라 강도만 빼기(2026-10-07)
         #expect(r?.reasons.first == "HRV 불안정")
     }
 

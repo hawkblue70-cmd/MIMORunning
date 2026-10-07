@@ -494,7 +494,8 @@ struct RunSummaryTests {
 
     @Test func hrvVolatileSuppressesRestedEvenWhenAbove() {
         var i = restedInput(); i.hrvTrend = hrv(.above, volatile: true); i.hardRunsLast14 = 0; i.runsLast14 = 6
-        #expect(lines(i)[3].next == "부하는 내려왔지만 HRV가 기준선 아래입니다. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.")
+        // 불안정은 "기준선 아래"가 아니다 — 흔들림을 말하고 강도만 뺀다(2026-10-07)
+        #expect(lines(i)[3].next == "부하는 내려왔지만 이번 주 HRV가 크게 흔들립니다. 강도는 빼고 이지런으로 가세요.")
     }
 
     @Test func hrvSuppressedAppendsToJumpSentence() {

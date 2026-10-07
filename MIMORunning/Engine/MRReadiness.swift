@@ -455,9 +455,10 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if consecutive >= streakThreshold {
         // 연속에 HRV까지 낮거나 흔들리면 휴식 쪽으로 — 쌓인 피로가 몸에 드러난 날이다(2026-09-25 사용자 결정).
         // 판정어("휴식이나 짧은 이지")가 두 가지를 다 담는다. 근거는 연속 + HRV 둘 다 적는다.
+        // 불안정(평균은 기준선 근처인데 흔들림만 큼)은 휴식이 아니라 이지런 — 아래 이지 판정에 근거로만 붙인다(2026-10-07 사용자 결정)
         let hrvDown: String? = {
-            if let t = trend, t.isSuppressed {
-                return t.isVolatile ? L.s("HRV 불안정", "HRV unstable", ja: "HRV不安定") : L.s("HRV 낮음", "HRV low", ja: "HRV低め")
+            if let t = trend, t.state == .below {
+                return L.s("HRV 낮음", "HRV low", ja: "HRV低め")
             }
             if lastNightLow, let t = trend, let v = todayNight {
                 let vStr = Int(v.rounded()), bStr = Int(t.baseline.rounded())
@@ -468,13 +469,14 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         }()
         if let down = hrvDown {
             return make(.rest, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row", ja: "\(consecutive)日連続"), down],
-                        why: trend?.isSuppressed == true || lastNightLow
+                        why: trend?.state == .below || lastNightLow
                             ? L.s("\(consecutive)일 내리 달렸고 HRV도 평소보다 낮습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
                                   "\(consecutive) days in a row and your HRV is below usual — fatigue is showing. Rest, or keep it under 30 minutes and easy.", ja: "\(consecutive)日続けて走り、HRVも普段より低めです。疲労が体に出ている日なので、休むか、走るなら30分以内で軽くしてください。")
                             : L.s("\(consecutive)일 내리 달렸고 안정시 심박도 며칠째 평소보다 높습니다. 피로가 몸에 드러난 날이라 쉬거나, 뛴다면 30분 이내로 가볍게 가세요.",
                                   "\(consecutive) days in a row and your resting HR has been above usual for days — fatigue is showing. Rest, or keep it under 30 minutes and easy.", ja: "\(consecutive)日続けて走り、安静時心拍も数日続けて普段より高めです。疲労が体に出ている日なので、休むか、走るなら30分以内で軽くしてください。"))
         }
-        return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row", ja: "\(consecutive)日連続")],
+        let volatileTag: [String] = trend?.isVolatile == true ? [L.s("HRV 불안정", "HRV unstable", ja: "HRV不安定")] : []
+        return make(.easy, [L.s("\(consecutive)일 연속", "\(consecutive) days in a row", ja: "\(consecutive)日連続")] + volatileTag,
                     why: L.s("\(consecutive)일 내리 달렸습니다. 평소보다 긴 연속이라 오늘은 강도를 빼고 이지런으로 가세요.",
                              "\(consecutive) days in a row — longer than your usual streak. Keep today easy and skip the intensity.", ja: "\(consecutive)日続けて走りました。普段より長い連続なので、今日は強度を抜いてイージーランにしてください。"))
     }
@@ -484,13 +486,18 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     let hardYesterday: [String] = wasHardYesterday ? [L.s("어제 고강도", "hard run yesterday", ja: "昨日は高強度")] : []
     let afterHardWhy = L.s("어제 고강도 뒤라 HRV가 눌린 건 정상 반응입니다. 오늘 쉬면 돌아옵니다.",
                            "HRV dips after a hard day — that's normal. A rest day brings it back.", ja: "昨日の高強度の後なので、HRVが下がるのは正常な反応です。今日休めば戻ります。")
-    if let t = trend, t.isSuppressed {
-        let why = wasHardYesterday ? afterHardWhy : (t.isVolatile
-            ? L.s("이번 주 HRV가 평소보다 크게 흔들립니다. 몸이 아직 안정되지 않은 신호입니다.",
-                  "Your HRV is swinging far more than usual this week — a sign the body hasn't settled.", ja: "今週はHRVが普段より大きく揺れています。体がまだ落ち着いていないサインです。")
+    // 낮음(7일 평균이 기준선 아래) = 휴식 쪽. 불안정(평균은 기준선 근처인데 흔들림만 큼) = 강도만 빼는 이지런 —
+    // HRV 기반 훈련 연구들도 평소 범위 밖이면 휴식이 아니라 강도를 낮췄고, 흔들림 자체의 의미는 연구마다 엇갈린다(2026-10-07 사용자 결정).
+    if let t = trend, t.state == .below {
+        let why = wasHardYesterday ? afterHardWhy
             : L.s("이번 주 HRV가 평소 아래입니다. 회복이 덜 된 신호라 강도는 미루는 게 좋습니다.",
-                  "Your HRV is below usual this week — recovery isn't done yet, so hold the hard session.", ja: "今週はHRVが普段を下回っています。回復しきれていないサインなので、強度は先送りするのがよいです。"))
-        return make(.rest, hardYesterday + [t.isVolatile ? L.s("HRV 불안정", "HRV unstable", ja: "HRV不安定") : L.s("HRV 낮음", "HRV low", ja: "HRV低め")], why: why)
+                  "Your HRV is below usual this week — recovery isn't done yet, so hold the hard session.", ja: "今週はHRVが普段を下回っています。回復しきれていないサインなので、強度は先送りするのがよいです。")
+        return make(.rest, hardYesterday + [L.s("HRV 낮음", "HRV low", ja: "HRV低め")], why: why)
+    }
+    if let t = trend, t.isVolatile {
+        return make(.easy, hardYesterday + [L.s("HRV 불안정", "HRV unstable", ja: "HRV不安定")],
+                    why: L.s("이번 주 HRV가 평소보다 크게 흔들립니다. 오늘은 강도를 빼고 이지런으로 가세요.",
+                             "Your HRV is swinging more than usual this week. Skip the intensity today and keep it easy.", ja: "今週はHRVが普段より大きく揺れています。今日は強度を抜いてイージーランにしてください。"))
     }
     // 7일이 고른데 어젯밤만 크게 떨어지면 변동계수도 같이 뛰어 위(불안정)에서 먼저 잡히는 일이 많다 — 여기는 4주가 원래 출렁이는 사람용
     if lastNightLow, let t = trend, let v = todayNight {

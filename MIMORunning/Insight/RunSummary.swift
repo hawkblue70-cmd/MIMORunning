@@ -582,6 +582,10 @@ enum RunSummary {
             // HRV가 있으면 회복 판정을 한 번 더 거른다 — 부하는 내려왔어도 HRV가 아래·불안정이면 "충분히"라고 하지 않는다.
             // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.
             if let t = i.hrvTrend {
+                if t.isVolatile && t.state != .below {
+                    return L.s("부하는 내려왔지만 이번 주 HRV가 크게 흔들립니다. 강도는 빼고 이지런으로 가세요.",
+                               "Load has come down, but your HRV is swinging a lot this week — skip the intensity and keep it easy.", ja: "負荷は下がりましたが、今週はHRVが大きく揺れています。強度は抜いてイージーランにしてください。")
+                }
                 if t.isSuppressed {
                     return L.s("부하는 내려왔지만 HRV가 기준선 아래입니다. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.",
                                "Load has come down, but your HRV is below baseline. It may be sleep or life stress — take one more easy day.", ja: "負荷は下がりましたが、HRVが基準線を下回っています。睡眠や生活の疲れかもしれないので、もう1日楽にしてください。")
