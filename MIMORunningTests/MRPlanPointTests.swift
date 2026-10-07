@@ -93,13 +93,17 @@ struct MRPlanPointTests {
     }
 
     @Test func rotationSpeedTempoBuildUp() {
-        // 템포런 ↔ 빌드업 — 인터벌은 번갈이에 없다(아침 강도 OK 문장으로만, 2026-10-07)
         #expect(MRPlanPoint.nextKind(after: .interval) == .tempo)
         #expect(MRPlanPoint.nextKind(after: .tempo) == .buildUp)
-        #expect(MRPlanPoint.nextKind(after: .buildUp) == .tempo)
-        #expect(MRPlanPoint.nextKind(after: .distanceRun) == .tempo)
-        #expect(MRPlanPoint.nextKind(after: nil) == .tempo)
-        #expect(MRPlanPoint.nextKind(after: .race) == .tempo)
+        #expect(MRPlanPoint.nextKind(after: .buildUp) == .speed)
+        #expect(MRPlanPoint.nextKind(after: .distanceRun) == .speed)
+        #expect(MRPlanPoint.nextKind(after: nil) == .buildUp)
+        #expect(MRPlanPoint.nextKind(after: .race) == .buildUp)
+        // 대회 없는 러너 — 템포런 ↔ 빌드업, 인터벌 없음(아침 강도 OK 문장으로만, 2026-10-07)
+        #expect(MRPlanPoint.nextKindNoRace(after: .interval) == .tempo)
+        #expect(MRPlanPoint.nextKindNoRace(after: .tempo) == .buildUp)
+        #expect(MRPlanPoint.nextKindNoRace(after: .buildUp) == .tempo)
+        #expect(MRPlanPoint.nextKindNoRace(after: nil) == .tempo)
     }
 
     @Test func koreanText() {

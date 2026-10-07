@@ -84,9 +84,21 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         }
     }
 
-    /// 대회 없을 때 번갈이 — 템포런 ↔ 빌드업. 인터벌은 계획에 넣지 않고 아침 강도 OK일 때 문장으로만 권한다
-    /// (2026-10-07 사용자 결정: 인터벌은 입문자에게 무리, 템포런이 기본). 지난 포인트를 모르면 템포런.
+    /// 대회 없을 때 번갈이 — 속도 → 템포 → 빌드업 → 속도. 지난 포인트를 모르면 빌드업(가장 부담이 적다).
+    /// 등록된 대회가 있는 러너(계획 시작 전·대회 뒤)의 리듬이 쓴다.
     static func nextKind(after last: WorkoutType?) -> Kind {
+        switch last {
+        case .interval: return .tempo
+        case .tempo: return .buildUp
+        case .buildUp, .distanceRun: return .speed
+        default: return .buildUp
+        }
+    }
+
+    /// 다가오는 대회가 없는 러너 — 템포런 ↔ 빌드업. 인터벌은 계획에 넣지 않고 아침 강도 OK일 때 문장으로만 권한다
+    /// (2026-10-07 사용자 결정: 인터벌은 입문자에게 무리, 템포런이 기본). 지난 포인트를 모르면 템포런.
+    /// 월간 계획(`MRMonthlyPlanner`)과 대회 없는 러너의 아침 리듬이 쓴다. 대회 계획은 쓰지 않는다.
+    static func nextKindNoRace(after last: WorkoutType?) -> Kind {
         last == .tempo ? .buildUp : .tempo
     }
 
@@ -409,6 +421,8 @@ struct MRRhythmContext: Equatable {
     var habitEveryWeeks: Int? = nil
     /// 본인 최근 인터벌(가장 최근 1건) — 3~5분 반복이면 그 페이스
     var intervalHistory: MRIntervalHistory? = nil
+    /// 다가오는 대회가 없다 — 템포런 ↔ 빌드업 + 강도 OK 날 인터벌 문장(2026-10-07). 대회가 있으면 기존 번갈이.
+    var noUpcomingRace: Bool = false
 
     static let longRunEveryDays = 7
     /// ⚠ 코칭 관행 — 대회 거리별로 나누지 않는다
@@ -500,8 +514,9 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             if kind == .speed { pt?.paceFromHistory = ip.fromHistory }
             return pt
         }
-        // 빌드업이 안 되면(평소 롱런이 짧음) 템포런으로
-        if let pt = make(MRPlanPoint.nextKind(after: lastType)) ?? make(.tempo) {
+        // 빌드업이 안 되면(평소 롱런이 짧음) — 대회 없는 러너는 템포런, 대회가 있는 러너는 속도로
+        let kind = ctx.noUpcomingRace ? MRPlanPoint.nextKindNoRace(after: lastType) : MRPlanPoint.nextKind(after: lastType)
+        if let pt = make(kind) ?? make(ctx.noUpcomingRace ? .tempo : .speed) {
             var why: String
             if let lp = lastPoint {
                 let label = lastType.map { " " + $0.koreanLabel } ?? ""
@@ -510,8 +525,8 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             } else {
                 why = L.s("최근 강도 훈련이 없습니다.", "No recent hard session.", ja: "最近の強度練習はありません。")
             }
-            // 인터벌은 계획에 두지 않고 강도 OK 날에만 바꿔 뛸 수 있다고 덧붙인다(2026-10-07)
-            if let iv = make(.speed) {
+            // 대회 없는 러너 — 인터벌은 계획에 두지 않고 강도 OK 날에만 바꿔 뛸 수 있다고 덧붙인다(2026-10-07)
+            if ctx.noUpcomingRace, let iv = make(.speed) {
                 why += " " + L.s("컨디션이 좋으면 \(iv.text)로 바꿔도 됩니다.",
                                  "If you feel good, you can swap in \(iv.text).",
                                  ja: "調子が良ければ\(iv.text)に替えても構いません。")

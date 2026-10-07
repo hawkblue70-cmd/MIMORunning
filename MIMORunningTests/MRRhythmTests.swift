@@ -77,8 +77,16 @@ struct MRRhythmTests {
         #expect(s.whyNote?.contains("인터벌") == true)
     }
 
-    @Test func noPointHistorySuggestsTempoWithIntervalOption() throws {
+    @Test func noPointHistorySuggestsBuildUp() throws {
         let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(), runs: history(), hardStarts: [], asOf: day(2)))
+        #expect(s.session?.hasPrefix("빌드업") == true)
+        #expect(s.whyNote?.contains("컨디션이 좋으면") != true)   // 대회가 있는 러너는 그대로
+    }
+
+    @Test func noRaceRunnerGetsTempoWithIntervalOption() throws {
+        var c = ctx()
+        c.noUpcomingRace = true
+        let s = try #require(mrRhythmSuggestion(level: .go, ctx: c, runs: history(), hardStarts: [], asOf: day(2)))
         #expect(s.session?.hasPrefix("템포런") == true)
         #expect(s.whyNote?.contains("컨디션이 좋으면 인터벌") == true)
     }

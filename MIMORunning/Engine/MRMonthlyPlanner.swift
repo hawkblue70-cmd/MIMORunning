@@ -193,7 +193,7 @@ enum MRMonthlyPlanner {
                 -((cal.dateComponents([.day], from: MRPlanGovernance.weekMonday(of: d, calendar: cal),
                                       to: thisMonday).day ?? 0) / 7)
             }
-            var nextKind = MRPlanPoint.nextKind(after: point.lastPointType)
+            var nextKind = MRPlanPoint.nextKindNoRace(after: point.lastPointType)
             for mon in mondays {
                 let a = actual(mon)
                 var w = MRMonthlyWeek(monday: mon, daysInMonth: daysIn(mon, month),
@@ -256,7 +256,7 @@ enum MRMonthlyPlanner {
                 }
                 if let p = pt {
                     lastPointIdx = k
-                    nextKind = MRPlanPoint.nextKind(after: workoutType(p.kind))
+                    nextKind = MRPlanPoint.nextKindNoRace(after: workoutType(p.kind))
                 }
 
                 w.plannedKm = r1(target)

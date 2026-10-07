@@ -1276,6 +1276,7 @@ final class MREngineStore: ObservableObject {
                                 pointTypes: pointRunTypes)
         c.habitEveryWeeks = pointHabitEveryWeeks
         c.intervalHistory = recentIntervals.last
+        c.noUpcomingRace = userInput.upcomingRaces(asOf: now).isEmpty
         if let r = registered {
             c.recentRaceName = r.name; c.recentRaceDate = r.date
         } else if let t = typed {
