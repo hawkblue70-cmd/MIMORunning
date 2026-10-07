@@ -29,6 +29,41 @@ struct MRMonthlyWeek: Equatable {
     /// 평소 횟수보다 한 번 더 뛰자고 제안한 주
     var addedRun: Bool = false
     var breakdown: String = ""
+    /// 주차표 단계 — 전 주(이번 주는 최근 4주 평균)보다 5% 넘게 늘면 "늘리기", 아니면 "유지". 대회 계획 단계 색을 그대로 쓴다.
+    var phase: String = "유지"
+
+    /// 주차표(`MRWeekTable`) 한 줄 — 계획이 있는 주만.
+    func summary(idx: Int) -> MRPlanWeekSummary? {
+        guard let p = plannedKm else { return nil }
+        return MRPlanWeekSummary(idx: idx, monday: monday, phase: phase, longRunKm: longRunKm,
+                                 weeklyKm: p, breakdown: breakdown, point: point)
+    }
+}
+
+/// 지난 주·이번 주 계획을 고정해 둔다 — 수행 기호(●◐○▲)가 매일 바뀌는 라이브 계획이 아니라 그 주에 본 계획과 비교되게.
+/// 이번 주는 목표를 바꾸면 새 목표로 다시 고정, 지난 주는 바꾸지 않는다. UserDefaults(기기 안, 동기화 없음).
+struct MRMonthlyFrozenWeek: Codable {
+    let monday: Date
+    let goalKm: Double
+    let summary: MRPlanWeekSummary
+}
+
+enum MRMonthlyPlanStore {
+    private static let key = "mimo.monthlyPlanWeeks.v1"
+
+    static func load() -> [MRMonthlyFrozenWeek] {
+        guard let d = UserDefaults.standard.data(forKey: key),
+              let v = try? JSONDecoder().decode([MRMonthlyFrozenWeek].self, from: d) else { return [] }
+        return v
+    }
+
+    static func save(_ v: [MRMonthlyFrozenWeek]) {
+        // 1년 넘은 주는 버린다
+        let cutoff = Date().addingTimeInterval(-400 * 86_400)
+        if let d = try? JSONEncoder().encode(v.filter { $0.monday >= cutoff }) {
+            UserDefaults.standard.set(d, forKey: key)
+        }
+    }
 }
 
 struct MRMonthlyPlan: Equatable {
@@ -267,6 +302,12 @@ enum MRMonthlyPlanner {
                 w.point = pt
                 w.addedRun = n > b.usualRuns
                 w.breakdown = breakdownText(long: split.long, easy: split.easy, easyRuns: split.easyRuns)
+                if n > b.usualRuns {
+                    let L = AppLanguage.shared
+                    w.breakdown += L.s(" · 주 \(n)회(평소 \(b.usualRuns)회)", " · \(n) runs (usually \(b.usualRuns))",
+                                       ja: " · 週\(n)回(普段\(b.usualRuns)回)")
+                }
+                w.phase = target > prev * growthWeekRatio ? "늘리기" : "유지"
                 sim.weeks.append(w)
                 prev = target
                 sim.lastW = target

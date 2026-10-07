@@ -368,6 +368,8 @@ struct MRWeekTable: View {
     var finishedRaceDate: Date? = nil
     /// 끝난 계획의 러닝 줄을 눌렀을 때 — 러닝 상세로. nil이면 줄은 누를 수 없다.
     var onTapRun: ((MRWorkout) -> Void)? = nil
+    /// '예상' 칸 — 월간 계획(MRMonthlyPlanCard)은 예상 기록이 없어 끈다. 대회 계획은 기본값 그대로.
+    var showsProjection: Bool = true
     @State private var expanded: Set<Int> = []
 
     private var isFinished: Bool { finishedRaceDate != nil }
@@ -706,7 +708,7 @@ struct MRWeekTable: View {
                 Text(L.s("단계", "Phase", ja: "段階")).frame(width: 64, alignment: .leading)
                 Text(L.s("롱런", "Long", ja: "ロング走")).frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L.s("주간", "Weekly", ja: "週間")).frame(maxWidth: .infinity, alignment: .trailing)
-                if !isFinished {
+                if !isFinished && showsProjection {
                     Text(L.s("예상", "Target", ja: "予測")).frame(width: 56, alignment: .trailing)
                 }
             }
@@ -752,7 +754,7 @@ struct MRWeekTable: View {
                             Text(String(format: "%.0f", snap.weeklyKm))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                                 .foregroundStyle(.white.opacity(0.82))
-                            if !isFinished {
+                            if !isFinished && showsProjection {
                                 Group {
                                     if let pm = projMin {
                                         Text(mrFormatDisplay(pm))

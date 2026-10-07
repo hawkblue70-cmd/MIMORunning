@@ -245,7 +245,13 @@ struct MeView: View {
                             navPath.append(a)
                         }
                             .padding(.horizontal, 16)
-                        MRMonthlyPlanCard()
+                        MRMonthlyPlanCard { run in
+                            // 주차표 러닝 줄 → 러닝 상세(대회 계획과 같은 방식)
+                            guard navPath.isEmpty,
+                                  let a = manager.activities.first(where: { abs($0.date.timeIntervalSince(run.start)) < 1 })
+                            else { return }
+                            navPath.append(a)
+                        }
                             .padding(.horizontal, 16)
                         statsSection
                         shoesSection

@@ -154,4 +154,15 @@ struct MRMonthlyPlannerTests {
         #expect(planned[0].point == nil)                    // 지난주(10/8)에 했다 → 이번 주 없음
         #expect(planned[1].point?.kind == .tempo)           // 인터벌 다음은 템포런
     }
+
+    @Test func weekSummaryForTableHasPhaseAndPlan() throws {
+        // 경험 범위 안 복귀 러너 — 첫 주는 늘리기, 지난 주는 표 줄 없음(실제만)
+        let old = (7...30).flatMap { w in four.map { run(-7 * w + $0.0, km: $0.1) } }
+        let plan = try #require(MRMonthlyPlanner.build(goalKm: nil, runs: old + history(weeks: 6, pattern: three), asOf: today))
+        #expect(plan.weeks[0].summary(idx: 1) == nil)
+        let s = try #require(plan.weeks[2].summary(idx: 3))
+        #expect(s.phase == "늘리기")
+        #expect(s.weeklyKm == plan.weeks[2].plannedKm)
+        #expect(s.breakdown.contains("주 4회(평소 3회)"))
+    }
 }
