@@ -16,7 +16,8 @@ private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 
 /// 플랜 빌드 시점에 한국어로 생성된 breakdown 문자열을 표시 시점에 번역.
 /// 캐시된 플랜에도 적용되도록 view layer에서 처리한다.
-private func localizedBreakdown(_ s: String) -> String {
+/// 훈련일지 카드의 예정 주 문구도 같이 쓴다(2026-10-07).
+func localizedBreakdown(_ s: String) -> String {
     if AppLanguage.shared.isJapanese {
         // 긴 구절부터 — "롱런"·"대회"를 먼저 바꾸면 구절이 안 맞는다
         return s

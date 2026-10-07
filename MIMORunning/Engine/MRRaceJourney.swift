@@ -173,7 +173,8 @@ struct MRRaceJourney: Identifiable {
             let named = parts.map(\.text)
             // 다음 주부터는 예정 — 실행 안내(계획 문구)와 강도 훈련만, 기호·실제 없음
             if let t = today, mon > t {
-                var plan = w.breakdown
+                // 스냅샷 문구는 만든 때 언어(대개 한국어) — 주차표처럼 표시 언어로 바꿔 쓴다
+                var plan = localizedBreakdown(w.breakdown)
                 if let pt = w.point { plan += (plan.isEmpty ? "" : " · ") + pt.text }
                 weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: [:], symbol: nil,
                                   detail: L.s("예정", "Planned", ja: "予定") + (plan.isEmpty ? "" : " · " + plan),
