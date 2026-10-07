@@ -52,6 +52,8 @@ struct MRRaceJourney: Identifiable {
         let planTotalKm: Double  // 월간 계획 합계(이번 달 날짜 비율)
         let monthKm: Double      // 이번 달 날짜의 실제 합계
         let monthRuns: Int
+        /// 러닝 흐름 월 차트(막대 = 거리, 색 = 강도 · 선 = 페이스) — 성장 탭과 같은 집계(RecordSeries, 일 단위)
+        var bars: [RecordBar] = []
     }
     var month: Month? = nil
 
@@ -179,7 +181,7 @@ struct MRRaceJourney: Identifiable {
 
     /// 월간 계획 훈련일지 — 고정된 주차(지난 주·이번 주) + 그 기간 러닝. 이번 주 이후 주는 넣지 않는다.
     static func makeMonth(title: String, monthStart: Date, monthEnd: Date, goalKm: Double?, planTotalKm: Double,
-                          planWeeks: [MRPlanWeekSummary], now: Date = Date(),
+                          planWeeks: [MRPlanWeekSummary], bars: [RecordBar] = [], now: Date = Date(),
                           runs: [MRWorkout], types: [Date: WorkoutType],
                           hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
                           calendar cal: Calendar = .current) -> MRRaceJourney? {
@@ -203,7 +205,7 @@ struct MRRaceJourney: Identifiable {
             longestKm: span.compactMap(\.distanceKm).max() ?? 0,
             hardDone: built.hardDone, hardPlanned: built.hardPlanned)
         j.month = Month(title: title, start: monthStart, end: monthEnd, goalKm: goalKm, planTotalKm: planTotalKm,
-                        monthKm: inMonth.compactMap(\.distanceKm).reduce(0, +), monthRuns: inMonth.count)
+                        monthKm: inMonth.compactMap(\.distanceKm).reduce(0, +), monthRuns: inMonth.count, bars: bars)
         return j
     }
 

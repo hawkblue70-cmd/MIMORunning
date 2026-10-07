@@ -128,6 +128,19 @@ struct MRRaceJourneyShareCard: View {
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
                     .padding(.top, 8)
 
+                // 월간 — 훈련일지 아래 러닝 흐름 월 차트(성장 탭과 같은 컴포넌트, 내보내기 모드, 사용자 요청 위치)
+                if let m = j.month, !m.bars.isEmpty {
+                    Text(L.s("러닝 흐름", "Running Flow", ja: "ランの流れ"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(p.sub)
+                        .padding(.top, 14)
+                    RecordBarChart(bars: m.bars, period: .day, start: m.start, end: m.end,
+                                   exportMode: true, showsTotals: false,
+                                   cardBackground: theme == .light ? Color(hex: "F2F2F7") : Color(hex: "2C2C2E"))
+                        .padding(.top, 4)
+                }
+
+
                 Text(j.progress != nil ? L.s("대회 준비 중", "Race build-up in progress", ja: "レース準備中")
                           : j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
                           : L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))

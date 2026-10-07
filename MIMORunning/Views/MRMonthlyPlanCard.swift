@@ -128,10 +128,18 @@ struct MRMonthlyPlanCard: View {
             title: L.s("\(monthName(p.monthStart)) 훈련일지", "\(monthName(p.monthStart)) training log",
                        ja: "\(monthName(p.monthStart))の練習日誌"),
             monthStart: p.monthStart, monthEnd: end, goalKm: p.goalKm, planTotalKm: p.projectedMonthKm,
-            planWeeks: weeks, runs: engine.runs,
+            planWeeks: weeks, bars: monthBars(p.monthStart, end), runs: engine.runs,
             types: MRRaceJourney.runTypes(manager: manager, runs: engine.runs, from: from,
                                           to: Date().addingTimeInterval(86_400), fallback: engine.pointRunTypes),
             hardStarts: engine.hardRunStarts.union(engine.intenseRuns.keys), pointTypes: engine.pointRunTypes)
+    }
+
+    /// 러닝 흐름 월 차트 재료 — 성장 탭 refreshRecordBars와 같은 집계(러닝·강도 입력, 일 단위). manager 없으면 빈 배열.
+    private func monthBars(_ start: Date, _ end: Date) -> [RecordBar] {
+        guard let m = manager else { return [] }
+        return RecordSeries.bars(activities: m.activities.filter { $0.type == .running },
+                                 effortOf: { m.effortIndex.resolve($0)?.value },
+                                 start: start, end: end, period: .day)
     }
 
     private func withIdx(_ s: MRPlanWeekSummary, _ idx: Int) -> MRPlanWeekSummary {
@@ -286,7 +294,7 @@ struct MRMonthlyPlanCard: View {
                         title: L.s("\(monthName(month)) 훈련일지", "\(monthName(month)) training log",
                                    ja: "\(monthName(month))の練習日誌"),
                         monthStart: r.start, monthEnd: r.end, goalKm: goalPast, planTotalKm: planTotal,
-                        planWeeks: weeks, now: r.end.addingTimeInterval(-1), runs: engine.runs,
+                        planWeeks: weeks, bars: monthBars(r.start, r.end), now: r.end.addingTimeInterval(-1), runs: engine.runs,
                         types: MRRaceJourney.runTypes(manager: manager, runs: engine.runs,
                                                       from: weeks.first?.monday ?? r.start, to: r.end.addingTimeInterval(7 * 86_400),
                                                       fallback: engine.pointRunTypes),
