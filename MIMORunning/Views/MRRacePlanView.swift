@@ -58,6 +58,21 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
 }
 
+/// 계획 단계 글자 색 — 주차표와 대회 준비 공유 카드가 같이 쓴다. 늘리기(기본)는 nil → 쓰는 쪽의 기본 글자색.
+func mrPhaseColor(_ p: String) -> Color? {
+    switch p {
+    case "테이퍼":      return mrAccentText
+    case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
+    case "대회 페이스": return mrWarn
+    case "대회 주":     return Color(red: 0.98, green: 0.55, blue: 0.40)
+    case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
+    default:
+        // "10K 계획" — 다른 계획을 따르는 주는 대회 주와 같은 계열로
+        if MRPlanGovernance.isFollowingPhase(p) { return Color(red: 0.98, green: 0.72, blue: 0.50) }
+        return nil
+    }
+}
+
 /// 계획 단계 이름 번역 — 대회 준비 공유 카드(MRRaceJourneyShareCard)도 같이 쓴다.
 func localizedPhase(_ p: String) -> String {
     let L = AppLanguage.shared
@@ -625,19 +640,7 @@ struct MRWeekTable: View {
         return L.s("지난 \(n)주:", "Last \(n) wks:", ja: "直近\(n)週:") + " \(parts.joined(separator: " · "))"
     }
 
-    private func phaseColor(_ p: String) -> Color {
-        switch p {
-        case "테이퍼":      return mrAccentText
-        case "회복":        return Color(red: 0.35, green: 0.65, blue: 0.95)
-        case "대회 페이스": return mrWarn
-        case "대회 주":     return Color(red: 0.98, green: 0.55, blue: 0.40)
-        case "유지":        return Color(red: 0.45, green: 0.80, blue: 0.55)
-        default:
-            // "10K 계획" — 다른 계획을 따르는 주는 대회 주와 같은 계열로
-            if MRPlanGovernance.isFollowingPhase(p) { return Color(red: 0.98, green: 0.72, blue: 0.50) }
-            return .white.opacity(0.82)
-        }
-    }
+    private func phaseColor(_ p: String) -> Color { mrPhaseColor(p) ?? .white.opacity(0.82) }
 
     private var legendItems: [(phase: String, desc: String)] {
         let L = AppLanguage.shared

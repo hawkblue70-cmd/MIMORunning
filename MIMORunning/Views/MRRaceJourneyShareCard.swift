@@ -223,9 +223,9 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(MRRaceJourneyShareCard.md(w.monday))
                             .foregroundStyle(palette.sub)
                             .frame(width: 30, alignment: .leading)
-                        // 계획 단계 — 대회 주차표와 같은 이름
+                        // 계획 단계 — 대회 주차표와 같은 이름·글자색(늘리기는 기본 글자색)
                         Text(localizedPhase(w.phase))
-                            .foregroundStyle(palette.text.opacity(0.85))
+                            .foregroundStyle(mrPhaseColor(w.phase) ?? palette.text.opacity(0.85))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                             .frame(width: 44, alignment: .leading)
