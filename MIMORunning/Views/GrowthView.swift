@@ -378,15 +378,7 @@ struct GrowthView: View {
                 streak: engine.streakWeeks,
                 activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
                 heatmapWeekCount: Self.heatmapWeeks,
-                screenTitle: mileageScreenTitle,
-                monthSummary: recordPeriod == .day
-                    ? MRMonthShareSummary.make(runs: engine.runs,
-                                               start: recordWindow(for: recordPeriod).start,
-                                               end: recordWindow(for: recordPeriod).end,
-                                               intenseStarts: Set(engine.intenseRuns.keys),
-                                               pointTypes: engine.pointRunTypes,
-                                               frozenWeeks: MRMonthlyPlanStore.load())
-                    : nil
+                screenTitle: mileageScreenTitle
             )
         }
         .sheet(isPresented: $showWeeklyShareCard) {

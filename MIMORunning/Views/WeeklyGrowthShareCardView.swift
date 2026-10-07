@@ -633,8 +633,6 @@ struct MileageStreakShareCard: View {
     let activeDays: Int
     let heatmapWeekCount: Int
     var theme: ShareTheme = .dark
-    /// 월 기록 카드의 시간·평균 페이스·훈련 구성·이번 달 기록·계획 수행(2026-10-07). nil이면 줄 없음.
-    var monthSummary: MRMonthShareSummary? = nil
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
@@ -668,11 +666,6 @@ struct MileageStreakShareCard: View {
                     monthTotalsRow
                         .padding(.horizontal, 20)
                         .padding(.top, 2)
-                    if let m = monthSummary {
-                        monthDetailRows(m)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 4)
-                    }
                 }
 
                 recordChart
@@ -770,64 +763,6 @@ struct MileageStreakShareCard: View {
              + Text(L.s("\(days)일", "\(days) days", ja: "\(days)日")).foregroundStyle(p.heatFull))
                 .font(.system(size: 15, weight: .semibold))
         }
-    }
-
-    /// 총계 아래 네 줄 — 시간·평균 페이스 / 훈련 구성 / 이번 달 / 계획 수행. 값이 없는 줄은 빠진다.
-    private func monthDetailRows(_ m: MRMonthShareSummary) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(Array(Self.detailLines(m).enumerated()), id: \.offset) { _, line in
-                detailRow(line.label, line.value)
-            }
-        }
-    }
-
-    static func detailLines(_ m: MRMonthShareSummary) -> [(label: String, value: String)] {
-        let L = AppLanguage.shared
-        var out: [(label: String, value: String)] = []
-        let pace = m.paceSecPerKm.map { " · " + L.s("평균 ", "avg ", ja: "平均 ") + mrFormatPace($0) + "/km" } ?? ""
-        out.append((L.s("시간", "Time", ja: "時間"), hms(m.totalMin) + pace))
-        let parts = [(m.longRuns, L.s("롱런", "Long", ja: "ロング走")),
-                     (m.hardRuns, L.s("강도 훈련", "Hard", ja: "強度練習")),
-                     (m.easyRuns, L.s("이지", "Easy", ja: "イージー"))]
-            .filter { $0.0 > 0 }.map { "\($0.1) \($0.0)" }
-        if !parts.isEmpty {
-            out.append((L.s("훈련 구성", "Training", ja: "練習構成"), parts.joined(separator: " · ")))
-        }
-        if m.longestKm > 0 {
-            var best = L.s("최장 ", "Longest ", ja: "最長 ") + String(format: "%.1fkm", m.longestKm)
-            if let fp = m.fastestPace, let fk = m.fastestKm {
-                best += " · " + L.s("최고 페이스 ", "Fastest ", ja: "最速ペース ") + mrFormatPace(fp)
-                    + String(format: " (%.1fkm)", fk)
-            }
-            out.append((L.s("이번 달", "This month", ja: "今月"), best))
-        }
-        if !m.planSymbols.isEmpty {
-            out.append((L.s("계획 수행", "Plan", ja: "計画達成"),
-                        m.planSymbols.map { "\($0.symbol) \($0.count)" }.joined(separator: " · ")))
-        }
-        return out
-    }
-
-    private func detailRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(p.textSecondary)
-                .frame(width: 54, alignment: .leading)
-            Text(value)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(p.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-    }
-
-    /// 13:12:40 — 한 시간 아래면 52:10
-    static func hms(_ minutes: Double) -> String {
-        let t = Int((minutes * 60).rounded())
-        let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
 
     /// §5.8 — 성장 탭 카드와 **같은 컴포넌트**. 크기·상호작용만 내보내기 모드로.
@@ -974,7 +909,6 @@ struct MileageStreakShareCardScreen: View {
     let activeDays: Int
     let heatmapWeekCount: Int
     var screenTitle: String = AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ")
-    var monthSummary: MRMonthShareSummary? = nil
 
     @State private var previewImage: UIImage?
     @State private var isRendering = true
@@ -983,9 +917,8 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이.
-    /// 월 기록 카드는 총계 아래 네 줄(줄당 ≈16)만큼 더 — 4:5 캔버스 맞춤은 그대로.
-    private var cardH: CGFloat { period == .day && monthSummary != nil ? 630 : 560 }
+    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
+    private let cardH: CGFloat = 560
 
     var body: some View {
         NavigationStack {
@@ -1004,8 +937,7 @@ struct MileageStreakShareCardScreen: View {
                         streak: streak,
                         activeDays: activeDays,
                         heatmapWeekCount: heatmapWeekCount,
-                        theme: cardTheme,
-                        monthSummary: monthSummary
+                        theme: cardTheme
                     )
                     .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
                     .frame(width: cardW, height: cardH)
@@ -1110,8 +1042,7 @@ struct MileageStreakShareCardScreen: View {
                 streak: streak,
                 activeDays: activeDays,
                 heatmapWeekCount: heatmapWeekCount,
-                theme: cardTheme,
-                monthSummary: monthSummary
+                theme: cardTheme
             )
             .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
             .frame(width: cardW, height: cardH)
