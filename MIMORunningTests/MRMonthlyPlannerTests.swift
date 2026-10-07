@@ -132,6 +132,8 @@ struct MRMonthlyPlannerTests {
         let hold = try #require(MRMonthlyPlanner.build(goalKm: 40 * 31 / 7, runs: history(weeks: 52, pattern: four),
                                                        asOf: today, point: input))
         #expect(hold.weeks.filter { $0.plannedKm != nil }.allSatisfy { $0.point != nil })
+        // 인터벌은 계획에 넣지 않는다 — 템포런 ↔ 빌드업
+        #expect(hold.weeks.compactMap(\.point).allSatisfy { $0.kind == .tempo || $0.kind == .buildUp })
         #expect(hold.weeks.allSatisfy(sumMatches))
         // 늘림 — 최근 주 30(4회), 12개월 최대 40. 늘리는 주는 간격 +1주라 이번 주 다음 주에는 없다
         let old = (7...52).flatMap { w in four.map { run(-7 * w + $0.0, km: $0.1) } }

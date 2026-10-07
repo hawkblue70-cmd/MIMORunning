@@ -7,6 +7,7 @@ import Foundation
 // 값(본인 데이터): 출발점(최근 4주) · 경험 범위(12개월 최대 주) · 횟수 · 이지 1회 상한 · 롱런 출발.
 // ⚠ 대회 계획과 연결하지 않는다(확인 단계) — 아침 제안·스냅샷·트리거 어디에도 쓰지 않는다.
 // ⚠ 진행률·남은 km·달성률은 만들지 않는다(2026-09-22 결정 유지, 목표는 계획의 입력값으로만).
+// ⚠ 대회가 있으면 카드를 보이지 않는다 · 강도 훈련은 템포런 ↔ 빌드업만(인터벌은 아침 제안 문장으로만, 2026-10-07).
 
 struct MRMonthlyWeek: Equatable {
     let monday: Date
@@ -220,7 +221,7 @@ enum MRMonthlyPlanner {
                     if lastPointIdx.map({ k - $0 >= every }) ?? true {
                         let longGuess = min(target * longShare(runs: b.usualRuns), longCap(b, k))
                         pt = makePoint(nextKind, weekly: target, long: longGuess, paces: paces, history: point.intervalHistory)
-                            ?? makePoint(.speed, weekly: target, long: longGuess, paces: paces, history: point.intervalHistory)
+                            ?? makePoint(.tempo, weekly: target, long: longGuess, paces: paces, history: point.intervalHistory)
                     }
                 }
 

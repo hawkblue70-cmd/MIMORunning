@@ -57,6 +57,10 @@ struct MRDebugView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
 
+                // 월간 계획 카드 — 나 탭은 대회가 있으면 숨기므로 여기서 확인
+                Text("월간 계획 카드(대회 있어도 표시)").font(.system(size: 13, weight: .semibold))
+                MRMonthlyPlanCard(force: true)
+
                 // 분리된 스냅샷 (사용자가 목록에서 지운 대회의 진행 이력) — 안전망: 여기서 대회를 다시 만들어 붙인다
                 let detached = allSnapshots.filter(\.isDetached).sorted { $0.raceDate < $1.raceDate }
                 if !detached.isEmpty {

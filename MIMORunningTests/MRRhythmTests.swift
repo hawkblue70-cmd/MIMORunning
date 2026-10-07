@@ -77,9 +77,10 @@ struct MRRhythmTests {
         #expect(s.whyNote?.contains("인터벌") == true)
     }
 
-    @Test func noPointHistorySuggestsBuildUp() throws {
+    @Test func noPointHistorySuggestsTempoWithIntervalOption() throws {
         let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(), runs: history(), hardStarts: [], asOf: day(2)))
-        #expect(s.session?.hasPrefix("빌드업") == true)
+        #expect(s.session?.hasPrefix("템포런") == true)
+        #expect(s.whyNote?.contains("컨디션이 좋으면 인터벌") == true)
     }
 
     @Test func dayBeforeHabitualLongRunNoPoint() throws {

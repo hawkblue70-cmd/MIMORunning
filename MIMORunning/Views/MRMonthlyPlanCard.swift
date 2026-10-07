@@ -9,6 +9,8 @@ private let mpCard = Color(red: 0.11, green: 0.11, blue: 0.12)
 
 struct MRMonthlyPlanCard: View {
     @EnvironmentObject private var engine: MREngineStore
+    /// 대회가 있어도 보여 준다 — 디버그 화면 확인용
+    var force = false
     /// 0 = 목표 없음. 다음 달로 그대로 이어진다(매달 다시 검토만).
     @AppStorage("mimo.monthlyGoalKm") private var goalKm: Double = 0
     @State private var editing = false
@@ -29,7 +31,8 @@ struct MRMonthlyPlanCard: View {
     }
 
     var body: some View {
-        if case .ready = engine.state {
+        // 대회가 있으면 대회 계획만 — 월간 계획은 대회가 없을 때(2026-10-07 사용자 결정)
+        if case .ready = engine.state, force || engine.userInput.upcomingRaces(asOf: Date()).isEmpty {
             content(plan)
                 .alert(AppLanguage.shared.s("이번 달 목표 거리", "Monthly distance goal", ja: "今月の目標距離"),
                        isPresented: $editing) {

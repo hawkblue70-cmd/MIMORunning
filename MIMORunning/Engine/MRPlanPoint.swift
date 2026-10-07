@@ -84,14 +84,10 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
         }
     }
 
-    /// 대회 없을 때 번갈이 — 속도 → 템포 → 빌드업 → 속도. 지난 포인트를 모르면 빌드업(가장 부담이 적다).
+    /// 대회 없을 때 번갈이 — 템포런 ↔ 빌드업. 인터벌은 계획에 넣지 않고 아침 강도 OK일 때 문장으로만 권한다
+    /// (2026-10-07 사용자 결정: 인터벌은 입문자에게 무리, 템포런이 기본). 지난 포인트를 모르면 템포런.
     static func nextKind(after last: WorkoutType?) -> Kind {
-        switch last {
-        case .interval: return .tempo
-        case .tempo: return .buildUp
-        case .buildUp, .distanceRun: return .speed
-        default: return .buildUp
-        }
+        last == .tempo ? .buildUp : .tempo
     }
 
     /// 주차표·아침 제안 공용 문구 — "인터벌 1km × 4회 5'05\"". 이름은 앱 러닝 종류 분류명과 같게(인터벌·템포런·빌드업).
@@ -504,15 +500,21 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
             if kind == .speed { pt?.paceFromHistory = ip.fromHistory }
             return pt
         }
-        // 빌드업이 안 되면(평소 롱런이 짧음) 속도로
-        if let pt = make(MRPlanPoint.nextKind(after: lastType)) ?? make(.speed) {
-            let why: String
+        // 빌드업이 안 되면(평소 롱런이 짧음) 템포런으로
+        if let pt = make(MRPlanPoint.nextKind(after: lastType)) ?? make(.tempo) {
+            var why: String
             if let lp = lastPoint {
                 let label = lastType.map { " " + $0.koreanLabel } ?? ""
                 why = L.s("지난 강도 훈련은 \(md.string(from: lp.start))\(label), \(daysAgo(lp.start))일 전입니다.",
                           "Last hard session:\(label) \(daysAgo(lp.start)) days ago.", ja: "前回の強度練習は\(md.string(from: lp.start))\(label)、\(daysAgo(lp.start))日前です。")
             } else {
                 why = L.s("최근 강도 훈련이 없습니다.", "No recent hard session.", ja: "最近の強度練習はありません。")
+            }
+            // 인터벌은 계획에 두지 않고 강도 OK 날에만 바꿔 뛸 수 있다고 덧붙인다(2026-10-07)
+            if let iv = make(.speed) {
+                why += " " + L.s("컨디션이 좋으면 \(iv.text)로 바꿔도 됩니다.",
+                                 "If you feel good, you can swap in \(iv.text).",
+                                 ja: "調子が良ければ\(iv.text)に替えても構いません。")
             }
             return MRSessionSuggestion(session: pt.text,
                                        progress: progress, isPoint: true, whyNote: why)
