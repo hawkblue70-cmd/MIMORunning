@@ -1606,6 +1606,8 @@ private struct DetailHeader: View {
     let activity: Activity
     var confirmedRace: PersistedRaceMatch? = nil
     var onRaceRevoke: (() -> Void)? = nil
+    /// "이 대회 아닙니다" 확인창 — 잘못 누르면 대회 기록·비교가 통째로 사라지므로 한 번 묻는다
+    @State private var showRevokeConfirm = false
     /// 러닝 종류("일반 러닝"·"이지런"·"롱런 · 빌드업") — 머리 큰 제목으로 쓴다. 인사이트 탭 머리 "오늘의 러닝 · ○○"와 같은 값.
     var workoutTypeLabel: String? = nil
 
@@ -1662,9 +1664,20 @@ private struct DetailHeader: View {
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Theme.violet.opacity(0.35), lineWidth: 1))
                     if let revoke = onRaceRevoke {
-                        Button(AppLanguage.shared.s("이 대회 아닙니다", "Not a Race", ja: "このレースではありません"), action: revoke)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                        Button(AppLanguage.shared.s("이 대회 아닙니다", "Not a Race", ja: "このレースではありません")) {
+                            showRevokeConfirm = true
+                        }
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .alert(AppLanguage.shared.s("이 러닝을 대회에서 뺄까요?", "Remove this run from the race?", ja: "このランをレースから外しますか?"),
+                               isPresented: $showRevokeConfirm) {
+                            Button(AppLanguage.shared.s("취소", "Cancel", ja: "キャンセル"), role: .cancel) {}
+                            Button(AppLanguage.shared.s("확인", "Confirm", ja: "確認"), role: .destructive) { revoke() }
+                        } message: {
+                            Text(AppLanguage.shared.s("\(race.raceName) 대회 표시와 대회 기록에서 빠집니다. 아래 '대회 기록 추가'로 다시 넣을 수 있습니다.",
+                                                      "It will no longer be marked as \(race.raceName) or counted in your race records. You can add it back with 'Add Race Record' below.",
+                                                      ja: "\(race.raceName)の表示とレース記録から外れます。下の「レース記録を追加」で戻せます。"))
+                        }
                     }
                 }
             }
