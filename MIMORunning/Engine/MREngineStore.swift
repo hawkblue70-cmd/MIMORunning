@@ -1273,16 +1273,19 @@ final class MREngineStore: ObservableObject {
         let cal = Calendar.current
         let today = cal.startOfDay(for: now)
         func daysFromToday(_ d: Date) -> Int { cal.dateComponents([.day], from: today, to: cal.startOfDay(for: d)).day ?? -999 }
-        if userInput.races.contains(where: { (0..<MRRhythmContext.postRaceEasyDays).contains(daysFromToday($0.date)) }) {
+        if userInput.races.contains(where: { (0..<MRRhythmContext.preRaceQuietDays).contains(daysFromToday($0.date)) }) {
             return nil
         }
-        func within14(_ d: Date) -> Bool {
+        // 거리별 회복 기간 안에 끝난 대회인가
+        func withinRecovery(_ d: Date, distanceM: Double?) -> Bool {
             let n = -daysFromToday(d)
-            return n >= 1 && n < MRRhythmContext.postRaceEasyDays
+            return n >= 1 && n < MRRhythmContext.postRaceEasyDays(distanceM: distanceM)
         }
         // 끝난 대회는 나 탭이 예정 목록에서 지우므로(deletePastRaces) 끝난 대회 목록도 함께 본다 — 이름이 '대회'로만 나오지 않게
-        let registered = (userInput.races + storedFinishedRaces).filter { within14($0.date) }.max { $0.date < $1.date }
-        let typed = pointRunTypes.filter { $0.value == .race && within14($0.key) }.keys.max()
+        let registered = (userInput.races + storedFinishedRaces)
+            .filter { withinRecovery($0.date, distanceM: $0.distanceM) }.max { $0.date < $1.date }
+        func runDistanceM(_ start: Date) -> Double? { runs.first { $0.start == start }?.distanceKm.map { $0 * 1000 } }
+        let typed = pointRunTypes.filter { $0.value == .race && withinRecovery($0.key, distanceM: runDistanceM($0.key)) }.keys.max()
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
                                 paces: mrPointPaces(halfEquivMin: halfEquivMin, thresholdPace: thresholdTrend?.current.paceSecPerKm),
                                 pointTypes: pointRunTypes)
@@ -1290,9 +1293,10 @@ final class MREngineStore: ObservableObject {
         c.intervalHistory = recentIntervals.last
         c.noUpcomingRace = userInput.upcomingRaces(asOf: now).isEmpty
         if let r = registered {
-            c.recentRaceName = r.name; c.recentRaceDate = r.date
+            c.recentRaceName = r.name; c.recentRaceDate = r.date; c.recentRaceDistanceM = r.distanceM
         } else if let t = typed {
             c.recentRaceName = AppLanguage.shared.s("대회", "the race", ja: "レース"); c.recentRaceDate = t
+            c.recentRaceDistanceM = runDistanceM(t)
         }
         return c
     }

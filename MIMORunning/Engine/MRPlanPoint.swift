@@ -414,9 +414,10 @@ struct MRRhythmContext: Equatable {
     let paces: MRPointPaces?
     /// 앱 저장 유형이 포인트 유형인 러닝(최근 180일) — 번갈이·마지막 포인트
     let pointTypes: [Date: WorkoutType]
-    /// 최근 14일 안에 끝난 대회 — 이름·날짜. 없으면 nil.
+    /// 최근에 끝난 대회(거리별 회복 기간 안) — 이름·날짜·거리. 없으면 nil.
     var recentRaceName: String? = nil
     var recentRaceDate: Date? = nil
+    var recentRaceDistanceM: Double? = nil
     /// 본인 강도 훈련 습관 간격(주) — nil이면 주당 러닝 횟수 규칙만
     var habitEveryWeeks: Int? = nil
     /// 본인 최근 인터벌(가장 최근 1건) — 3~5분 반복이면 그 페이스
@@ -425,8 +426,19 @@ struct MRRhythmContext: Equatable {
     var noUpcomingRace: Bool = false
 
     static let longRunEveryDays = 7
-    /// ⚠ 코칭 관행 — 대회 거리별로 나누지 않는다
-    static let postRaceEasyDays = 14
+    /// 대회 뒤 강도 없이 이지로 보내는 날 수 — 대회 거리별(2026-10-07 사용자 결정, 예전엔 거리 무관 14일).
+    /// 코칭 경험칙(Daniels 3km당 하루 · 1마일당 하루) 사이에서 정함 — 통제 연구 없음. 거리 모르면 하프 기준 14일.
+    static func postRaceEasyDays(distanceM: Double?) -> Int {
+        guard let d = distanceM, d > 0 else { return 14 }
+        if d >= MRDistance.dF - 1000 { return 21 }
+        if d >= MRDistance.dH - 500 { return 14 }
+        if d >= MRDistance.d10 - 500 { return 7 }
+        return 5
+    }
+    /// 가장 긴 회복 기간(풀) — 최근 대회를 찾을 때 훑는 범위
+    static let maxPostRaceEasyDays = 21
+    /// 앞으로 이 기간 안에 등록 대회가 있으면 리듬 제안을 내지 않는다(D-day 카드와 부딪힘 방지)
+    static let preRaceQuietDays = 14
     static let minUsualLongKm = 8.0
 }
 
@@ -456,12 +468,13 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     func daysAgo(_ d: Date) -> Int { calendar.dateComponents([.day], from: calendar.startOfDay(for: d), to: today).day ?? 0 }
     let md: DateFormatter = { let f = DateFormatter(); f.dateFormat = "M/d"; return f }()
 
-    // 대회 뒤 2주 — 포인트도 롱런도 권하지 않는다
+    // 대회 뒤 회복 기간(거리별) — 포인트도 롱런도 권하지 않는다
     // 당일(0일)은 제외 — 대회 날 아침에 "0일 뒤"라고 하지 않는다
-    if let rd = ctx.recentRaceDate, (1..<MRRhythmContext.postRaceEasyDays).contains(daysAgo(rd)) {
+    let easyDays = MRRhythmContext.postRaceEasyDays(distanceM: ctx.recentRaceDistanceM)
+    if let rd = ctx.recentRaceDate, (1..<easyDays).contains(daysAgo(rd)) {
         let n = daysAgo(rd)
         let name = ctx.recentRaceName ?? L.s("대회", "the race", ja: "レース")
-        let note = L.s("\(name) \(n)일 뒤 — 2주는 이지로 회복합니다.", "\(n) days after \(name) — keep two weeks easy to recover.", ja: "\(name)から\(n)日 — 2週間はイージーで回復します。")
+        let note = L.s("\(name) \(n)일 뒤 — \(easyDays)일은 이지로 회복합니다.", "\(n) days after \(name) — keep \(easyDays) days easy to recover.", ja: "\(name)から\(n)日 — \(easyDays)日間はイージーで回復します。")
         return MRSessionSuggestion(session: level == .rest ? nil : L.s("이지런", "Easy run", ja: "イージーラン"), progress: "",
                                    isRecovery: level != .rest, whyNote: note)
     }

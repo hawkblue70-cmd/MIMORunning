@@ -186,8 +186,7 @@ struct MRPlanGovernanceTests {
             #expect(h.phase == "10K 계획", "\(w.monday) 단계 = \(h.phase)")
             #expect(h.longRunKm == w.longRunKm)
         }
-        // 대회 뒤 14일 안에 시작하는 주(이번 주·다음 주)는 강도 훈련 없음
+        // 10K 회복 기간(7일) 안에 시작하는 주(이번 주 = 대회 다음 날)는 강도 훈련 없음. 다음 주(8일 뒤)는 막히지 않는다
         #expect(byMonday[cal.startOfDay(for: monday(0))]?.point == nil)
-        #expect(byMonday[cal.startOfDay(for: monday(1))]?.point == nil)
     }
 }

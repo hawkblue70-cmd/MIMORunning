@@ -85,21 +85,21 @@ enum RunSummaryBuilder {
         return highFrac >= 0.5
     }
 
-    /// 이 러닝 전 마지막 대회(유형 '대회')로부터 지난 일수 — 1~13일일 때만, 아니면 nil.
+    /// 이 러닝 전 마지막 대회(유형 '대회')로부터 지난 일수와 그 대회의 회복 기간 — 회복 기간(거리별) 안일 때만, 아니면 nil.
     static func daysSinceRace(activity: Activity, history: [Activity],
-                              workoutTypeFn: ((UUID) -> WorkoutType?)?) -> Int? {
+                              workoutTypeFn: ((UUID) -> WorkoutType?)?) -> (days: Int, easyDays: Int)? {
         guard let typeOf = workoutTypeFn else { return nil }
         let cal = Calendar.current
         let today = cal.startOfDay(for: activity.date)
-        let since = cal.date(byAdding: .day, value: -MRRhythmContext.postRaceEasyDays, to: today) ?? .distantPast
+        let since = cal.date(byAdding: .day, value: -MRRhythmContext.maxPostRaceEasyDays, to: today) ?? .distantPast
         let last = history
             .filter { $0.type == .running && $0.id != activity.id && $0.date >= since && cal.startOfDay(for: $0.date) < today }
             .filter { typeOf($0.id) == .race }
             .max { $0.date < $1.date }
         guard let r = last,
-              let d = cal.dateComponents([.day], from: cal.startOfDay(for: r.date), to: today).day,
-              (1..<MRRhythmContext.postRaceEasyDays).contains(d) else { return nil }
-        return d
+              let d = cal.dateComponents([.day], from: cal.startOfDay(for: r.date), to: today).day else { return nil }
+        let easy = MRRhythmContext.postRaceEasyDays(distanceM: r.distance)
+        return (1..<easy).contains(d) ? (d, easy) : nil
     }
 
     /// 마지막 고강도 러닝까지의 일수. 28일 안에 없으면 nil — 총평 훈련부하 줄이 그 근거를 생략한다.
@@ -214,7 +214,10 @@ enum RunSummaryBuilder {
         // 대회 날은 계획의 끝이다 — 그 주가 테이퍼·회복 주여도 "테이퍼 주인데 고강도"·"이지런 위주로"를 말하지 않는다
         input.planPhase = c.workoutType == .race ? nil : postRacePhase(c) ?? c.planPhase
         input.easyPace = c.easyPaceLookup
-        input.daysSinceRace = daysSinceRace(activity: c.activity, history: c.history, workoutTypeFn: c.workoutTypeFn)
+        if let r = daysSinceRace(activity: c.activity, history: c.history, workoutTypeFn: c.workoutTypeFn) {
+            input.daysSinceRace = r.days
+            input.postRaceEasyDays = r.easyDays
+        }
         // daysSinceHardRun 계산(과거 최대 28일 스캔)은 loadNext가 실제로 쓸 수 있을 때만 —
         // 회복/테이퍼 주거나 이미 4주 평균 대비 높음·단조·4일+ 연속으로 다음 행동이 정해지면 "충분히 회복" 분기에 도달하지 않는다.
         // (급증 판정은 RunSummary.loadLine과 같이 acuteChronic만 본다 — 최근 7일 증감은 근거 숫자일 뿐)

@@ -42,6 +42,21 @@ struct MRRhythmTests {
         #expect(s.whyNote?.contains("회복") == true)
     }
 
+    @Test func postRaceEasyDaysByDistance() throws {
+        #expect(MRRhythmContext.postRaceEasyDays(distanceM: 5000) == 5)
+        #expect(MRRhythmContext.postRaceEasyDays(distanceM: MRDistance.d10) == 7)
+        #expect(MRRhythmContext.postRaceEasyDays(distanceM: MRDistance.dH) == 14)
+        #expect(MRRhythmContext.postRaceEasyDays(distanceM: MRDistance.dF) == 21)
+        #expect(MRRhythmContext.postRaceEasyDays(distanceM: nil) == 14)
+        // 10K 4일 뒤(day(2) 기준 대회 = day(-2)) → 회복 이지, 9일 뒤 → 회복 기간 끝
+        var c = ctx(raceDaysAgo: 2); c.recentRaceDistanceM = MRDistance.d10
+        let s = try #require(mrRhythmSuggestion(level: .go, ctx: c, runs: history(), hardStarts: [], asOf: day(2)))
+        #expect(s.whyNote?.contains("7일은 이지로") == true)
+        var c9 = ctx(raceDaysAgo: 7); c9.recentRaceDistanceM = MRDistance.d10
+        let s9 = mrRhythmSuggestion(level: .go, ctx: c9, runs: history(), hardStarts: [], asOf: day(2))
+        #expect(s9?.whyNote?.contains("이지로 회복") != true)
+    }
+
     @Test func postRaceIsRecoveryAndRaceDayIsNot() throws {
         let s = try #require(mrRhythmSuggestion(level: .easy, ctx: ctx(raceDaysAgo: 3), runs: history(), hardStarts: [], asOf: day(2)))
         #expect(s.isRecovery)

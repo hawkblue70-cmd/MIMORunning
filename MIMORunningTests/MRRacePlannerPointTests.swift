@@ -104,11 +104,16 @@ struct MRRacePlannerPointTests {
         #expect(tuneWeek.phase == "대회 주")
         let nextMon = cal.date(byAdding: .day, value: 7, to: tuneMon)!
         let after = try #require(p.weeks.first { cal.isDate($0.monday, inSameDayAs: nextMon) })
-        #expect(after.point == nil)
-        // 대회 뒤 14일 안에 시작하는 주(12일 뒤 월요일)도 없음
+        #expect(after.point == nil)   // 대회 5일 뒤 월요일 — 10K 회복 기간(7일) 안
+        // 12일 뒤 월요일은 10K 회복 기간(7일)을 지났다 — 대회 때문에 막히지는 않는다(2026-10-07 거리별 규칙)
         let twoAfter = cal.date(byAdding: .day, value: 14, to: tuneMon)!
         let second = try #require(p.weeks.first { cal.isDate($0.monday, inSameDayAs: twoAfter) })
-        #expect(second.point == nil)
+        let without = try #require(mrBuildPlan(raceDate: race, distanceM: MRDistance.dH, today: Date(),
+                                               profile: profile(runs: 4), halfEquivMin: 110,
+                                               easyPaceSecPerKm: 400, heat: MRHeatModel(), raceTempC: 15,
+                                               runsPerWeek: 4, tuneUps: []))
+        let same = try #require(without.weeks.first { cal.isDate($0.monday, inSameDayAs: twoAfter) })
+        #expect((second.point == nil) == (same.point == nil))
     }
 
     @Test func howToExplainsStructure() {

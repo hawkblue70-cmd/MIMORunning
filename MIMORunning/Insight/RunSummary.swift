@@ -54,8 +54,10 @@ struct RunSummaryInput {
     var todayEffortMissing: Bool = false
     /// 마지막 고강도(계획된 고강도 유형 또는 체감 강도 7 이상) 러닝으로부터 지난 일수
     var daysSinceHardRun: Int? = nil
-    /// 이 러닝 전 마지막 대회로부터 지난 일수(1~13일일 때만) — 대회 뒤 2주는 강도 훈련을 권하지 않는다(MRRhythmContext.postRaceEasyDays)
+    /// 이 러닝 전 마지막 대회로부터 지난 일수 — 거리별 회복 기간 안일 때만(MRRhythmContext.postRaceEasyDays). 그 기간엔 강도 훈련을 권하지 않는다
     var daysSinceRace: Int? = nil
+    /// 그 대회의 회복 기간(일) — 10K 7 · 하프 14 · 풀 21
+    var postRaceEasyDays: Int? = nil
     /// 이번 주 플랜 단계 원문("회복"/"테이퍼"/…) — 대회 플랜이 있을 때만
     var planPhase: String? = nil
     /// 이지 페이스 조회값 — 있을 때만 다음 이지런 페이스를 숫자로 제안
@@ -584,10 +586,11 @@ enum RunSummary {
             // 대회 뒤 2주 안 — 부하·HRV가 회복으로 보여도 강도 세션(빌드업·템포)을 권하지 않는다.
             // 계획(포인트 없음)·아침 리듬(대회 뒤 이지)과 같은 규칙. 10K 사흘 뒤 "템포런을 넣기 좋은 시점"이 나왔다(2026-10-07).
             if let d = i.daysSinceRace {
-                let left = MRRhythmContext.postRaceEasyDays - d
-                return L.s("대회 \(d)일 뒤입니다. 부하는 회복됐지만 대회 뒤 2주는 강도 없이 이지런으로 가세요(\(left)일 남음).",
-                           "\(d) days after your race. Load has recovered, but keep the two weeks after a race easy — no intensity (\(left) days left).",
-                           ja: "レースから\(d)日後です。負荷は回復しましたが、レース後2週間は強度なしでイージーランにしてください(残り\(left)日)。")
+                let total = i.postRaceEasyDays ?? MRRhythmContext.postRaceEasyDays(distanceM: nil)
+                let left = total - d
+                return L.s("대회 \(d)일 뒤입니다. 부하는 회복됐지만 대회 뒤 \(total)일은 강도 없이 이지런으로 가세요(\(left)일 남음).",
+                           "\(d) days after your race. Load has recovered, but keep the \(total) days after a race easy — no intensity (\(left) days left).",
+                           ja: "レースから\(d)日後です。負荷は回復しましたが、レース後\(total)日間は強度なしでイージーランにしてください(残り\(left)日)。")
             }
             // HRV가 있으면 회복 판정을 한 번 더 거른다 — 부하는 내려왔어도 HRV가 아래·불안정이면 "충분히"라고 하지 않는다.
             // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.

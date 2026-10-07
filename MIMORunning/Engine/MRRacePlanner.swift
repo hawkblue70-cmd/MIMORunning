@@ -598,10 +598,11 @@ func mrBuildPlan(raceDate: Date,
         let isRaceWeek = raceDate >= mon && raceDate < weekEnd
         // 대회(튠업·앞선 대회) 뒤 14일 안에 시작하는 주는 강도 훈련 없음 — 대회가 그 주기의 강도 훈련이었고,
         // 대회 없을 때 리듬의 "대회 뒤 2주 이지"와 같은 규칙(2026-09-29 사용자 결정). 하프 8일 뒤 인터벌 같은 일을 막는다.
-        let raceDatesBefore = tuneUps.map(\.date) + (priorRace.map { [$0.date] } ?? [])
-        let afterTuneUp = raceDatesBefore.contains { d in
+        // 회복 기간은 대회 거리별(2026-10-07) — 10K 7일 · 하프 14일 · 풀 21일
+        let racesBefore = tuneUps.map { ($0.date, $0.distanceM) } + (priorRace.map { [($0.date, $0.distanceM)] } ?? [])
+        let afterTuneUp = racesBefore.contains { d, dist in
             let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: mon)).day ?? -1
-            return days >= 1 && days < MRRhythmContext.postRaceEasyDays
+            return days >= 1 && days < MRRhythmContext.postRaceEasyDays(distanceM: dist)
         }
         var point: MRPlanPoint? = nil
         if let f = followed, i <= buildWeeks {
