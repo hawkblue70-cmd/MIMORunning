@@ -1660,17 +1660,19 @@ struct RunFormCardView: View {
             let ratio = todayDist / s.distanceM
             return ratio >= 0.5 && ratio <= 2.0
         }.count, 5)
+        // 범례는 모양으로 말한다(2026-10-08 사용자 요청) — '눈금 사이'·'흰 점'은 무엇을 가리키는지 알기 어려웠다.
+        //   실제 모양: 양 끝 눈금 사이 회색 막대 = 평소 범위 · 빈 원 = 최근 비슷한 거리 · 꽉 찬 점 = 오늘(초록/회색)
         let line1 = L.s(
-            "눈금 사이 = 평소 범위 · \(pr) 러닝 \(n)회",
-            "Ticks = typical range · \(n) runs at \(pr)", ja: "目盛りの間 = 普段の範囲 · \(pr)のラン\(n)回")
+            "▬ 회색 막대 = 내 평소 범위 (페이스 \(pr) 러닝 \(n)회)",
+            "▬ Gray bar = your usual range (\(n) runs at \(pr))", ja: "▬ 灰色の棒 = いつもの範囲 (ペース\(pr)のラン\(n)回)")
         // [93] 0건일 때 "비교할 만한 거리의 러닝이 없어요", 2건 이상만 흰 점 표기
         let dotLine: String
         if recentCount == 0 {
             dotLine = L.s("\n비교할 만한 거리의 러닝이 없습니다",
                           "\nNo runs of similar distance to compare", ja: "\n比較できる距離のランがありません")
         } else if recentCount >= 2 {
-            dotLine = L.s("\n흰 점 = 거리가 비슷한 최근 \(recentCount)회",
-                          "\nWhite dots = \(recentCount) recent similar-distance runs", ja: "\n白い点 = 距離が近い最近の\(recentCount)回")
+            dotLine = L.s("\n○ 빈 원 = 거리가 비슷한 최근 \(recentCount)회",
+                          "\n○ Hollow circles = \(recentCount) recent runs of similar distance", ja: "\n○ 白抜きの丸 = 距離が近い最近の\(recentCount)回")
         } else {
             dotLine = ""
         }
@@ -1678,8 +1680,12 @@ struct RunFormCardView: View {
         // 지면접촉은 범위 아래로 벗어나도 초록이라, 설명이 없으면 보폭(범위 밖=회색)과
         // 색이 갈리는 이유를 알 수 없다.
         let colorLine = L.s(
-            "\n초록 = 범위 안이거나 더 좋은 쪽 (케이던스는 높게 · 지면접촉·수직진폭은 낮게)",
-            "\nGreen = in range, or the better side (higher cadence · lower contact & oscillation)", ja: "\n緑 = 範囲内か、よりよい側(ケイデンスは高く · 接地時間・上下動は低く)")
+            "\n● 꽉 찬 점 = 오늘 — 초록은 평소 범위 안이거나 좋은 쪽, 회색은 평소보다 나쁜 쪽"
+            + "\n좋은 쪽: 케이던스는 높을수록, 지면접촉·수직진폭은 낮을수록",
+            "\n● Filled dot = today — green: in range or the better side · gray: worse than usual"
+            + "\nBetter side: higher cadence · lower ground contact & vertical oscillation",
+            ja: "\n● 塗りつぶしの点 = 今日 — 緑は範囲内かよい側、灰色は普段より悪い側"
+            + "\nよい側: ケイデンスは高いほど、接地時間・上下動は低いほど")
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용입니다.", "\nLimited samples — treat as reference only.", ja: "\n比較対象が少ないため参考用です。")
             : ""
