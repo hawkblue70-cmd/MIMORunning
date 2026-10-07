@@ -468,6 +468,17 @@ final class MREngineStore: ObservableObject {
                          hrvNights.count, t.sevenDayMean, t.sevenDayNights, t.baseline, t.baselineSD, t.baselineNights,
                          t.sevenDayCV * 100, t.baselineCV * 100, stateStr,
                          t.isVolatile ? "·불안정" : (t.isStableRise ? "·안정 상승" : "")))
+            // 밤별 값(잠든 동안 중앙값) — 건강 앱 화면과 대조용. 7일 창 = 0~6일 전, 4주 창 = 7~34일 전
+            let cal = Calendar.current, today = cal.startOfDay(for: now)
+            let df = DateFormatter(); df.dateFormat = "M/d"
+            func line(_ lo: Int, _ hi: Int) -> String {
+                hrvNights.filter { n in
+                    let d = cal.dateComponents([.day], from: cal.startOfDay(for: n.date), to: today).day ?? -1
+                    return d >= lo && d <= hi
+                }.map { "\(df.string(from: $0.date)) \(Int($0.value.rounded()))" }.joined(separator: " · ")
+            }
+            print("[HRV] 7일 밤: " + line(0, 6))
+            print("[HRV] 4주 밤: " + line(7, 34))
         } else {
             print("[HRV] 60일 \(hrvNights.count)밤 · 추세 없음(7일 4밤·4주 14밤 미만)")
         }
