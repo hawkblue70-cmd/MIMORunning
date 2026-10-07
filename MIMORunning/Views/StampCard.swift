@@ -425,14 +425,6 @@ struct StampCard: View {
     var renderOnlyStamp: Bool = false
     /// true 시 스탬프 레이어 숨김 — 문구만 렌더 (애니메이션 분리 출력용)
     var renderOnlyText: Bool = false
-    /// 사진 없는 흰 배경 — 흰색 고정 요소(심박 차트 범례)를 스탬프 색으로 바꾼다
-    var isWhiteBackground: Bool = false
-
-    /// 흰색 고정 요소(요약 그리드 거리·라벨, 페이스 목록 머리, 심박 차트 범례)가 스탬프 색을 따를지.
-    /// 스탬프가 검정일 때(잉크 선택 · 자동+밝은 사진 · 흰 배경) — 흰색으로 두면 잉크를 골라도 그 부분만 흰색으로 남았다.
-    private var labelsFollowFill: Bool {
-        isWhiteBackground || colorMode == .ink || (colorMode == .auto && isBrightBackground)
-    }
 
     var body: some View {
         let (fill, outline) = stampColors(colorMode, isBrightBackground: isBrightBackground)
@@ -571,48 +563,40 @@ struct StampCard: View {
             // 심박·칼로리 토글을 받지 않는다 — 이 스탬프는 격자를 채우는 게 목적이라
             // 있는 지표를 모두(최대 6칸) 보여준다.
             StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                 showTextOutline: showTextOutline,
-                                 labelsFollowFill: labelsFollowFill)
+                                 showTextOutline: showTextOutline)
         case .summaryGridPace:
             // 요약 그리드 그대로 + 아래에 구간별 세로 목록(km · 막대 · 페이스 · 심박)
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline,
-                                     labelsFollowFill: labelsFollowFill)
+                                     showTextOutline: showTextOutline)
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits), fill: fill, outline: outline,
-                                       scale: scale, showTextOutline: showTextOutline,
-                                       labelsFollowFill: labelsFollowFill)
+                                       scale: scale, showTextOutline: showTextOutline)
                 }
             }
         case .summaryGridPaceHR:
             // 요약 그리드 + 구간 목록(15·30km 묶음) + 심박 곡선 — 세 스탬프의 같은 부품을 그대로 쌓는다
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline,
-                                     labelsFollowFill: labelsFollowFill)
+                                     showTextOutline: showTextOutline)
                 if let splits = data.splits, splits.count >= 2 {
                     StampSplitRowsView(rows: StampSplit.rows(splits, bucket: StampSplit.compactBucketKm(totalKm:)),
                                        fill: fill, outline: outline,
-                                       scale: scale, showTextOutline: showTextOutline,
-                                       labelsFollowFill: labelsFollowFill)
+                                       scale: scale, showTextOutline: showTextOutline)
                 }
                 if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
-                                     scale: scale, showTextOutline: showTextOutline,
-                                     labelsFollowFill: labelsFollowFill)
+                                     scale: scale, showTextOutline: showTextOutline)
                 }
             }
         case .summaryGridHR:
             // 요약 그리드 그대로 + 아래에 심박 곡선(최저·평균·최고 라벨, 평균 점선)
             VStack(alignment: .leading, spacing: sz(10, scale)) {
                 StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
-                                     showTextOutline: showTextOutline,
-                                     labelsFollowFill: labelsFollowFill)
+                                     showTextOutline: showTextOutline)
                 if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
-                                     scale: scale, showTextOutline: showTextOutline,
-                                     labelsFollowFill: labelsFollowFill)
+                                     scale: scale, showTextOutline: showTextOutline)
                 }
             }
         case .hud:
@@ -997,11 +981,10 @@ private struct StampSummaryGridView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
-    var labelsFollowFill: Bool = false
 
-    /// 거리 숫자·라벨(KM·AVG PACE·TIME…) — 흰색, 라벨은 굵게(2026-10-06, 스탬프 색·62% 흐림이라 사진 위에서 묻혔다).
-    /// 스탬프가 검정(잉크·자동+밝은 사진·흰 배경)이면 스탬프 색. 나머지 값(페이스·시간 등)은 스탬프 색 그대로
-    private var labelColor: Color { labelsFollowFill ? fill : .white }
+    /// 거리 숫자·라벨(KM·AVG PACE·TIME…) — 스탬프 색, 라벨은 굵게 100%(2026-10-06: 62% 흐림이라 사진 위에서 묻혔다).
+    /// 한때 흰색 고정이었으나 색상 칩(잉크·라임·레드)이 이 부분에 안 먹어 스탬프 색으로 되돌렸다(2026-10-07).
+    private var labelColor: Color { fill }
 
     private struct Metric: Identifiable {
         let id = UUID()
@@ -1048,7 +1031,7 @@ private struct StampSummaryGridView: View {
                     .font(.system(size: sz(52, scale), weight: .black).width(.compressed))
                     .italic()
                     .tracking(sz(-1, scale))
-                    .foregroundStyle(labelColor)   // 거리도 흰색(라벨과 함께, 2026-10-06)
+                    .foregroundStyle(labelColor)
                     .lineLimit(1).fixedSize()
                 Text(data.distanceUnit)
                     .font(.system(size: sz(8, scale), weight: .bold))
@@ -1106,10 +1089,9 @@ private struct StampSplitRowsView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
-    var labelsFollowFill: Bool = false
 
-    /// 머리(KM·PACE·HR)·km 열 — 흰색 굵게, 스탬프가 검정(잉크·자동+밝은 사진·흰 배경)이면 스탬프 색. 구간 심박 숫자는 심박 빨강
-    private var labelColor: Color { labelsFollowFill ? fill : .white }
+    /// 머리(KM·PACE·HR)·km 열 — 스탬프 색 굵게 100%(색상 칩을 따른다). 구간 심박 숫자는 심박 빨강
+    private var labelColor: Color { fill }
 
     /// 요약 그리드 3열 폭(54×3 + 8×2)과 같게 — 격자 왼쪽·오른쪽 선에 맞춘다.
     private var width: CGFloat { sz(178, scale) }
@@ -1264,7 +1246,6 @@ private struct StampHRChartView: View {
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
-    var labelsFollowFill: Bool = false
 
     /// 요약 그리드 3열 폭과 같게 (StampSplitRowsView와 같은 값)
     private var width: CGFloat { sz(178, scale) }
@@ -1279,8 +1260,8 @@ private struct StampHRChartView: View {
     private var lo: Double { minV - (maxV - minV) * 0.06 }
     private var hi: Double { maxV + (maxV - minV) * 0.06 }
     private func frac(_ v: Double) -> CGFloat { hi > lo ? CGFloat((v - lo) / (hi - lo)) : 0.5 }
-    /// 범례(세로축 숫자·HR·시간) — 흰색 굵게(2026-10-06 요청). 스탬프가 검정(잉크·자동+밝은 사진·흰 배경)이면 스탬프 색
-    private var legend: Color { labelsFollowFill ? fill : .white }
+    /// 범례(세로축 숫자·HR·시간) — 스탬프 색 굵게 100%(색상 칩을 따른다). 곡선만 심박 빨강
+    private var legend: Color { fill }
 
     private func yLabel(_ v: Double) -> some View {
         Text("\(Int(v.rounded()))")

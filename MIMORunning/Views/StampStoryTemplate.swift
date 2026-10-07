@@ -118,8 +118,7 @@ struct StampStoryRenderView: View {
                 stampTextColor: resolved.textColor,
                 stampTextHasBorder: resolved.textHasBorder,
                 wordmarkTopInset: 42,
-                renderOnlyStamp: true,
-                isWhiteBackground: photo == nil
+                renderOnlyStamp: true
             )
             }
             // 문구 레이어 — OneLinerCard(영상·슬라이드와 동일 컴포넌트·폰트 공식)
@@ -216,8 +215,7 @@ struct StampAnimPreviewCard: View {
                 stampText: cfg.text, stampTextPosition: cfg.textPosition,
                 stampTextFont: cfg.textFont, stampTextSize: cfg.textSize,
                 stampTextColor: cfg.textColor, stampTextHasBorder: cfg.textHasBorder,
-                renderOnlyStamp: true,
-                isWhiteBackground: photo == nil
+                renderOnlyStamp: true
             )
             .scaleEffect(scaleFor(stampVisible, mode: cfg.entranceMode))
             .offset(offsetFor(stampVisible, mode: cfg.entranceMode, dir: cfg.flyDirection))
