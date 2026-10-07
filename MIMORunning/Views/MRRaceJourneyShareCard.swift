@@ -53,12 +53,16 @@ struct MRRaceJourneyShareCard: View {
                 HStack {
                     MIMOWordmark(size: 9, strokeMIMO: theme == .light)
                     Spacer()
+                    // 머리 오른쪽 제목 — 크게(사용자 요청). 월간 제목도 대회 이름과 같은 노랑
                     if let m = j.month {
                         Text(m.title)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(p.text)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(p.raceBadgeOnLight ? RaceBadge.onLightColor : RaceBadge.color)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     } else {
-                        RaceBadge(name: j.raceName, onLight: p.raceBadgeOnLight)
+                        RaceBadge(name: j.raceName, scale: 1.35, onLight: p.raceBadgeOnLight)
+                            .minimumScaleFactor(0.7)
                     }
                 }
                 .padding(.top, 13)
