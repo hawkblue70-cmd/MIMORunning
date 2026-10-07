@@ -50,11 +50,12 @@ struct RaceRecordRow: View {
             Spacer(minLength: 0)
             if row.hasPlan {
                 Button { onTapPlan?() } label: {
+                    // 11 → 13pt(2026-10-07 사용자: 눈에 잘 띄게) — 누르는 면적도 같이 키움
                     Text(L.s("계획", "Plan", ja: "計画"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
                         .background(Color.white.opacity(0.08))
                         .clipShape(Capsule())
                 }
