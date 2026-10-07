@@ -1320,13 +1320,15 @@ enum RunInsightEngine {
     }
 
     private static func enduranceInsight(detail: ActivityDetail?) -> RunInsight? {
-        guard let splits = detail?.splits, splits.count >= 4 else { return nil }
+        // 300m 미만 끝 조각은 뺀다 — 0.14km 마무리 조각 하나가 후반 평균을 끌어내려 실제 4.7% 처짐이 "1.1%"로 나왔다(2026-10-08).
+        // 반쪽 평균도 km 페이스 단순 평균이 아니라 시간 합 ÷ 거리 합.
+        guard let splits = detail?.splits.filter({ $0.distanceM >= 300 && $0.duration > 0 }), splits.count >= 4 else { return nil }
         let L = AppLanguage.shared
         let half     = splits.count / 2
         let front    = Array(splits[..<half])
         let back     = Array(splits[half...])
-        let avgFront = front.map { $0.paceSecPerKm }.reduce(0.0, +) / Double(front.count)
-        let avgBack  = back.map  { $0.paceSecPerKm }.reduce(0.0, +) / Double(back.count)
+        let avgFront = front.overallPaceSecPerKm
+        let avgBack  = back.overallPaceSecPerKm
         guard avgFront > 0 else { return nil }
 
         let drift    = (avgBack - avgFront) / avgFront * 100

@@ -2495,6 +2495,10 @@ private struct RhythmInsightCard: View {
             } else if cv > 5 {
                 result = (L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"), Color.white.opacity(0.75))
                 branch = 2
+            } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
+                // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
+                result = (L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"), Color.white.opacity(0.75))
+                branch = 5
             } else if cv <= 3 {
                 result = (L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"), Theme.positive)
                 branch = 3
