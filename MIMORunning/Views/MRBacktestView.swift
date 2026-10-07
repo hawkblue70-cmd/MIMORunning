@@ -122,6 +122,14 @@ struct MRArchiveDetailView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // 맨 위 대회 이름 — 대회 뱃지와 같은 노랑(사용자 요청). navigationTitle은 뒤로가기 이름용으로 그대로 둔다.
+                ToolbarItem(placement: .principal) {
+                    Text(archive.raceName)
+                        .font(.headline)
+                        .foregroundStyle(RaceBadge.color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLanguage.shared.s("닫기", "Done", ja: "閉じる")) { dismiss() }
                 }
