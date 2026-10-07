@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - 이번 달 계획 (설계: docs/superpowers/specs/2026-10-07-monthly-volume-goal-design.md)
 //
@@ -22,6 +23,59 @@ struct MRMonthlyPlanCard: View {
     @State private var editing = false
     @State private var draft = ""
     @State private var frozen: [MRMonthlyFrozenWeek] = MRMonthlyPlanStore.load()
+    /// 대회 계획 스냅샷 — 계획 기간(첫 주 ~ 대회일)과 겹치는 달은 월간 계획을 쉰다(2026-10-07 사용자 결정)
+    @Query private var raceSnapshots: [RacePlanSnapshot]
+    /// 화살표로 고른 달(1일). nil = 볼 수 있는 가장 최근 달
+    @State private var selectedMonth: Date? = nil
+
+    // MARK: - 달 넘기기
+
+    /// 월간 계획을 쓰기 시작한 달 — 그 전 달은 지금 목표로 다시 계산한 값이라 보여 주지 않는다
+    static let firstMonth = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 1))!
+
+    private func monthRange(_ start: Date) -> (start: Date, end: Date) {
+        (start, Calendar.current.date(byAdding: .month, value: 1, to: start) ?? start)
+    }
+
+    private var currentMonthStart: Date {
+        Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
+    }
+
+    /// 대회 계획 기간(첫 계획 주 월요일 ~ 대회일)과 겹치는가. 계획 없는 등록 대회는 대회일만.
+    private func overlapsRace(_ start: Date) -> Bool {
+        if force { return false }   // 디버그 확인용 카드 — 대회 달도 보여 준다
+        let cal = Calendar.current
+        let r = monthRange(start)
+        let byPlan = raceSnapshots.contains { snap in
+            guard let first = snap.planWeeks.map(\.monday).min(),
+                  let planEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: snap.raceDate)) else { return false }
+            return cal.startOfDay(for: first) < r.end && planEnd > r.start
+        }
+        return byPlan || engine.userInput.races.contains { $0.date >= r.start && $0.date < r.end }
+    }
+
+    /// 지난 달 — 고정된 주차(이번 달과 겹치는 주) 1부터 번호
+    private func frozenWeeks(_ start: Date) -> [MRMonthlyFrozenWeek] {
+        let cal = Calendar.current
+        let r = monthRange(start)
+        return frozen.filter { f in
+            let mon = cal.startOfDay(for: f.monday)
+            let end = cal.date(byAdding: .day, value: 7, to: mon) ?? mon
+            return mon < r.end && end > r.start
+        }.sorted { $0.monday < $1.monday }
+    }
+
+    /// 넘겨 볼 수 있는 달 — 10월부터, 대회 계획과 겹치지 않고, 이번 달이거나 고정된 주차가 있는 달
+    private var months: [Date] {
+        let cal = Calendar.current
+        var out: [Date] = []
+        var m = Self.firstMonth
+        while m <= currentMonthStart {
+            if !overlapsRace(m) && (m == currentMonthStart || !frozenWeeks(m).isEmpty) { out.append(m) }
+            m = cal.date(byAdding: .month, value: 1, to: m) ?? currentMonthStart.addingTimeInterval(1)
+        }
+        return out
+    }
 
     private var goal: Double? { goalKm > 0 ? goalKm : nil }
 
@@ -87,7 +141,7 @@ struct MRMonthlyPlanCard: View {
 
     /// 이번 주·지난 주를 고정 — 지난 주는 한 번 고정하면 그대로, 이번 주는 목표가 바뀌면 다시.
     private func freeze() {
-        guard case .ready = engine.state, let plan = buildPlan() else { return }
+        guard case .ready = engine.state, !overlapsRace(currentMonthStart), let plan = buildPlan() else { return }
         let cal = Calendar.current
         let thisMonday = MRPlanGovernance.weekMonday(of: Date())
         var store = frozen
@@ -110,7 +164,7 @@ struct MRMonthlyPlanCard: View {
     var body: some View {
         // 대회가 있으면 대회 계획만 — 월간 계획은 대회가 없을 때(2026-10-07 사용자 결정)
         if case .ready = engine.state, force || engine.userInput.upcomingRaces(asOf: Date()).isEmpty {
-            content(buildPlan())
+            monthBody
                 .onAppear { freeze() }
                 .onChange(of: goalKm) { freeze() }
                 .onChange(of: engine.runs.count) { freeze() }
@@ -136,13 +190,132 @@ struct MRMonthlyPlanCard: View {
     // MARK: - 본문
 
     @ViewBuilder
-    private func content(_ plan: MRMonthlyPlan?) -> some View {
-        let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(monthTitle(plan?.monthStart ?? Date()))
+    private var monthBody: some View {
+        let list = months
+        let shown = selectedMonth.flatMap { m in list.contains(m) ? m : nil } ?? list.last
+        if let m = shown {
+            if m == currentMonthStart {
+                content(buildPlan(), list: list, month: m)
+            } else {
+                pastContent(m, list: list)
+            }
+        } else {
+            // 이번 달이 대회 계획과 겹치고 넘겨 볼 달도 없을 때
+            cardShell {
+                Text(monthTitle(currentMonthStart))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
+                Text(AppLanguage.shared.s("대회가 있는 달은 월간 계획을 쉽니다. 다음 달 1일부터 다시 시작합니다.",
+                                          "Monthly plans pause in race months and restart on the 1st of next month.",
+                                          ja: "レースがある月は月間計画を休みます。来月1日から再開します。"))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+        }
+    }
+
+    private func cardShell<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 10) { c() }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(mpCard)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// ‹ 10월 계획 › — 참가 대회 기록의 연도 넘기기와 같은 방식
+    private func monthNav(_ month: Date, list: [Date]) -> some View {
+        let i = list.firstIndex(of: month) ?? 0
+        return HStack(spacing: 6) {
+            Button { selectedMonth = list[max(i - 1, 0)] } label: {
+                Image(systemName: "chevron.left").frame(width: 24, height: 24)
+            }
+            .disabled(i == 0)
+            .opacity(i == 0 ? 0.25 : 1)
+            .accessibilityLabel(AppLanguage.shared.s("이전 달", "Previous month", ja: "前の月"))
+            Text(monthTitle(month))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+            Button { selectedMonth = list[min(i + 1, list.count - 1)] } label: {
+                Image(systemName: "chevron.right").frame(width: 24, height: 24)
+            }
+            .disabled(i >= list.count - 1)
+            .opacity(i >= list.count - 1 ? 0.25 : 1)
+            .accessibilityLabel(AppLanguage.shared.s("다음 달", "Next month", ja: "次の月"))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.violetText)
+    }
+
+    /// 지난 달 — 고정된 주차로 주차표·계획 합계·훈련일지만. 목표는 그달에 고정된 값(바꿀 수 없음).
+    @ViewBuilder
+    private func pastContent(_ month: Date, list: [Date]) -> some View {
+        let L = AppLanguage.shared
+        let cal = Calendar.current
+        let r = monthRange(month)
+        let fw = frozenWeeks(month)
+        let weeks = fw.enumerated().map { withIdx($0.element.summary, $0.offset + 1) }
+        let goalPast = fw.last { $0.goalKm > 0 }?.goalKm
+        let planTotal = weeks.reduce(0.0) { acc, w in
+            let days = (0..<7).filter { i in
+                guard let d = cal.date(byAdding: .day, value: i, to: w.monday) else { return false }
+                return d >= r.start && d < r.end
+            }.count
+            return acc + w.weeklyKm * Double(days) / 7
+        }
+        cardShell {
+            HStack(alignment: .center) {
+                monthNav(month, list: list)
+                Spacer(minLength: 8)
+                if let g = goalPast {
+                    Text(L.s("목표 \(Int(g))km", "Goal \(Int(g))km", ja: "目標 \(Int(g))km"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+            }
+            Text(L.s("계획 합계 \(km(planTotal))", "Planned total \(km(planTotal))", ja: "計画の合計 \(km(planTotal))"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+            MRWeekTable(weeks: [], runs: engine.runs, snapshotWeeks: weeks,
+                        hardRunStarts: engine.hardRunStarts, pointRunTypes: engine.pointRunTypes,
+                        onTapRun: onTapRun, showsProjection: false)
+                .id(month)
+                .padding(.top, 4)
+            if goalPast != nil {
+                exportButton {
+                    shareJourney = MRRaceJourney.makeMonth(
+                        title: L.s("\(monthName(month)) 훈련일지", "\(monthName(month)) training log",
+                                   ja: "\(monthName(month))の練習日誌"),
+                        monthStart: r.start, monthEnd: r.end, goalKm: goalPast, planTotalKm: planTotal,
+                        planWeeks: weeks, now: r.end.addingTimeInterval(-1), runs: engine.runs,
+                        types: MRRaceJourney.runTypes(manager: manager, runs: engine.runs,
+                                                      from: weeks.first?.monday ?? r.start, to: r.end.addingTimeInterval(7 * 86_400),
+                                                      fallback: engine.pointRunTypes),
+                        hardStarts: engine.hardRunStarts.union(engine.intenseRuns.keys), pointTypes: engine.pointRunTypes)
+                }
+            }
+        }
+    }
+
+    private func exportButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(AppLanguage.shared.s("훈련일지 내보내기", "Export training log", ja: "練習日誌を書き出す"),
+                  systemImage: "square.and.arrow.up")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Theme.violet)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func content(_ plan: MRMonthlyPlan?, list: [Date], month: Date) -> some View {
+        let L = AppLanguage.shared
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                monthNav(month, list: list)
                 Spacer(minLength: 8)
                 Button {
                     draft = goalKm > 0 ? String(Int(goalKm)) : ""
@@ -192,17 +365,7 @@ struct MRMonthlyPlanCard: View {
 
                 // 월 목표가 있을 때 — 대회 준비 카드와 같은 방식의 월간 훈련일지(2026-10-07 사용자 요청)
                 if p.goalKm != nil {
-                    Button { shareJourney = monthJourney(p) } label: {
-                        Label(L.s("훈련일지 내보내기", "Export training log", ja: "練習日誌を書き出す"),
-                              systemImage: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Theme.violet)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
+                    exportButton { shareJourney = monthJourney(p) }
                 }
 
                 Text(L.s("아침 제안에는 반영되지 않습니다.",
