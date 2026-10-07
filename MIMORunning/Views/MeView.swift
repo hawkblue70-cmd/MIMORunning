@@ -260,7 +260,11 @@ struct MeView: View {
                         Spacer(minLength: 32)
                     }
                     .padding(.top, 8)
+                    // 세로로만 — 안쪽 줄 하나라도 화면보다 넓으면 내용 폭이 늘어나 좌우로 끌렸다.
+                    // 내용 폭을 화면 폭에 고정하고, 넘치는 줄은 그 안에서 잘린다.
+                    .containerRelativeFrame(.horizontal)
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             }
             .navigationTitle(AppLanguage.shared.s("나", "Me", ja: "マイ"))
             .navigationBarTitleDisplayMode(.large)
