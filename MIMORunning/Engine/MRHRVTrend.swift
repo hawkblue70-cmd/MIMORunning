@@ -67,7 +67,7 @@ let mrHRVUseSleepIntervals = true
 struct MRHRVTrend: Equatable {
     enum State: Equatable { case above, within, below }
     let state: State
-    /// 7일 변동계수가 4주 변동계수의 1.5배를 넘는다
+    /// 7일 변동계수가 4주 변동계수의 1.5배를 넘고, 7일 평균이 기준선 이하다
     let isVolatile: Bool
     let sevenDayMean: Double     // ms
     let baseline: Double         // 4주 중앙값, ms
@@ -144,7 +144,10 @@ func mrHRVTrend(nights: [(date: Date, value: Double)], asOf: Date,
     else if mean7 < baseline - MRHRVTrend.bandSD * sdEff { state = .below }
     else { state = .within }
 
-    let volatile = cv28 > 0 && cv7 > MRHRVTrend.volatileRatio * cv28
+    // 평균이 기준선 위인데 흔들림만 큰 건 불안정으로 보지 않는다 — 변동계수는 위로 튄 밤도 똑같이 세서,
+    // 5주 최고 밤(45ms) 하나가 CV를 키워 "불안정 → 휴식"이 나왔다(2026-10-07: 7일 29.4 vs 기준선 27.5, CV 29%/16%).
+    // 피로 신호로 알려진 건 평균이 내려가며 흔들림이 커지는 경우다(Plews·Buchheit). 같은 이유로 '안정 상승'은 평균 위를 조건으로 둔다.
+    let volatile = cv28 > 0 && cv7 > MRHRVTrend.volatileRatio * cv28 && mean7 <= baseline
 
     return MRHRVTrend(state: state, isVolatile: volatile,
                       sevenDayMean: mean7, baseline: baseline, baselineSD: sd28,

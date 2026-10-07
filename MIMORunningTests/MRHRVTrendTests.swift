@@ -156,6 +156,22 @@ struct MRHRVTrendTests {
         #expect(t?.isSuppressed == true)
     }
 
+    @Test func highNightAboveBaselineIsNotVolatile() {
+        // 실기기(2026-10-07): 7일 31·18·28·24·27·33·45, 4주 28밤 CV 16% · 중앙값 27.5.
+        // 7일 CV 29%로 1.5배를 넘지만 평균 29.4 > 기준선 → 불안정 아님(위로 튄 45가 CV를 키운 것)
+        let base: [Double] = [27, 26, 23, 32, 32, 25, 34, 24, 24, 30, 30, 26, 26, 26,
+                              23, 28, 33, 35, 34, 34, 30, 34, 22, 31, 20, 22, 35, 27]
+        let recent: [Double] = [31, 18, 28, 24, 27, 33, 45]
+        var nights: [(date: Date, value: Double)] = []
+        for (i, v) in base.enumerated() { nights.append((day(-34 + i), v)) }
+        for (i, v) in recent.enumerated() { nights.append((day(-6 + i), v)) }
+        let t = mrHRVTrend(nights: nights, asOf: Date())
+        #expect(t?.state == .within)
+        #expect(t?.isVolatile == false)
+        #expect(t?.isSuppressed == false)
+        #expect((t?.sevenDayCV ?? 0) > 1.5 * (t?.baselineCV ?? 1))   // 흔들림 조건 자체는 넘는다
+    }
+
     @Test func stableRiseWithinBandIsReadyHigh() {
         // 4주 ±5 지터(CV ≈ 0.17), 7일은 31로 고름(CV 0) → 밴드 안(SD≈5.1 → 경계 32.5)이지만 기준선 위 + 변동 급감
         let t = mrHRVTrend(nights: series(base: 30, recent: 31, baseJitter: [5, -5]), asOf: Date())
