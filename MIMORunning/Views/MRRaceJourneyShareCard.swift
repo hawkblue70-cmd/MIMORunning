@@ -223,6 +223,12 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(MRRaceJourneyShareCard.md(w.monday))
                             .foregroundStyle(palette.sub)
                             .frame(width: 30, alignment: .leading)
+                        // 계획 단계 — 대회 주차표와 같은 이름
+                        Text(localizedPhase(w.phase))
+                            .foregroundStyle(palette.text.opacity(0.85))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(width: 44, alignment: .leading)
                         Text(w.symbol ?? "")
                             .foregroundStyle(palette.text)
                             .frame(width: 9, alignment: .leading)
@@ -258,7 +264,7 @@ private struct MRRaceJourneyWeekRows: View {
                         .foregroundStyle(palette.text.opacity(0.80))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .padding(.leading, 44)
+                        .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
                 }
             }
         }

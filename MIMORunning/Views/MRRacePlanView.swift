@@ -58,7 +58,8 @@ private func localizedBreakdown(_ s: String) -> String {
         .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
 }
 
-private func localizedPhase(_ p: String) -> String {
+/// 계획 단계 이름 번역 — 대회 준비 공유 카드(MRRaceJourneyShareCard)도 같이 쓴다.
+func localizedPhase(_ p: String) -> String {
     let L = AppLanguage.shared
     switch p {
     case "늘리기":       return L.s("늘리기", "Build", ja: "積み上げ")

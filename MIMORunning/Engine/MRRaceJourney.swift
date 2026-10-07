@@ -17,6 +17,8 @@ struct MRRaceJourney: Identifiable {
 
     struct Week {
         let monday: Date
+        /// 계획 단계(늘리기·유지·회복·테이퍼·대회 페이스·대회 주·"10K 계획") — 스냅샷 그대로
+        let phase: String
         let plannedKm: Double
         let km: [Kind: Double]
         let symbol: String?
@@ -118,7 +120,7 @@ struct MRRaceJourney: Identifiable {
                 }
             let sym = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
                                  actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
-            weeks.append(Week(monday: mon, plannedKm: w.weeklyKm, km: km, symbol: sym,
+            weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · ")))
             if w.point != nil {
                 hardPlanned += 1
