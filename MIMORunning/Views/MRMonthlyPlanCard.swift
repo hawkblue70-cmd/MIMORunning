@@ -19,7 +19,15 @@ struct MRMonthlyPlanCard: View {
     var onTapRun: ((MRWorkout) -> Void)? = nil
     @State private var shareJourney: MRRaceJourney?
     /// 0 = 목표 없음. 다음 달로 그대로 이어진다(매달 다시 검토만).
-    @AppStorage("mimo.monthlyGoalKm") private var goalKm: Double = 0
+    @AppStorage("mimo.monthlyGoalKm") private var storedGoalKm: Double = 0
+    /// 월 목표 상한(km) — 숫자 키패드로 20자리를 넣거나 'inf'를 붙여넣으면 `Int(goalKm)`가 범위를 넘어 종료됐다.
+    /// 저장값은 화면을 그릴 때 읽히므로 onAppear 정리로는 늦다 — 읽을 때마다 이 범위로 거른다(밖이면 목표 없음).
+    static let maxGoalKm: Double = 2000
+    static func validGoal(_ v: Double) -> Double { v.isFinite && v > 0 && v <= maxGoalKm ? v : 0 }
+    private var goalKm: Double {
+        get { Self.validGoal(storedGoalKm) }
+        nonmutating set { storedGoalKm = Self.validGoal(newValue) }
+    }
     @State private var editing = false
     @State private var draft = ""
     @State private var frozen: [MRMonthlyFrozenWeek] = MRMonthlyPlanStore.load()
@@ -181,7 +189,7 @@ struct MRMonthlyPlanCard: View {
                        isPresented: $editing) {
                     TextField("km", text: $draft).keyboardType(.numberPad)
                     Button(AppLanguage.shared.s("저장", "Save", ja: "保存")) {
-                        if let v = Double(draft.trimmingCharacters(in: .whitespaces)), v > 0 { goalKm = v }
+                        if let v = Double(draft.trimmingCharacters(in: .whitespaces)), Self.validGoal(v) > 0 { goalKm = v }
                     }
                     if goalKm > 0 {
                         Button(AppLanguage.shared.s("목표 해제", "Clear goal", ja: "目標を解除"), role: .destructive) { goalKm = 0 }
@@ -262,7 +270,7 @@ struct MRMonthlyPlanCard: View {
         let r = monthRange(month)
         let fw = frozenWeeks(month)
         let weeks = fw.enumerated().map { withIdx($0.element.summary, $0.offset + 1) }
-        let goalPast = fw.last { $0.goalKm > 0 }?.goalKm
+        let goalPast = fw.last { Self.validGoal($0.goalKm) > 0 }.map { Self.validGoal($0.goalKm) }
         let planTotal = weeks.reduce(0.0) { acc, w in
             let days = (0..<7).filter { i in
                 guard let d = cal.date(byAdding: .day, value: i, to: w.monday) else { return false }
