@@ -35,18 +35,10 @@ struct MRArchiveDetailView: View {
             pointTypes: engine.pointRunTypes)
     }
 
-    /// 계획 시작부터 대회일까지 러닝의 앱 저장 종류 — 시작 시각으로 Activity를 찾아 종류를 읽는다.
+    /// 계획 시작부터 대회일까지 러닝의 앱 저장 종류
     private func runTypes(from start: Date) -> [Date: WorkoutType] {
-        guard let m = manager else { return engine.pointRunTypes }
-        let lookup = m.workoutTypeLookup()
-        let end = archive.raceDate.addingTimeInterval(86_400)
-        var out: [Date: WorkoutType] = [:]
-        for a in m.activities where a.type == .running && a.date >= start && a.date < end {
-            guard let t = lookup(a.id),
-                  let r = engine.runs.first(where: { abs($0.start.timeIntervalSince(a.date)) < 1 }) else { continue }
-            out[r.start] = t
-        }
-        return out
+        MRRaceJourney.runTypes(manager: manager, runs: engine.runs, from: start,
+                               to: archive.raceDate.addingTimeInterval(86_400), fallback: engine.pointRunTypes)
     }
 
     /// 저장된 글의 머리(실제 · 계획 시작 시점 예측 · 대회 직전 예측) — 제목 줄과 주차 절은 뺀다.

@@ -76,4 +76,29 @@ struct MRRaceJourneyTests {
                                    planStartPredMin: nil, appPredMin: nil, vo2Samples: [],
                                    runs: [], types: [:], hardStarts: [], pointTypes: [:]) == nil)
     }
+
+    @Test func monthLogUsesPastAndCurrentWeeksOnly() throws {
+        // 9/28 주(10월에 걸침) · 10/5 · 10/12 · 10/19(미래) — 오늘 10/14
+        let runs = [run(-2 + 30, km: 99).withStart(cal.date(from: DateComponents(year: 2026, month: 9, day: 29, hour: 7))!),
+                    run(2, km: 8), run(6, km: 10), run(13, km: 12)]
+        let mons = [cal.date(from: DateComponents(year: 2026, month: 9, day: 28))!, d(5, 0), d(12, 0), d(19, 0)]
+        let plan = mons.enumerated().map { i, m in
+            MRPlanWeekSummary(idx: i + 1, monday: cal.startOfDay(for: m), phase: "유지", longRunKm: 10, weeklyKm: 30)
+        }
+        let j = try #require(MRRaceJourney.makeMonth(
+            title: "10월 훈련일지", monthStart: d(1, 0), monthEnd: cal.date(from: DateComponents(year: 2026, month: 11, day: 1))!,
+            goalKm: 140, planTotalKm: 128, planWeeks: plan, now: d(14),
+            runs: runs, types: [:], hardStarts: [], pointTypes: [:]))
+        #expect(j.weeks.count == 3)                    // 10/19 주는 아직 아님
+        #expect(j.month?.monthKm == 30)                // 9/29 러닝은 10월이 아님
+        #expect(j.month?.monthRuns == 3)
+        #expect(j.month?.goalKm == 140)
+    }
+}
+
+private extension MRWorkout {
+    func withStart(_ d: Date) -> MRWorkout {
+        MRWorkout(start: d, durationMin: durationMin, distanceKm: distanceKm, hrAvg: hrAvg, hrMax: hrMax,
+                  tempC: tempC, humidity: humidity, indoor: indoor, isInterval: isInterval)
+    }
 }

@@ -12,8 +12,11 @@ struct MRMonthlyPlanCard: View {
     @EnvironmentObject private var engine: MREngineStore
     /// 대회가 있어도 보여 준다 — 디버그 화면 확인용
     var force = false
+    /// 러닝 종류(템포런·롱런…) 읽기용 — 월간 훈련일지 막대 색. nil이면 강도 훈련 유형만.
+    var manager: HealthKitManager? = nil
     /// 주차표 러닝 줄 → 러닝 상세. nil이면 줄은 누를 수 없다.
     var onTapRun: ((MRWorkout) -> Void)? = nil
+    @State private var shareJourney: MRRaceJourney?
     /// 0 = 목표 없음. 다음 달로 그대로 이어진다(매달 다시 검토만).
     @AppStorage("mimo.monthlyGoalKm") private var goalKm: Double = 0
     @State private var editing = false
@@ -62,6 +65,21 @@ struct MRMonthlyPlanCard: View {
         }
     }
 
+    private func monthJourney(_ p: MRMonthlyPlan) -> MRRaceJourney? {
+        let weeks = tableWeeks(p)
+        guard let end = Calendar.current.date(byAdding: .month, value: 1, to: p.monthStart) else { return nil }
+        let from = weeks.first?.monday ?? p.monthStart
+        let L = AppLanguage.shared
+        return MRRaceJourney.makeMonth(
+            title: L.s("\(monthName(p.monthStart)) 훈련일지", "\(monthName(p.monthStart)) training log",
+                       ja: "\(monthName(p.monthStart))の練習日誌"),
+            monthStart: p.monthStart, monthEnd: end, goalKm: p.goalKm, planTotalKm: p.projectedMonthKm,
+            planWeeks: weeks, runs: engine.runs,
+            types: MRRaceJourney.runTypes(manager: manager, runs: engine.runs, from: from,
+                                          to: Date().addingTimeInterval(86_400), fallback: engine.pointRunTypes),
+            hardStarts: engine.hardRunStarts.union(engine.intenseRuns.keys), pointTypes: engine.pointRunTypes)
+    }
+
     private func withIdx(_ s: MRPlanWeekSummary, _ idx: Int) -> MRPlanWeekSummary {
         MRPlanWeekSummary(idx: idx, monday: s.monday, phase: s.phase, longRunKm: s.longRunKm,
                           weeklyKm: s.weeklyKm, breakdown: s.breakdown, point: s.point)
@@ -96,6 +114,7 @@ struct MRMonthlyPlanCard: View {
                 .onAppear { freeze() }
                 .onChange(of: goalKm) { freeze() }
                 .onChange(of: engine.runs.count) { freeze() }
+                .sheet(item: $shareJourney) { j in MRRaceJourneyShareScreen(journey: j) }
                 .alert(AppLanguage.shared.s("이번 달 목표 거리", "Monthly distance goal", ja: "今月の目標距離"),
                        isPresented: $editing) {
                     TextField("km", text: $draft).keyboardType(.numberPad)
@@ -170,6 +189,21 @@ struct MRMonthlyPlanCard: View {
                             hardRunStarts: engine.hardRunStarts, pointRunTypes: engine.pointRunTypes,
                             onTapRun: onTapRun, showsProjection: false)
                     .padding(.top, 4)
+
+                // 월 목표가 있을 때 — 대회 준비 카드와 같은 방식의 월간 훈련일지(2026-10-07 사용자 요청)
+                if p.goalKm != nil {
+                    Button { shareJourney = monthJourney(p) } label: {
+                        Label(L.s("훈련일지 내보내기", "Export training log", ja: "練習日誌を書き出す"),
+                              systemImage: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Theme.violet)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Text(L.s("아침 제안에는 반영되지 않습니다.",
                          "Not used in morning suggestions.",

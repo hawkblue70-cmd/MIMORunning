@@ -43,6 +43,18 @@ struct MRRaceJourney: Identifiable {
     let vo2PredMin: Double?
     var vo2ErrPct: Double? { vo2PredMin.map { ($0 - actualMin) / actualMin * 100 } }
 
+    /// 월간 계획 훈련일지(2026-10-07) — 있으면 카드 머리가 대회 대신 월·목표·실제 거리. 대회 칸(이름·기록·예측)은 비어 있다.
+    struct Month {
+        let title: String        // "10월 훈련일지"
+        let start: Date          // 1일
+        let end: Date            // 다음 달 1일
+        let goalKm: Double?
+        let planTotalKm: Double  // 월간 계획 합계(이번 달 날짜 비율)
+        let monthKm: Double      // 이번 달 날짜의 실제 합계
+        let monthRuns: Int
+    }
+    var month: Month? = nil
+
     let weeks: [Week]
     let runCount: Int
     let totalKm: Double
@@ -80,8 +92,30 @@ struct MRRaceJourney: Identifiable {
         let span = runs.filter { $0.start >= start && $0.start < end }.sorted { $0.start < $1.start }
         let raceRun = span.filter { cal.isDate($0.start, inSameDayAs: raceDate) }
             .max { ($0.distanceKm ?? 0) < ($1.distanceKm ?? 0) }?.start
-        let L = AppLanguage.shared
 
+        let built = buildWeeks(weeksSorted, span: span, raceRun: raceRun, types: types,
+                               hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
+        let weeks = built.weeks, hardDone = built.hardDone, hardPlanned = built.hardPlanned
+
+        let vo2 = mrVO2Before(vo2Samples, raceDate: raceDate, calendar: cal)
+        return MRRaceJourney(
+            raceName: raceName, raceDate: raceDate, distanceM: distanceM, actualMin: actualMin,
+            planStartPredMin: planStartPredMin.flatMap { $0 > 0 ? $0 : nil },
+            appPredMin: appPredMin,
+            appErrPct: appPredMin.map { ($0 - actualMin) / actualMin * 100 },
+            vo2: vo2?.value,
+            vo2PredMin: vo2.flatMap { mrTimeForVDOT($0.value, distanceM: distanceM) },
+            weeks: weeks, runCount: span.count,
+            totalKm: span.compactMap(\.distanceKm).reduce(0, +),
+            longestKm: span.filter { $0.start != raceRun }.compactMap(\.distanceKm).max() ?? 0,
+            hardDone: hardDone, hardPlanned: hardPlanned)
+    }
+
+    /// 주별 막대·설명·수행 기호·강도 훈련 완료 — 대회 준비와 월간 훈련일지가 같이 쓴다.
+    static func buildWeeks(_ weeksSorted: [MRPlanWeekSummary], span: [MRWorkout], raceRun: Date?,
+                           types: [Date: WorkoutType], hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
+                           calendar cal: Calendar) -> (weeks: [Week], hardDone: Int, hardPlanned: Int) {
+        let L = AppLanguage.shared
         var weeks: [Week] = []
         var hardDone = 0, hardPlanned = 0
         for w in weeksSorted {
@@ -130,17 +164,51 @@ struct MRRaceJourney: Identifiable {
             }
         }
 
-        let vo2 = mrVO2Before(vo2Samples, raceDate: raceDate, calendar: cal)
-        return MRRaceJourney(
-            raceName: raceName, raceDate: raceDate, distanceM: distanceM, actualMin: actualMin,
-            planStartPredMin: planStartPredMin.flatMap { $0 > 0 ? $0 : nil },
-            appPredMin: appPredMin,
-            appErrPct: appPredMin.map { ($0 - actualMin) / actualMin * 100 },
-            vo2: vo2?.value,
-            vo2PredMin: vo2.flatMap { mrTimeForVDOT($0.value, distanceM: distanceM) },
-            weeks: weeks, runCount: span.count,
+        return (weeks, hardDone, hardPlanned)
+    }
+
+    /// 월간 계획 훈련일지 — 고정된 주차(지난 주·이번 주) + 그 기간 러닝. 이번 주 이후 주는 넣지 않는다.
+    static func makeMonth(title: String, monthStart: Date, monthEnd: Date, goalKm: Double?, planTotalKm: Double,
+                          planWeeks: [MRPlanWeekSummary], now: Date = Date(),
+                          runs: [MRWorkout], types: [Date: WorkoutType],
+                          hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
+                          calendar cal: Calendar = .current) -> MRRaceJourney? {
+        let today = cal.startOfDay(for: now)
+        let weeksSorted = planWeeks.filter { cal.startOfDay(for: $0.monday) <= today }.sorted { $0.monday < $1.monday }
+        guard let first = weeksSorted.first, let last = weeksSorted.last,
+              let lastEnd = cal.date(byAdding: .day, value: 7, to: cal.startOfDay(for: last.monday)),
+              let tomorrow = cal.date(byAdding: .day, value: 1, to: today) else { return nil }
+        let start = cal.startOfDay(for: first.monday)
+        let end = min(lastEnd, tomorrow)
+        let span = runs.filter { $0.start >= start && $0.start < end }.sorted { $0.start < $1.start }
+        let inMonth = span.filter { $0.start >= monthStart && $0.start < monthEnd }
+        guard !inMonth.isEmpty else { return nil }
+        let built = buildWeeks(weeksSorted, span: span, raceRun: nil, types: types,
+                               hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
+        var j = MRRaceJourney(
+            raceName: "", raceDate: monthStart, distanceM: 0, actualMin: 0,
+            planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,
+            weeks: built.weeks, runCount: span.count,
             totalKm: span.compactMap(\.distanceKm).reduce(0, +),
-            longestKm: span.filter { $0.start != raceRun }.compactMap(\.distanceKm).max() ?? 0,
-            hardDone: hardDone, hardPlanned: hardPlanned)
+            longestKm: span.compactMap(\.distanceKm).max() ?? 0,
+            hardDone: built.hardDone, hardPlanned: built.hardPlanned)
+        j.month = Month(title: title, start: monthStart, end: monthEnd, goalKm: goalKm, planTotalKm: planTotalKm,
+                        monthKm: inMonth.compactMap(\.distanceKm).reduce(0, +), monthRuns: inMonth.count)
+        return j
+    }
+
+    /// 러닝 시작 시각 → 앱 저장 종류 — Activity를 시작 시각으로 찾아 읽는다. 대회 상세·월간 계획이 같이 쓴다.
+    @MainActor
+    static func runTypes(manager: HealthKitManager?, runs: [MRWorkout], from: Date, to: Date,
+                         fallback: [Date: WorkoutType]) -> [Date: WorkoutType] {
+        guard let m = manager else { return fallback }
+        let lookup = m.workoutTypeLookup()
+        var out: [Date: WorkoutType] = [:]
+        for a in m.activities where a.type == .running && a.date >= from && a.date < to {
+            guard let t = lookup(a.id),
+                  let r = runs.first(where: { abs($0.start.timeIntervalSince(a.date)) < 1 }) else { continue }
+            out[r.start] = t
+        }
+        return out
     }
 }

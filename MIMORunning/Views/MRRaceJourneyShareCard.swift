@@ -53,7 +53,13 @@ struct MRRaceJourneyShareCard: View {
                 HStack {
                     MIMOWordmark(size: 9, strokeMIMO: theme == .light)
                     Spacer()
-                    RaceBadge(name: j.raceName, onLight: p.raceBadgeOnLight)
+                    if let m = j.month {
+                        Text(m.title)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(p.text)
+                    } else {
+                        RaceBadge(name: j.raceName, onLight: p.raceBadgeOnLight)
+                    }
                 }
                 .padding(.top, 13)
 
@@ -62,13 +68,28 @@ struct MRRaceJourneyShareCard: View {
                     .foregroundStyle(p.sub)
                     .padding(.top, 8)
 
-                HStack(alignment: .lastTextBaseline, spacing: 6) {
-                    Text(mrFormatDisplay(j.actualMin))
-                        .font(.system(size: 34, weight: .black).width(.condensed))
-                        .foregroundStyle(p.time)
-                    Text(Self.distanceName(j.distanceM))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(p.text)
+                if let m = j.month {
+                    // 월간 — 이번 달 실제 거리를 크게(거리는 기록 시간이 아니라 글자색), 횟수 옆에
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(m.monthKm >= 100 ? String(format: "%.0f", m.monthKm) : String(format: "%.1f", m.monthKm))
+                            .font(.system(size: 34, weight: .black).width(.condensed))
+                            .foregroundStyle(p.text)
+                        Text("km")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(p.text)
+                        Text(AppLanguage.shared.s("· \(m.monthRuns)회", "· \(m.monthRuns) runs", ja: "· \(m.monthRuns)回"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(p.sub)
+                    }
+                } else {
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(mrFormatDisplay(j.actualMin))
+                            .font(.system(size: 34, weight: .black).width(.condensed))
+                            .foregroundStyle(p.time)
+                        Text(Self.distanceName(j.distanceM))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(p.text)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -92,7 +113,8 @@ struct MRRaceJourneyShareCard: View {
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
                     .padding(.top, 8)
 
-                Text(L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
+                Text(j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
+                          : L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(p.sub)
                     .padding(.top, 12)
@@ -159,6 +181,10 @@ struct MRRaceJourneyShareCard: View {
         let f = DateFormatter()
         f.locale = AppLanguage.shared.locale
         f.dateFormat = "yyyy.MM.dd"
+        if let m = j.month, let last = Calendar.current.date(byAdding: .day, value: -1, to: m.end) {
+            let g = DateFormatter(); g.dateFormat = "MM.dd"
+            return f.string(from: m.start) + " – " + g.string(from: last)
+        }
         return f.string(from: j.raceDate)
     }
 
@@ -169,6 +195,14 @@ struct MRRaceJourneyShareCard: View {
     static func predictionLines(_ j: MRRaceJourney) -> [(label: String, value: String, highlight: Bool)] {
         let L = AppLanguage.shared
         var out: [(label: String, value: String, highlight: Bool)] = []
+        if let m = j.month {
+            // 목표와 계획 합계만 — 달성률·남은 km는 넣지 않는다(2026-09-22 결정)
+            if let g = m.goalKm {
+                out.append((L.s("목표", "Goal", ja: "目標"), String(format: "%.0fkm", g), false))
+            }
+            out.append((L.s("계획 합계", "Planned", ja: "計画の合計"), String(format: "%.0fkm", m.planTotalKm), false))
+            return out
+        }
         if let s = j.planStartPredMin {
             out.append((L.s("계획 시작 예측", "Plan-start est.", ja: "計画開始の予測"),
                         "\(mrFormatDisplay(s)) → " + L.s("실제 ", "actual ", ja: "実際 ") + mrFormatDisplay(j.actualMin), false))
@@ -188,10 +222,11 @@ struct MRRaceJourneyShareCard: View {
     static func prepLines(_ j: MRRaceJourney) -> [(label: String, value: String)] {
         let L = AppLanguage.shared
         var out: [(label: String, value: String)] = []
-        out.append((L.s("준비", "Build-up", ja: "準備"),
+        out.append((j.month != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
                     L.s("\(j.weeks.count)주 · \(j.runCount)회 · ", "\(j.weeks.count) wks · \(j.runCount) runs · ",
                         ja: "\(j.weeks.count)週 · \(j.runCount)回 · ") + String(format: "%.0fkm", j.totalKm)))
-        var t = L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 ") + String(format: "%.1fkm", j.longestKm)
+        var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))
+            + String(format: "%.1fkm", j.longestKm)
         if j.hardPlanned > 0 {
             t += " · " + L.s("강도 훈련 \(j.hardDone)/\(j.hardPlanned)회", "Hard \(j.hardDone)/\(j.hardPlanned)",
                              ja: "強度練習 \(j.hardDone)/\(j.hardPlanned)回")
@@ -303,7 +338,9 @@ struct MRRaceJourneyShareScreen: View {
                     .padding(.bottom, 32)
             }
             .background(Color(hex: "0D0D0F"))
-            .navigationTitle(AppLanguage.shared.s("대회 준비 공유", "Share build-up", ja: "準備を共有"))
+            .navigationTitle(journey.month != nil
+                             ? AppLanguage.shared.s("월간 훈련일지", "Monthly log", ja: "月間練習日誌")
+                             : AppLanguage.shared.s("대회 준비 공유", "Share build-up", ja: "準備を共有"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
