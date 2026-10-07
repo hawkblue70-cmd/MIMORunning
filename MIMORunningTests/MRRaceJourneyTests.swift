@@ -26,7 +26,7 @@ struct MRRaceJourneyTests {
             raceName: "춘천마라톤", raceDate: d(18), distanceM: MRDistance.dH, actualMin: 109,
             planWeeks: plan, planStartPredMin: 112, appPredMin: 110,
             vo2Samples: [(date: d(1), value: 45)],
-            runs: runs, hardStarts: [], pointTypes: [d(8): .tempo]))
+            runs: runs, types: [d(8): .tempo, d(6): .easy], hardStarts: [], pointTypes: [d(8): .tempo]))
 
         #expect(j.runCount == 5)
         #expect(abs(j.totalKm - 59.1) < 0.01)
@@ -36,18 +36,31 @@ struct MRRaceJourneyTests {
         #expect(j.weeks[1].km[.race] == 21.1)
         #expect(j.weeks[0].symbol == symbolBoth)
         #expect(j.weeks[1].symbol == symbolOver)          // 대회 21.1 > 롱런 계획 10 × 1.1
-        #expect(j.days.count == 14)
-        #expect(j.days.last?.kind == .race)
-        #expect(j.days[1].kind == .easy && j.days[0].kind == nil)
+        // 무엇을 했는지 — 종류 이름·km, 이지는 횟수(토 16km는 종류 없음 → 계획 롱런 80% 이상이라 롱런)
+        #expect(j.weeks[0].detail == "템포런 8 · 롱런 16 · 이지 1회")
+        #expect(j.weeks[1].detail == "대회 21.1 · 이지 1회")
         #expect(abs((j.appErrPct ?? 0) - 100.0 / 109) < 0.001)
         #expect(j.planStartPredMin == 112)
         #expect(j.vo2 == 45 && j.vo2PredMin != nil)
+    }
+
+    @Test func heartRateIntensityDoesNotPaintHard() throws {
+        // 심박으로 잡힌 '실제 강도'(hardStarts)라도 저장 종류가 이지면 이지로 칠한다
+        let runs = [run(6, km: 8), run(18, km: 10)]
+        let j = try #require(MRRaceJourney.make(
+            raceName: "x", raceDate: d(18), distanceM: MRDistance.d10, actualMin: 53,
+            planWeeks: [MRPlanWeekSummary(idx: 1, monday: cal.startOfDay(for: d(5)), phase: "유지", longRunKm: 12, weeklyKm: 20),
+                        MRPlanWeekSummary(idx: 2, monday: cal.startOfDay(for: d(12)), phase: "테이퍼", longRunKm: 8, weeklyKm: 15)],
+            planStartPredMin: nil, appPredMin: nil, vo2Samples: [],
+            runs: runs, types: [d(6): .easy], hardStarts: [d(6)], pointTypes: [:]))
+        #expect(j.weeks[0].km[.hard] == nil)
+        #expect(j.weeks[0].km[.easy] == 8)
     }
 
     @Test func noResultNoCard() {
         #expect(MRRaceJourney.make(raceName: "x", raceDate: d(18), distanceM: MRDistance.dH, actualMin: 0,
                                    planWeeks: [MRPlanWeekSummary(idx: 1, monday: d(5), phase: "유지", longRunKm: 10, weeklyKm: 20)],
                                    planStartPredMin: nil, appPredMin: nil, vo2Samples: [],
-                                   runs: [], hardStarts: [], pointTypes: [:]) == nil)
+                                   runs: [], types: [:], hardStarts: [], pointTypes: [:]) == nil)
     }
 }

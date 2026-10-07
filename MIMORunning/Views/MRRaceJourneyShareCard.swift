@@ -4,19 +4,20 @@ import SwiftUI
 //
 // 대회 상세(MRArchiveDetailView) 공유 버튼 → 계획 시작부터 완주까지 한 장.
 // 기록 · 예측(계획 시작 → 실제, 대회 전 앱 예측, 워치 VO2max 환산표) · 준비 요약 · 주간 막대(종류별 쌓기 + 계획선 + 수행 기호)
-// · 날짜 격자(종류 색) · 계획 수행. 다크 한 가지(v1).
+// · 주별 한 줄(무엇을 했는지 — 러닝 종류 이름·km) · 다크/라이트.
 
-private enum RJ {
-    static let easy = Color.white.opacity(0.32)
-    static let long = Theme.violet
-    static let hard = Color(hex: "F5A524")
-    static let race = RaceBadge.color
-    static let plan = Theme.violetText
-    static let text = Color.white
-    static let sub = Color.white.opacity(0.62)
-    static let empty = Color.white.opacity(0.07)
+private struct RJPalette {
+    let easy, long, hard, race, plan, text, sub, divider: Color
+    let raceBadgeOnLight: Bool
 
-    static func color(_ k: MRRaceJourney.Kind) -> Color {
+    static let dark = RJPalette(easy: Color.white.opacity(0.32), long: Theme.violet, hard: Color(hex: "F5A524"),
+                                race: RaceBadge.color, plan: Theme.violetText, text: .white,
+                                sub: Color.white.opacity(0.62), divider: Color.white.opacity(0.12), raceBadgeOnLight: false)
+    static let light = RJPalette(easy: Color.black.opacity(0.18), long: Color(hex: "5B3FD9"), hard: Color(hex: "E08A00"),
+                                 race: RaceBadge.onLightColor, plan: Color(hex: "5B3FD9"), text: Color(hex: "0D0D0D"),
+                                 sub: Color(hex: "7A7A7A"), divider: Color.black.opacity(0.10), raceBadgeOnLight: true)
+
+    func color(_ k: MRRaceJourney.Kind) -> Color {
         switch k {
         case .easy: return easy
         case .long: return long
@@ -28,32 +29,42 @@ private enum RJ {
 
 struct MRRaceJourneyShareCard: View {
     let j: MRRaceJourney
+    var theme: ShareTheme = .dark
+
+    private var p: RJPalette { theme == .light ? .light : .dark }
+
+    /// 머리·예측·준비·막대·범례·바닥 ≈ 440 + 주별 줄(줄당 15)
+    static func height(weeks: Int) -> CGFloat { 440 + CGFloat(weeks) * 15 }
 
     var body: some View {
         let L = AppLanguage.shared
         ZStack {
-            LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            if theme == .light {
+                SummaryCardPalette.light.background
+            } else {
+                LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    MIMOWordmark(size: 9, strokeMIMO: false)
+                    MIMOWordmark(size: 9, strokeMIMO: theme == .light)
                     Spacer()
-                    RaceBadge(name: j.raceName)
+                    RaceBadge(name: j.raceName, onLight: p.raceBadgeOnLight)
                 }
                 .padding(.top, 13)
 
                 Text(Self.dateLine(j))
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(RJ.sub)
+                    .foregroundStyle(p.sub)
                     .padding(.top, 8)
 
                 HStack(alignment: .lastTextBaseline, spacing: 6) {
                     Text(mrFormatDisplay(j.actualMin))
                         .font(.system(size: 34, weight: .black).width(.condensed))
-                        .foregroundStyle(RJ.text)
+                        .foregroundStyle(p.text)
                     Text(Self.distanceName(j.distanceM))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(p.long)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -63,7 +74,7 @@ struct MRRaceJourneyShareCard: View {
                 }
                 .padding(.top, 4)
 
-                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5).padding(.vertical, 9)
+                Rectangle().fill(p.divider).frame(height: 0.5).padding(.vertical, 9)
 
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Array(Self.prepLines(j).enumerated()), id: \.offset) { _, l in
@@ -71,20 +82,25 @@ struct MRRaceJourneyShareCard: View {
                     }
                 }
 
-                MRRaceJourneyWeekBars(weeks: j.weeks)
+                MRRaceJourneyWeekBars(weeks: j.weeks, palette: p)
                     .frame(height: 96)
                     .padding(.top, 10)
 
-                MRRaceJourneyDayGrid(days: j.days)
-                    .padding(.top, 8)
+                legend.padding(.top, 6)
 
-                legend
-                    .padding(.top, 8)
+                Rectangle().fill(p.divider).frame(height: 0.5).padding(.vertical, 8)
+
+                // 주별 한 줄 — 무엇을 했는지
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(j.weeks.enumerated()), id: \.offset) { _, w in
+                        weekLine(w)
+                    }
+                }
 
                 Spacer(minLength: 6)
                 Text(L.s("계획부터 완주까지 · 미모러닝", "From plan to finish · MIMO Running", ja: "計画から完走まで · ミモラン"))
                     .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(RJ.sub)
+                    .foregroundStyle(p.sub)
                     .padding(.bottom, 10)
             }
             .padding(.horizontal, 18)
@@ -96,22 +112,45 @@ struct MRRaceJourneyShareCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(RJ.sub)
+                .foregroundStyle(p.sub)
                 .frame(width: 62, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(value)
                 .font(.system(size: 11, weight: highlight ? .bold : .medium, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(highlight ? RJ.plan : RJ.text)
+                .foregroundStyle(highlight ? p.plan : p.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
     }
 
+    private func weekLine(_ w: MRRaceJourney.Week) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(Self.md(w.monday))
+                .foregroundStyle(p.sub)
+                .frame(width: 30, alignment: .leading)
+            Text(w.symbol ?? "")
+                .foregroundStyle(p.text)
+                .frame(width: 9, alignment: .leading)
+            Text(String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
+                .foregroundStyle(p.text)
+                .frame(width: 40, alignment: .leading)
+            Text(w.detail)
+                .foregroundStyle(p.text.opacity(0.85))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .font(.system(size: 9, weight: .medium, design: .rounded))
+        .monospacedDigit()
+        .frame(height: 13)
+    }
+
     private var legend: some View {
         let L = AppLanguage.shared
         return HStack(spacing: 8) {
-            ForEach([(RJ.easy, L.s("이지", "Easy", ja: "イージー")), (RJ.long, L.s("롱런", "Long", ja: "ロング走")),
-                     (RJ.hard, L.s("강도 훈련", "Hard", ja: "強度練習")), (RJ.race, L.s("대회", "Race", ja: "レース"))],
+            ForEach([(p.easy, L.s("이지", "Easy", ja: "イージー")), (p.long, L.s("롱런", "Long", ja: "ロング走")),
+                     (p.hard, L.s("강도 훈련", "Hard", ja: "強度練習")), (p.race, L.s("대회", "Race", ja: "レース"))],
                     id: \.1) { c, t in
                 HStack(spacing: 3) {
                     RoundedRectangle(cornerRadius: 1.5).fill(c).frame(width: 7, height: 7)
@@ -119,15 +158,19 @@ struct MRRaceJourneyShareCard: View {
                 }
             }
             HStack(spacing: 3) {
-                Rectangle().fill(RJ.plan).frame(width: 9, height: 1.5)
+                Rectangle().fill(p.plan).frame(width: 9, height: 1.5)
                 Text(L.s("계획", "Plan", ja: "計画"))
             }
         }
         .font(.system(size: 8, weight: .medium))
-        .foregroundStyle(RJ.sub)
+        .foregroundStyle(p.sub)
     }
 
     // MARK: - 문구
+
+    static func md(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "M/d"; return f.string(from: d)
+    }
 
     static func distanceName(_ m: Double) -> String {
         let L = AppLanguage.shared
@@ -161,8 +204,9 @@ struct MRRaceJourneyShareCard: View {
                         "\(mrFormatDisplay(a)) · " + L.s("오차 ", "error ", ja: "誤差 ") + pct(e), true))
         }
         if let v = j.vo2, let vm = j.vo2PredMin, let ve = j.vo2ErrPct {
-            out.append((String(format: "VO2max %.1f", v),
-                        L.s("환산표 ", "chart ", ja: "換算表 ") + "\(mrFormatDisplay(vm)) · " + L.s("오차 ", "error ", ja: "誤差 ") + pct(ve), false))
+            out.append(("VO2max",
+                        String(format: "%.1f · ", v) + L.s("환산표 ", "chart ", ja: "換算表 ") + "\(mrFormatDisplay(vm)) · "
+                            + L.s("오차 ", "error ", ja: "誤差 ") + pct(ve), false))
         }
         return out
     }
@@ -190,8 +234,9 @@ struct MRRaceJourneyShareCard: View {
 
 // MARK: - 주간 막대 — 종류별 쌓기 + 계획선 + 수행 기호
 
-struct MRRaceJourneyWeekBars: View {
+private struct MRRaceJourneyWeekBars: View {
     let weeks: [MRRaceJourney.Week]
+    let palette: RJPalette
 
     var body: some View {
         GeometryReader { geo in
@@ -208,7 +253,7 @@ struct MRRaceJourneyWeekBars: View {
                             VStack(spacing: 0) {
                                 ForEach([MRRaceJourney.Kind.race, .hard, .long, .easy], id: \.rawValue) { k in
                                     if let km = w.km[k], km > 0 {
-                                        Rectangle().fill(RJ.color(k))
+                                        Rectangle().fill(palette.color(k))
                                             .frame(height: chartH * km / maxKm)
                                     }
                                 }
@@ -216,48 +261,19 @@ struct MRRaceJourneyWeekBars: View {
                             .clipShape(RoundedRectangle(cornerRadius: 2))
                             .frame(width: colW, height: chartH, alignment: .bottom)
                             // 계획선
-                            Rectangle().fill(RJ.plan)
+                            Rectangle().fill(palette.plan)
                                 .frame(width: colW + 2, height: 1.5)
                                 .offset(y: -chartH * w.plannedKm / maxKm)
                         }
                         .frame(width: colW, height: chartH, alignment: .bottom)
                         Text(w.symbol ?? "")
                             .font(.system(size: 7))
-                            .foregroundStyle(Color.white.opacity(0.8))
+                            .foregroundStyle(palette.text.opacity(0.8))
                             .frame(height: symH - 2)
                     }
                 }
             }
         }
-    }
-}
-
-// MARK: - 날짜 격자 — 열 = 주, 행 = 월~일
-
-struct MRRaceJourneyDayGrid: View {
-    let days: [MRRaceJourney.Day]
-
-    var body: some View {
-        // 첫 날은 월요일(계획 주차 시작) — 7일씩 끊는다
-        let cols = stride(from: 0, to: days.count, by: 7).map { Array(days[$0..<min($0 + 7, days.count)]) }
-        GeometryReader { geo in
-            let n = max(cols.count, 1)
-            let gap: CGFloat = 2
-            let cell = min(10, (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n))
-            HStack(alignment: .top, spacing: gap) {
-                ForEach(Array(cols.enumerated()), id: \.offset) { _, col in
-                    VStack(spacing: gap) {
-                        ForEach(Array(col.enumerated()), id: \.offset) { _, d in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(d.kind.map(RJ.color) ?? RJ.empty)
-                                .frame(width: cell, height: cell)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(height: 7 * 10 + 6 * 2)
     }
 }
 
@@ -268,23 +284,29 @@ struct MRRaceJourneyShareScreen: View {
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
+    @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    private let cardH: CGFloat = 600
+    private var cardH: CGFloat { MRRaceJourneyShareCard.height(weeks: journey.weeks.count) }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    Spacer()
-                    MRRaceJourneyShareCard(j: journey)
-                        .environment(\.colorScheme, .dark)
+                    Spacer(minLength: 8)
+                    MRRaceJourneyShareCard(j: journey, theme: cardTheme)
+                        .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
                         .frame(width: cardW, height: cardH)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
-                    Spacer(minLength: 20)
+                        .scaleEffect(min(1, 560 / cardH))
+                        .frame(height: min(cardH, 560))
+                    Spacer(minLength: 16)
+                    themeToggle
+                        .padding(.horizontal, 24)
+                    Spacer(minLength: 12)
                     shareCTA
                         .padding(.horizontal, 24)
                         .padding(.bottom, 36)
@@ -300,6 +322,26 @@ struct MRRaceJourneyShareScreen: View {
             }
         }
         .task { await renderCard() }
+        .onChange(of: cardTheme) { Task { await renderCard() } }
+    }
+
+    private var themeToggle: some View {
+        let L = AppLanguage.shared
+        return HStack(spacing: 8) {
+            ForEach([(ShareTheme.dark, L.s("다크", "Dark", ja: "ダーク")), (ShareTheme.light, L.s("라이트", "Light", ja: "ライト"))],
+                    id: \.1) { t, label in
+                Button { cardTheme = t } label: {
+                    Text(label)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(cardTheme == t ? .white : .white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(cardTheme == t ? Theme.violet : Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     @ViewBuilder
@@ -331,13 +373,14 @@ struct MRRaceJourneyShareScreen: View {
     private func renderCard() async {
         isRendering = true
         let renderer = ImageRenderer(content:
-            MRRaceJourneyShareCard(j: journey)
-                .environment(\.colorScheme, .dark)
+            MRRaceJourneyShareCard(j: journey, theme: cardTheme)
+                .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
                 .frame(width: cardW, height: cardH))
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
         // 4:5 캔버스 — 다른 공유 카드와 같은 방식
-        previewImage = ShareCanvas.fit(raw, background: UIColor(Color(hex: "0D0D12")), cornerRadius: 36)
+        let backdrop = cardTheme == .light ? SummaryCardPalette.light.background : Color(hex: "0D0D12")
+        previewImage = ShareCanvas.fit(raw, background: UIColor(backdrop), cornerRadius: 36)
         isRendering = false
     }
 }
