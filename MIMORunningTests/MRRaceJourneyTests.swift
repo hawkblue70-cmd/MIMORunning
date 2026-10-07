@@ -94,6 +94,23 @@ struct MRRaceJourneyTests {
         #expect(j.month?.monthRuns == 3)
         #expect(j.month?.goalKm == 140)
     }
+
+    @Test func inProgressStopsAtThisWeek() throws {
+        // 대회 11/1, 계획 10/5 ~ 10/26 네 주, 오늘 10/14 → 2주차까지, D-18
+        let plan = [5, 12, 19, 26].enumerated().map { i, dd in
+            MRPlanWeekSummary(idx: i + 1, monday: d(dd, 0), phase: "늘리기", longRunKm: 12, weeklyKm: 30)
+        }
+        let race = cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9))!
+        let j = try #require(MRRaceJourney.makeInProgress(
+            raceName: "x", raceDate: race, distanceM: MRDistance.dH, planWeeks: plan,
+            goalMin: 110, projectedMin: 112, now: d(14),
+            runs: [run(6, km: 10), run(13, km: 8), run(20, km: 9)], types: [:], hardStarts: [], pointTypes: [:]))
+        #expect(j.weeks.count == 2)
+        #expect(j.totalKm == 18)                  // 10/20 러닝은 아직 아님
+        #expect(j.progress?.weekNumber == 2 && j.progress?.totalWeeks == 4)
+        #expect(j.progress?.daysLeft == 18)
+        #expect(j.progress?.goalMin == 110)
+    }
 }
 
 private extension MRWorkout {

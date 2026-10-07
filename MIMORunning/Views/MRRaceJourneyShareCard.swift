@@ -68,7 +68,22 @@ struct MRRaceJourneyShareCard: View {
                     .foregroundStyle(p.sub)
                     .padding(.top, 8)
 
-                if let m = j.month {
+                if let pr = j.progress {
+                    // 진행 중 — 지금까지 거리를 크게, 몇 주차인지 옆에
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(j.totalKm >= 100 ? String(format: "%.0f", j.totalKm) : String(format: "%.1f", j.totalKm))
+                            .font(.system(size: 34, weight: .black).width(.condensed))
+                            .foregroundStyle(p.text)
+                        Text("km")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(p.text)
+                        Text(AppLanguage.shared.s("· \(pr.weekNumber)/\(pr.totalWeeks)주차 · \(Self.distanceName(j.distanceM))",
+                                                  "· week \(pr.weekNumber)/\(pr.totalWeeks) · \(Self.distanceName(j.distanceM))",
+                                                  ja: "· \(pr.weekNumber)/\(pr.totalWeeks)週目 · \(Self.distanceName(j.distanceM))"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(p.sub)
+                    }
+                } else if let m = j.month {
                     // 월간 — 이번 달 실제 거리를 크게(거리는 기록 시간이 아니라 글자색), 횟수 옆에
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
                         Text(m.monthKm >= 100 ? String(format: "%.0f", m.monthKm) : String(format: "%.1f", m.monthKm))
@@ -113,7 +128,8 @@ struct MRRaceJourneyShareCard: View {
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
                     .padding(.top, 8)
 
-                Text(j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
+                Text(j.progress != nil ? L.s("대회 준비 중", "Race build-up in progress", ja: "レース準備中")
+                          : j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
                           : L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(p.sub)
@@ -181,6 +197,9 @@ struct MRRaceJourneyShareCard: View {
         let f = DateFormatter()
         f.locale = AppLanguage.shared.locale
         f.dateFormat = "yyyy.MM.dd"
+        if let pr = j.progress {
+            return f.string(from: j.raceDate) + " · D-\(pr.daysLeft)"
+        }
         if let m = j.month, let last = Calendar.current.date(byAdding: .day, value: -1, to: m.end) {
             let g = DateFormatter(); g.dateFormat = "MM.dd"
             return f.string(from: m.start) + " – " + g.string(from: last)
@@ -195,6 +214,15 @@ struct MRRaceJourneyShareCard: View {
     static func predictionLines(_ j: MRRaceJourney) -> [(label: String, value: String, highlight: Bool)] {
         let L = AppLanguage.shared
         var out: [(label: String, value: String, highlight: Bool)] = []
+        if let pr = j.progress {
+            if let g = pr.goalMin {
+                out.append((L.s("목표 기록", "Goal", ja: "目標タイム"), mrFormatDisplay(g), false))
+            }
+            if let e = pr.projectedMin {
+                out.append((L.s("대회 예측", "Race-day est.", ja: "レース予測"), mrFormatDisplay(e), true))   // 계획대로면 대회 날(projectedFinal)
+            }
+            return out
+        }
         if let m = j.month {
             // 목표와 계획 합계만 — 달성률·남은 km는 넣지 않는다(2026-09-22 결정)
             if let g = m.goalKm {
@@ -222,7 +250,7 @@ struct MRRaceJourneyShareCard: View {
     static func prepLines(_ j: MRRaceJourney) -> [(label: String, value: String)] {
         let L = AppLanguage.shared
         var out: [(label: String, value: String)] = []
-        out.append((j.month != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
+        out.append((j.month != nil || j.progress != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
                     L.s("\(j.weeks.count)주 · \(j.runCount)회 · ", "\(j.weeks.count) wks · \(j.runCount) runs · ",
                         ja: "\(j.weeks.count)週 · \(j.runCount)回 · ") + String(format: "%.0fkm", j.totalKm)))
         var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))

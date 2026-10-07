@@ -108,8 +108,24 @@ struct MRRacePlanCard: View {
     var recoveryEffortNote: String? = nil
     /// 주차표 러닝 줄 → 러닝 상세. nil이면 줄은 누를 수 없다.
     var onTapRun: ((MRWorkout) -> Void)? = nil
+    /// 러닝 종류 읽기 — 진행 중 훈련일지 막대 색(2026-10-07). nil이면 강도 훈련 유형만.
+    var manager: HealthKitManager? = nil
     var onToggleCollapse: (() -> Void)? = nil   // trailing closure 를 위해 마지막에
     @State private var showWeeks = false
+    @State private var shareJourney: MRRaceJourney?
+
+    /// 진행 중 훈련일지 — 계획 스냅샷이 있고 이미 시작한 계획만(대회 전)
+    private var progressJourney: MRRaceJourney? {
+        guard let snap = snapshot, !snap.planWeeks.isEmpty else { return nil }
+        let from = snap.planWeeks.map(\.monday).min() ?? Date()
+        return MRRaceJourney.makeInProgress(
+            raceName: RaceDisplayName.short(race.name), raceDate: race.date, distanceM: race.distanceM,
+            planWeeks: snap.planWeeks, goalMin: check.goalMin, projectedMin: plan.projectedFinal,
+            runs: runs,
+            types: MRRaceJourney.runTypes(manager: manager, runs: runs, from: from,
+                                          to: Date().addingTimeInterval(86_400), fallback: engine.pointRunTypes),
+            hardStarts: engine.hardRunStarts.union(engine.intenseRuns.keys), pointTypes: engine.pointRunTypes)
+    }
 
     private var plan: MRRacePlan { check.plan }
     private var race: MRTargetRace { check.race }
@@ -314,20 +330,36 @@ struct MRRacePlanCard: View {
             }
             .padding(.top, 18)
 
-            // 주차별 계획 (접힘)
-            Button {
-                withAnimation(.easeOut(duration: 0.2)) { showWeeks.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan", ja: showWeeks ? "週ごとの計画を閉じる" : "週ごとの計画を見る"))
-                    Image(systemName: showWeeks ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
+            // 주차별 계획 (접힘) · 오른쪽에 진행 중 훈련일지 내보내기(접힌 채로도 보이게, 2026-10-07)
+            HStack {
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { showWeeks.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(L.s(showWeeks ? "주차별 계획 접기" : "주차별 계획 보기", showWeeks ? "Collapse weekly plan" : "Show weekly plan", ja: showWeeks ? "週ごとの計画を閉じる" : "週ごとの計画を見る"))
+                        Image(systemName: showWeeks ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    // 한 단계 크게(12→13) · 준비 비교 증가 표시(+37%)와 같은 색
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.positive)
                 }
-                // 한 단계 크게(12→13) · 준비 비교 증가 표시(+37%)와 같은 색
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.positive)
+                Spacer(minLength: 8)
+                if let j = progressJourney {
+                    Button { shareJourney = j } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(L.s("훈련일지 내보내기", "Export log", ja: "練習日誌を書き出す"))
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(mrAccentText)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.top, 16)
+            .sheet(item: $shareJourney) { j in MRRaceJourneyShareScreen(journey: j) }
 
             if showWeeks {
                 MRWeekTable(weeks: plan.weeks, histMaxWeeklyKm: plan.histMaxWeeklyKm,
@@ -1149,6 +1181,8 @@ struct MRRacePlanSection: View {
     @EnvironmentObject var engine: MREngineStore
     /// 회복·테이퍼 주 평균 강도 초과 문구 — MeView가 계산해 내려준다
     var recoveryEffortNote: String? = nil
+    /// 러닝 종류 읽기 — 진행 중 훈련일지 막대 색
+    var manager: HealthKitManager? = nil
     /// 주차표 러닝 줄 → 러닝 상세 — MeView가 자기 내비게이션으로 연다
     var onTapRun: ((MRWorkout) -> Void)? = nil
     @Query private var snapshots: [RacePlanSnapshot]
@@ -1182,7 +1216,7 @@ struct MRRacePlanSection: View {
                             MRRacePlanCard(check: c, isExpanded: isExpanded,
                                            runs: engine.runs, snapshot: snapshot(for: c),
                                            recoveryEffortNote: recoveryEffortNote,
-                                           onTapRun: onTapRun) {
+                                           onTapRun: onTapRun, manager: manager) {
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     expandedId = isExpanded ? nil : item.id
                                 }

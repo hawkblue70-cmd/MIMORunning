@@ -244,7 +244,7 @@ struct MeView: View {
                         }
                             .padding(.horizontal, 16)
                         raceGoalsSection
-                        MRRacePlanSection(recoveryEffortNote: recoveryEffortNote) { run in
+                        MRRacePlanSection(recoveryEffortNote: recoveryEffortNote, manager: manager) { run in
                             // 주차표 러닝 줄 → 러닝 상세(시작 시각으로 Activity 매칭)
                             guard navPath.isEmpty,
                                   let a = manager.activities.first(where: { abs($0.date.timeIntervalSince(run.start)) < 1 })

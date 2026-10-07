@@ -55,6 +55,16 @@ struct MRRaceJourney: Identifiable {
     }
     var month: Month? = nil
 
+    /// 진행 중인 대회 계획(2026-10-07) — 있으면 머리가 기록 대신 D-day·지금까지 거리·목표·지금 예측.
+    struct Progress {
+        let daysLeft: Int
+        let weekNumber: Int      // 이번 주가 몇 주차인지
+        let totalWeeks: Int
+        let goalMin: Double?
+        let projectedMin: Double?
+    }
+    var progress: Progress? = nil
+
     let weeks: [Week]
     let runCount: Int
     let totalKm: Double
@@ -210,5 +220,35 @@ struct MRRaceJourney: Identifiable {
             out[r.start] = t
         }
         return out
+    }
+
+    /// 진행 중인 대회 계획 — 계획 시작부터 이번 주까지. 대회 전이라 기록·오차·VO2 줄은 없다.
+    static func makeInProgress(raceName: String, raceDate: Date, distanceM: Double,
+                               planWeeks: [MRPlanWeekSummary], goalMin: Double?, projectedMin: Double?,
+                               now: Date = Date(), runs: [MRWorkout], types: [Date: WorkoutType],
+                               hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
+                               calendar cal: Calendar = .current) -> MRRaceJourney? {
+        let today = cal.startOfDay(for: now)
+        let all = planWeeks.sorted { $0.monday < $1.monday }
+        let weeksSorted = all.filter { cal.startOfDay(for: $0.monday) <= today }
+        guard let first = weeksSorted.first,
+              let tomorrow = cal.date(byAdding: .day, value: 1, to: today),
+              today < cal.startOfDay(for: raceDate) else { return nil }
+        let start = cal.startOfDay(for: first.monday)
+        let span = runs.filter { $0.start >= start && $0.start < tomorrow }.sorted { $0.start < $1.start }
+        let built = buildWeeks(weeksSorted, span: span, raceRun: nil, types: types,
+                               hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
+        var j = MRRaceJourney(
+            raceName: raceName, raceDate: raceDate, distanceM: distanceM, actualMin: 0,
+            planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,
+            weeks: built.weeks, runCount: span.count,
+            totalKm: span.compactMap(\.distanceKm).reduce(0, +),
+            longestKm: span.compactMap(\.distanceKm).max() ?? 0,
+            hardDone: built.hardDone, hardPlanned: built.hardPlanned)
+        j.progress = Progress(
+            daysLeft: cal.dateComponents([.day], from: today, to: cal.startOfDay(for: raceDate)).day ?? 0,
+            weekNumber: weeksSorted.count, totalWeeks: all.count,
+            goalMin: goalMin.flatMap { $0 > 0 ? $0 : nil }, projectedMin: projectedMin.flatMap { $0 > 0 ? $0 : nil })
+        return j
     }
 }
