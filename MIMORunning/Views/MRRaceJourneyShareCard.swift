@@ -92,7 +92,7 @@ struct MRRaceJourneyShareCard: View {
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
                     .padding(.top, 8)
 
-                Text(L.s("계획부터 완주까지 · 미모러닝", "From plan to finish · MIMO Running", ja: "計画から完走まで · ミモラン"))
+                Text(L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(p.sub)
                     .padding(.top, 12)
