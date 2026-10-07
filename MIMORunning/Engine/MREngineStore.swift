@@ -454,7 +454,15 @@ final class MREngineStore: ObservableObject {
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         // ⚠ HRV 조회는 화면 준비(.ready)를 막지 않는다 — 캐시로 먼저 그리고, 필요하면 뒤에서 다시 읽어 조언·오늘 카드만 갱신한다.
         //   HealthKit 쿼리 하나가 늦거나 멈춰도 홈이 멈추지 않게. (2026-09-23: 빌드 후 앱이 멈춘다는 보고)
-        let hrvStale = hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight
+        // ⚠ 캐시를 오늘 이전에 읽었으면 다시 읽는다 — 어제 저녁 15시 이후 샘플(러닝 직후 19ms)이 수면 기록 없이
+        //   창 규칙으로 '오늘 밤' 키를 먼저 차지해, 아침에 hasTonight=true·24시간 안으로 캐시를 그대로 써
+        //   실제 수면 값(28·50·27)이 아니라 19가 어젯밤 값이 됐다(2026-10-08).
+        //   오늘 아침 일찍 읽은 캐시도 기상 전일 수 있어 정오 전에는 1시간이 지나면 다시 읽는다.
+        let cal = Calendar.current
+        let fetchedToday = hrvLastFetchedAt.map { cal.isDateInToday($0) } ?? false
+        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        let fetchedBeforeWake = hrvLastFetchedAt.map { $0 < noon && hrvAge >= 3600 } ?? true
+        let hrvStale = hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight || !fetchedToday || fetchedBeforeWake
         #if DEBUG
         print("[HRV] 캐시 \(hrvNights.count)밤 · 오늘 밤 \(hasTonight ? "있음" : "없음") · \(hrvStale ? "뒤에서 재조회" : "캐시 사용")")
         #endif
