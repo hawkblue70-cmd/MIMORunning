@@ -29,6 +29,8 @@ struct MRRaceJourney: Identifiable {
         /// 진행 중 계획(2026-10-07 사용자: 아직 안 한 주도 예정으로 표시) — 다음 주부터 · 이번 주
         var isFuture: Bool = false
         var isCurrent: Bool = false
+        /// detail을 종류별로 나눈 조각 — 카드가 막대와 같은 색으로 칠한다(2026-10-07 사용자 요청)
+        var parts: [(text: String, kind: Kind)] = []
         var totalKm: Double { km.values.reduce(0, +) }
     }
 
@@ -161,13 +163,14 @@ struct MRRaceJourney: Identifiable {
                     groups.append((label, k, 1, d))
                 }
             }
-            let named = groups.enumerated()
+            let parts: [(text: String, kind: Kind)] = groups.enumerated()
                 .sorted { ($0.element.kind.rawValue, -$0.offset) > ($1.element.kind.rawValue, -$1.offset) }
                 .map { g in
                     let kmStr = mrPointKmString((g.element.km * 10).rounded() / 10)
-                    return L.s("\(g.element.name) \(g.element.n)회 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
-                               ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km")
+                    return (L.s("\(g.element.name) \(g.element.n)회 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
+                                ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km"), g.element.kind)
                 }
+            let named = parts.map(\.text)
             // 다음 주부터는 예정 — 실행 안내(계획 문구)와 강도 훈련만, 기호·실제 없음
             if let t = today, mon > t {
                 var plan = w.breakdown
@@ -184,7 +187,7 @@ struct MRRaceJourney: Identifiable {
             if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
-                              isCurrent: isCurrent))
+                              isCurrent: isCurrent, parts: parts))
             if w.point != nil {
                 hardPlanned += 1
                 if mrPointRun(weekRuns: ws, longRunKm: w.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil {

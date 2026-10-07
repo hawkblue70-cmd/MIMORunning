@@ -291,6 +291,19 @@ private struct MRRaceJourneyWeekRows: View {
 
     private static let barH: CGFloat = 8
 
+    /// 그 주에 한 것 — 종류마다 막대와 같은 색, 구분점은 흐린 글자. 예정 주·러닝 없음은 한 가지 색.
+    private func detailText(_ w: MRRaceJourney.Week) -> Text {
+        guard !w.isFuture, !w.parts.isEmpty else {
+            return Text(w.detail).foregroundColor(w.isFuture ? palette.sub : palette.text.opacity(0.80))
+        }
+        var t = Text("")
+        for (i, p) in w.parts.enumerated() {
+            if i > 0 { t = t + Text(" · ").foregroundColor(palette.sub) }
+            t = t + Text(p.text).foregroundColor(palette.color(p.kind))
+        }
+        return t
+    }
+
     var body: some View {
         let maxKm = max(weeks.map { max($0.totalKm, $0.plannedKm) }.max() ?? 1, 1)
         VStack(alignment: .leading, spacing: 4) {
@@ -338,9 +351,8 @@ private struct MRRaceJourneyWeekRows: View {
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .monospacedDigit()
 
-                    Text(w.detail)
+                    detailText(w)
                         .font(.system(size: 8.5, weight: .medium))
-                        .foregroundStyle(w.isFuture ? palette.sub : palette.text.opacity(0.80))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
