@@ -359,9 +359,9 @@ enum RunChartBuilder {
             allSeries[.heartRate] = storedHRAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 9 → mean 9
+        // Cadence — hard clamp 140–220, 상하 3% percentile 제거 → median 13 → mean 13
         //
-        // ⚠ 창 9/9(점 ≈10초 → 약 1.5분씩, 2026-10-07 사용자 결정). 25/25(약 4분씩)는 신호 대기·출발 같은 1분 안팎 하락을
+        // ⚠ 창 13/13(점 ≈10초 → 약 2분씩, 2026-10-07 사용자 결정, 9/9에서 조정). 25/25(약 4분씩)는 신호 대기·출발 같은 1분 안팎 하락을
         //   다 지워 선 바닥이 172인데 평균(총 걸음 ÷ 시간)은 171로, "선은 전부 평균 위"처럼 보였다.
         //
         // ⚠ 위아래를 같은 비율로 자른다. 예전에는 위만 8%(hi: 0.92)를 잘라, 타일에 뜨는
@@ -369,30 +369,30 @@ enum RunChartBuilder {
         //   있었지만 코드는 1%/8%였다.
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 13,
                                       clamp: .hard(min: 140, max: 220),
                                       secondaryClamp: .percentile(lo: 0.03, hi: 0.97),
-                                      meanWindow: 9) {
+                                      meanWindow: 13) {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Power — 5–95 percentile clamp, median 9 → mean 9 (케이던스와 같은 창, 2026-10-07)
+        // Power — 5–95 percentile clamp, median 13 → mean 13 (케이던스와 같은 창, 2026-10-07)
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 13,
                                       clamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 9) {
+                                      meanWindow: 13) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Ground contact — hard clamp 150–400 ms → 5–95 percentile → median 9 → mean 9 (케이던스와 같은 창, 2026-10-07)
+        // Ground contact — hard clamp 150–400 ms → 5–95 percentile → median 13 → mean 13 (케이던스와 같은 창, 2026-10-07)
         //   (러닝 지면접촉은 대개 200~300ms. 150 미만·400 초과는 걷기·정지·센서 튐)
         let gctRaw = rawPoints(gctSamples)
         if let s = makeSmoothedSeries(layer: .groundContact, rawPoints: gctRaw,
-                                      smoothWindow: 9,
+                                      smoothWindow: 13,
                                       clamp: .hard(min: 150, max: 400),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 9) {
+                                      meanWindow: 13) {
             allSeries[.groundContact] = storedGctAvg.map { s.withAvg($0) } ?? s
         }
 
