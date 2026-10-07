@@ -4,6 +4,8 @@ import SwiftData
 import HealthKit
 
 struct MRDebugView: View {
+    /// 월간 계획 카드 확인용 — 러닝 종류·러닝 흐름 차트(훈련일지)에 필요
+    var manager: HealthKitManager? = nil
     @EnvironmentObject private var engine: MREngineStore
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.modelContext) private var modelContext
@@ -59,7 +61,7 @@ struct MRDebugView: View {
 
                 // 월간 계획 카드 — 나 탭은 대회가 있으면 숨기므로 여기서 확인
                 Text("월간 계획 카드(대회 있어도 표시)").font(.system(size: 13, weight: .semibold))
-                MRMonthlyPlanCard(force: true)
+                MRMonthlyPlanCard(force: true, manager: manager)
 
                 // 분리된 스냅샷 (사용자가 목록에서 지운 대회의 진행 이력) — 안전망: 여기서 대회를 다시 만들어 붙인다
                 let detached = allSnapshots.filter(\.isDetached).sorted { $0.raceDate < $1.raceDate }

@@ -1604,7 +1604,7 @@ struct MeView: View {
                     .padding(.horizontal, 16)
             }
             .sheet(isPresented: $showDebug) {
-                MRDebugView()
+                MRDebugView(manager: manager)
                     .environmentObject(engine)
                     .environment(raceDetector)
                     .preferredColorScheme(.dark)
