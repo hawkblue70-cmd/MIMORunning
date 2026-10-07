@@ -1,0 +1,53 @@
+import Testing
+import Foundation
+@testable import MIMORunning
+
+@Suite("대회 준비 공유 카드 — 계획에서 완주까지", .korean)
+struct MRRaceJourneyTests {
+
+    private let cal = Calendar.current
+    private func d(_ day: Int, _ h: Int = 7) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: h))!
+    }
+    private func run(_ day: Int, km: Double) -> MRWorkout {
+        MRWorkout(start: d(day), durationMin: km * 6, distanceKm: km, hrAvg: 140, hrMax: 170,
+                  tempC: 15, humidity: nil, indoor: false, isInterval: false)
+    }
+
+    @Test func buildsWeeksDaysAndPredictions() throws {
+        // 10/5 주: 화 8 · 목 8(템포런) · 토 16 / 10/12 주: 화 6 · 일 하프 대회
+        let runs = [run(6, km: 8), run(8, km: 8), run(10, km: 16), run(13, km: 6), run(18, km: 21.1)]
+        let tempo = MRPlanPoint(kind: .tempo, totalKm: 7, reps: nil, repKm: nil, sustainedKm: 4, paceSecPerKm: 320)
+        let plan = [
+            MRPlanWeekSummary(idx: 1, monday: cal.startOfDay(for: d(5)), phase: "늘리기", longRunKm: 16, weeklyKm: 32, point: tempo),
+            MRPlanWeekSummary(idx: 2, monday: cal.startOfDay(for: d(12)), phase: "테이퍼", longRunKm: 10, weeklyKm: 30),
+        ]
+        let j = try #require(MRRaceJourney.make(
+            raceName: "춘천마라톤", raceDate: d(18), distanceM: MRDistance.dH, actualMin: 109,
+            planWeeks: plan, planStartPredMin: 112, appPredMin: 110,
+            vo2Samples: [(date: d(1), value: 45)],
+            runs: runs, hardStarts: [], pointTypes: [d(8): .tempo]))
+
+        #expect(j.runCount == 5)
+        #expect(abs(j.totalKm - 59.1) < 0.01)
+        #expect(j.longestKm == 16)                       // 대회 러닝은 빼고
+        #expect(j.hardDone == 1 && j.hardPlanned == 1)
+        #expect(j.weeks[0].km[.hard] == 8 && j.weeks[0].km[.long] == 16 && j.weeks[0].km[.easy] == 8)
+        #expect(j.weeks[1].km[.race] == 21.1)
+        #expect(j.weeks[0].symbol == symbolBoth)
+        #expect(j.weeks[1].symbol == symbolOver)          // 대회 21.1 > 롱런 계획 10 × 1.1
+        #expect(j.days.count == 14)
+        #expect(j.days.last?.kind == .race)
+        #expect(j.days[1].kind == .easy && j.days[0].kind == nil)
+        #expect(abs((j.appErrPct ?? 0) - 100.0 / 109) < 0.001)
+        #expect(j.planStartPredMin == 112)
+        #expect(j.vo2 == 45 && j.vo2PredMin != nil)
+    }
+
+    @Test func noResultNoCard() {
+        #expect(MRRaceJourney.make(raceName: "x", raceDate: d(18), distanceM: MRDistance.dH, actualMin: 0,
+                                   planWeeks: [MRPlanWeekSummary(idx: 1, monday: d(5), phase: "유지", longRunKm: 10, weeklyKm: 20)],
+                                   planStartPredMin: nil, appPredMin: nil, vo2Samples: [],
+                                   runs: [], hardStarts: [], pointTypes: [:]) == nil)
+    }
+}

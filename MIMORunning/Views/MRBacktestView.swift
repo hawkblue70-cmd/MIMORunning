@@ -13,7 +13,26 @@ struct MRArchiveDetailView: View {
     var manager: HealthKitManager? = nil
     @EnvironmentObject private var engine: MREngineStore
     @State private var navPath: [Activity] = []
+    @State private var shareJourney: MRRaceJourney?
     @Environment(\.dismiss) private var dismiss
+
+    /// 대회 준비 공유 카드 재료 — 계획 스냅샷과 실제 기록이 있을 때만. 앱 예측은 대회 기록 목록과 같은 엔진 백테스트 값.
+    private var journey: MRRaceJourney? {
+        guard archive.hasResult, archive.actualMin > 0, let snap = snapshot, !snap.planWeeks.isEmpty else { return nil }
+        let cal = Calendar.current
+        let bt = engine.backtest.first { r in
+            let d = mrDistanceForLabel(r.label)
+            return cal.isDate(r.date, inSameDayAs: archive.raceDate) && d > 0 && abs(d - archive.distanceM) / d <= 0.02
+        }
+        return MRRaceJourney.make(
+            raceName: RaceDisplayName.short(archive.raceName), raceDate: archive.raceDate,
+            distanceM: archive.distanceM, actualMin: archive.actualMin,
+            planWeeks: snap.planWeeks,
+            planStartPredMin: archive.reconstructed ? nil : archive.snapshotProjectedFinalMin,
+            appPredMin: bt?.predictedMin, vo2Samples: engine.vo2Samples,
+            runs: engine.runs, hardStarts: engine.hardRunStarts.union(engine.intenseRuns.keys),
+            pointTypes: engine.pointRunTypes)
+    }
 
     /// 저장된 글의 머리(실제 · 계획 시작 시점 예측 · 대회 직전 예측) — 제목 줄과 주차 절은 뺀다.
     private var headLines: [String] {
@@ -72,9 +91,16 @@ struct MRArchiveDetailView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLanguage.shared.s("닫기", "Done", ja: "閉じる")) { dismiss() }
                 }
+                if let j = journey {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { shareJourney = j } label: { Image(systemName: "square.and.arrow.up") }
+                            .accessibilityLabel(AppLanguage.shared.s("대회 준비 공유", "Share build-up", ja: "準備を共有"))
+                    }
+                }
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(item: $shareJourney) { j in MRRaceJourneyShareScreen(journey: j) }
     }
 }
 
