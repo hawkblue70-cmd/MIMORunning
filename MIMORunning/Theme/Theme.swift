@@ -147,3 +147,12 @@ extension Theme {
     ]
 }
 
+extension String {
+    /// 한국어 줄바꿈이 숫자와 붙는 단위·조사 사이에서 끊기지 않게 한다("· 4 / 주 평균", "32% / 가").
+    /// 숫자·%·영문 뒤에 한글이 붙는 자리에 WORD JOINER(U+2060, 보이지 않음)를 넣는다 — 화면 표시 전용,
+    /// 비교·저장·테스트용 문자열에는 쓰지 않는다.
+    var keepingNumberUnitsTogether: String {
+        replacingOccurrences(of: #"([0-9%A-Za-z])(?=[가-힣])"#, with: "$1\u{2060}", options: .regularExpression)
+    }
+}
+

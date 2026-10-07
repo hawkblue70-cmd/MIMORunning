@@ -472,3 +472,13 @@ enum TrendMetric: String, CaseIterable, Identifiable {
         }
     }
 }
+
+extension Array where Element == SplitData {
+    /// 전체 페이스(구간 시간 합 ÷ 거리 합, sec/km) — km 페이스의 단순 평균은 러닝 카드 페이스와 1초씩 달랐다.
+    /// 구간 차트의 "평균" 점선·이름표는 이 값을 쓴다.
+    var overallPaceSecPerKm: Double {
+        let dist = map(\.distanceM).reduce(0, +)
+        guard dist > 0 else { return 0 }
+        return map(\.duration).reduce(0, +) / (dist / 1000)
+    }
+}

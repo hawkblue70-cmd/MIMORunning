@@ -356,15 +356,15 @@ struct RunSummaryTests {
 
     @Test func vo2Levels() {
         #expect(RunSummary.vo2Level(20).name == "낮음")
-        #expect(RunSummary.vo2Level(30).name == "평균이하")
-        #expect(RunSummary.vo2Level(35).name == "평균이상")
+        #expect(RunSummary.vo2Level(30).name == "평균 이하")
+        #expect(RunSummary.vo2Level(35).name == "평균 이상")
         #expect(RunSummary.vo2Level(45.4).name == "높음")
         #expect(RunSummary.vo2Level(60).index == 3)
     }
 
     @Test func vo2BelowAverageIsNeutral() {
         var i = RunSummaryInput(); i.vo2 = 30; i.vo2AgeDecade = "50대"; i.vo2GenderLabel = ""
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "유산소", state: "50대 기준 평균이하", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "유산소", state: "50대 기준 평균 이하", tone: .neutral)])
     }
 
     // MARK: 근거·다음 (Task 3)

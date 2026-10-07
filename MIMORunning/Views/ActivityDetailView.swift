@@ -2432,10 +2432,8 @@ private struct SplitsSection: View {
     }
     private var minPace: Double { splits.map(\.paceSecPerKm).min() ?? 0 }
     private var maxPace: Double { splits.map(\.paceSecPerKm).max() ?? 0 }
-    private var avgPace: Double {
-        guard !splits.isEmpty else { return 0 }
-        return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
-    }
+    /// 전체 페이스(시간 합 ÷ 거리 합) — 러닝 카드 페이스와 같은 값
+    private var avgPace: Double { splits.overallPaceSecPerKm }
 
     // Faster pace = fewer seconds per km = longer bar. Range: 0.28 (slowest) … 1.0 (fastest).
     private func barFraction(for pace: Double) -> Double {
@@ -3859,10 +3857,8 @@ struct SplitsPanelChart: View {
     }
     private var minPace: Double { splits.map(\.paceSecPerKm).min() ?? 0 }
     private var maxPace: Double { splits.map(\.paceSecPerKm).max() ?? 0 }
-    private var avgPace: Double {
-        guard !splits.isEmpty else { return 0 }
-        return splits.map(\.paceSecPerKm).reduce(0, +) / Double(splits.count)
-    }
+    /// 전체 페이스(시간 합 ÷ 거리 합) — 러닝 카드 페이스와 같은 값
+    private var avgPace: Double { splits.overallPaceSecPerKm }
     private func barFraction(for pace: Double) -> Double {
         let range = maxPace - minPace
         guard range > 0.5 else { return 0.65 }
@@ -3943,7 +3939,7 @@ struct SplitsPanelChart: View {
     private var panelVerticalBarChart: some View {
         let ds: [SplitData] = displaySplits
         let dMax: Double = ds.map(\.paceSecPerKm).max() ?? 0
-        let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
+        let dAvg: Double = ds.overallPaceSecPerKm
         let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
         let dRange: Double = dMax - (ds.map(\.paceSecPerKm).min() ?? 0)
         let paceH:   CGFloat = 16
@@ -4039,7 +4035,7 @@ struct SplitsPanelChart: View {
         let ds: [SplitData] = displaySplits
         let dMin: Double = ds.map(\.paceSecPerKm).min() ?? 0
         let dMax: Double = ds.map(\.paceSecPerKm).max() ?? 0
-        let dAvg: Double = ds.isEmpty ? 0 : ds.map(\.paceSecPerKm).reduce(0, +) / Double(ds.count)
+        let dAvg: Double = ds.overallPaceSecPerKm
         let dFastIdx: Int? = ds.indices.min(by: { ds[$0].paceSecPerKm < ds[$1].paceSecPerKm })
         let dRange: Double = dMax - dMin
         let avgSec = Int(dAvg.rounded())

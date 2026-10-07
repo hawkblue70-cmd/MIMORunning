@@ -499,7 +499,7 @@ private struct VO2RPMGaugeView: View {
         Color(hex: "EDC84B"),  // 평균이상
         Theme.positive,  // 높음
     ]
-    private let segLabels   = ["낮음", "평균이하", "평균이상", "높음"]
+    private let segLabels   = ["낮음", "평균 이하", "평균 이상", "높음"]
     private let segLabelsEn = ["Low", "Below avg", "Above avg", "High"]
 
     // 15→180°(9시), 57→360°(3시). clockwise:false 로 단거리 경로(상단 반원)
@@ -2667,7 +2667,9 @@ private struct RhythmInsightCard: View {
         let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
         if z2frac >= 0.60 { return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました") }
-        guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return "" }
+        // 총평과 같은 규칙 — Zone 4+5 합이 가장 큰 존 이상(35%↑)이면 고강도 캡션
+        guard let v = FormNarrative.verdictZone(fractions: Dictionary(visible.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)) else { return "" }
+        let dom = (id: v.zone, fraction: v.frac)
         let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
         let heatSuffix: String = {
             guard heatDelta >= RunSummary.heatNoteMinBpm else { return "" }
@@ -2694,8 +2696,8 @@ private struct RhythmInsightCard: View {
         let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
         if z2frac >= 0.60 { return IC.zone(2) }
-        guard let dom = visible.max(by: { $0.fraction < $1.fraction }) else { return IC.label }
-        return IC.zone(dom.id)
+        guard let v = FormNarrative.verdictZone(fractions: Dictionary(visible.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)) else { return IC.label }
+        return IC.zone(v.zone)
     }
 
     private func cadenceSection(_ cadence: Int) -> some View {
@@ -2727,8 +2729,8 @@ private struct RhythmInsightCard: View {
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let refNote = L.s("\(info.ageDecade)\(g) 기준 · FRIEND DB",
                           "\(info.ageDecade)\(g) · FRIEND DB", ja: "\(info.ageDecade)\(g)基準 · FRIEND DB")
-        let levelLabels = [L.s("낮음", "Low", ja: "低い"), L.s("평균이하", "Below", ja: "平均以下"),
-                           L.s("평균이상", "Above", ja: "平均以上"), L.s("높음", "High", ja: "高い")]
+        let levelLabels = [L.s("낮음", "Low", ja: "低い"), L.s("평균 이하", "Below", ja: "平均以下"),
+                           L.s("평균 이상", "Above", ja: "平均以上"), L.s("높음", "High", ja: "高い")]
         let thresholds = ["<\(Int(info.normBelowAvg))",
                           "\(Int(info.normBelowAvg))–\(Int(info.normAboveAvg))",
                           "\(Int(info.normAboveAvg))–\(Int(info.normHigh))",
@@ -3297,13 +3299,15 @@ private struct PerformanceInsightCard: View {
                 let canvasH = size.height
                 let botPad:   CGFloat = 14
                 let topPad:   CGFloat = 3
-                let chartW = w
+                // 세로축 숫자는 플롯 밖 왼쪽 여백에 — 플롯 안 모서리에 두면 가장 느린·가장 낮은 점이 숫자를 덮었다
+                let leftPad: CGFloat = 18
+                let chartW = w - leftPad
                 let chartH = canvasH - botPad - topPad
 
                 let cx: (Double) -> CGFloat = { pace in
                     let denom = pMax - pMin
                     let norm = denom < 1 ? 0.5 : (pMax - pace) / denom
-                    return CGFloat(norm) * chartW
+                    return leftPad + CGFloat(norm) * chartW
                 }
                 let cy: (Double) -> CGFloat = { hr in
                     let denom = hMax - hMin
@@ -3313,18 +3317,18 @@ private struct PerformanceInsightCard: View {
 
                 // Axis lines
                 var xAxis = Path()
-                xAxis.move(to: CGPoint(x: 0, y: topPad + chartH))
+                xAxis.move(to: CGPoint(x: leftPad, y: topPad + chartH))
                 xAxis.addLine(to: CGPoint(x: w, y: topPad + chartH))
                 ctx.stroke(xAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
                 var yAxis = Path()
-                yAxis.move(to: CGPoint(x: 0, y: topPad))
-                yAxis.addLine(to: CGPoint(x: 0, y: topPad + chartH))
+                yAxis.move(to: CGPoint(x: leftPad, y: topPad))
+                yAxis.addLine(to: CGPoint(x: leftPad, y: topPad + chartH))
                 ctx.stroke(yAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
 
                 // 평소 범위 띠 — 점·화살표보다 뒤에, 축 안쪽으로만 (SD가 크면 축 밖으로 나가므로 클립)
                 if let band {
                     ctx.drawLayer { layer in
-                        layer.clip(to: Path(CGRect(x: 0, y: topPad, width: chartW, height: chartH)))
+                        layer.clip(to: Path(CGRect(x: leftPad, y: topPad, width: chartW, height: chartH)))
                         let xL = cx(rawPMax), xR = cx(rawPMin)          // x축이 뒤집혀 있다: 느림 왼쪽 · 빠름 오른쪽
                         let eL = band.expected(rawPMax), eR = band.expected(rawPMin)
                         var fill = Path()
@@ -3426,14 +3430,14 @@ private struct PerformanceInsightCard: View {
                     scatterDot(center, radius: 5.4, color: ScatterStyle.today)
                 }
 
-                // Y-axis labels — inside chart, top-left / bottom-left
+                // Y-axis labels — 플롯 왼쪽 여백, 위·아래 끝
                 ctx.draw(
                     Text("\(Int(rawHMax))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
-                    at: CGPoint(x: 3, y: topPad + 1), anchor: .topLeading
+                    at: CGPoint(x: leftPad - 2, y: topPad), anchor: .topTrailing
                 )
                 ctx.draw(
                     Text("\(Int(rawHMin))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
-                    at: CGPoint(x: 3, y: topPad + chartH - 1), anchor: .bottomLeading
+                    at: CGPoint(x: leftPad - 2, y: topPad + chartH), anchor: .bottomTrailing
                 )
 
                 // X-axis labels (slow left / fast right — x-axis is inverted)
@@ -3443,7 +3447,7 @@ private struct PerformanceInsightCard: View {
                 }
                 ctx.draw(
                     Text(fmtPace(rawPMax)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
-                    at: CGPoint(x: 3, y: topPad + chartH + 3), anchor: .topLeading
+                    at: CGPoint(x: leftPad, y: topPad + chartH + 3), anchor: .topLeading
                 )
                 ctx.draw(
                     Text(fmtPace(rawPMin)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
@@ -3488,7 +3492,7 @@ private struct PerformanceInsightCard: View {
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let bounds: [Double] = [15, 26, 33, 41, 57]
         let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
-        let levelNames = [L.s("낮음","Low", ja: "低い"), L.s("평균이하","Below avg", ja: "平均以下"), L.s("평균이상","Above avg", ja: "平均以上"), L.s("높음","High", ja: "高い")]
+        let levelNames = [L.s("낮음","Low", ja: "低い"), L.s("평균 이하","Below avg", ja: "平均以下"), L.s("평균 이상","Above avg", ja: "平均以上"), L.s("높음","High", ja: "高い")]
         var gradeIdx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
         let valStr = String(format: "%.1f", vo2)
@@ -4049,8 +4053,8 @@ private struct PerformanceInsightCard: View {
                     )
                 }
 
-                // (c) 평균 점선
-                let avgBH = normBarH(avgPace)
+                // (c) 평균 점선 — 러닝 전체 페이스(카드 페이스와 같은 값)
+                let avgBH = normBarH(activity.paceSecPerKm ?? avgPace)
                 let avgLineY = chartH - avgBH
                 var dashPath = Path()
                 dashPath.move(to: CGPoint(x: xPad, y: avgLineY))
@@ -4133,8 +4137,10 @@ private struct PerformanceInsightCard: View {
             let variance = paces.map { pow($0 - avgPace, 2) }.reduce(0, +) / Double(paces.count)
             return Int(variance.squareRoot().rounded())
         }()
+        // 평균 이름표·점선은 러닝 전체 페이스(시간 ÷ 거리) — km 페이스 단순 평균은 카드 페이스와 1초씩 달랐다
+        let overallPace = activity.paceSecPerKm ?? avgPace
         let fmtAvgPace: String = {
-            let v = Int(avgPace.rounded()); return String(format: "%d'%02d\"", v / 60, v % 60)
+            let v = Int(overallPace.rounded()); return String(format: "%d'%02d\"", v / 60, v % 60)
         }()
 
         VStack(alignment: .leading, spacing: 4) {
@@ -4226,7 +4232,7 @@ private struct PerformanceInsightCard: View {
                     )
                 }
 
-                let avgBH = normBarH(dAvg)
+                let avgBH = normBarH(overallPace)
                 let avgY  = chartH - avgBH
                 var dash = Path()
                 dash.move(to: CGPoint(x: xPad, y: avgY))
@@ -4826,7 +4832,7 @@ private struct PerformanceInsightCard: View {
             // ① 시간 기준 (K-2) — 사실 한 줄. 평가어·참고선 없음. 연속 개념 없음.
             let lowPct = Int((b.lowFrac * 100).rounded())
             Text(L.s(
-                "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도입니다.",
+                "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도입니다.".keepingNumberUnitsTogether,
                 "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity.", ja: "直近\(data.weeks)週の練習時間の\(lowPct)%が低強度です。"
             ))
             .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
@@ -4836,11 +4842,12 @@ private struct PerformanceInsightCard: View {
                 let w = data.easyStreak, atLeast = data.easyStreakAtLeast
                 let streakSuffix: String = {
                     guard w > 1 || (w == 1 && atLeast) else { return "" }
-                    return L.s(" · \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row", ja: " · \(w)週\(atLeast ? "以上" : "")連続")
+                    return L.s(" · 이지런 없는 주 \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row with none", ja: " · イージーランなしの週が\(w)週\(atLeast ? "以上" : "")連続")
                 }()
+                // 계획이 아니라 러닝 종류(이지런) 회차 — "N주째"가 무엇인지(이지런 없는 주) 밝힌다
                 Text(L.s(
-                    "이지런으로 계획한 러닝 \(data.easyCount)회\(streakSuffix)",
-                    "Runs planned as easy: \(data.easyCount)\(streakSuffix)", ja: "イージーランとして計画したラン \(data.easyCount)回\(streakSuffix)"
+                    "\(data.weeks)주 \(data.classified)회 중 이지런 \(data.easyCount)회\(streakSuffix)",
+                    "Easy runs: \(data.easyCount) of \(data.classified) in \(data.weeks) wk\(streakSuffix)", ja: "\(data.weeks)週\(data.classified)回のうちイージーラン\(data.easyCount)回\(streakSuffix)"
                 ))
                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
@@ -4886,7 +4893,8 @@ private struct PerformanceInsightCard: View {
             } else if ratioLabel != nil || sentence != nil {
                 Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ", ja: "、")))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .lineLimit(2).minimumScaleFactor(0.8)   // 한 줄이면 "— 강약 나누기"가 잘렸다
+                    .fixedSize(horizontal: false, vertical: true)
             }
             // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
             Text(L.s("AU = 체감 강도 × 분 · 7일 합을 4주 평균과 비교합니다",

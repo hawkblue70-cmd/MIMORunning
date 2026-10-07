@@ -441,6 +441,23 @@ extension FormNarrative {
         return L.s("끝까지 안정적이었습니다", "Steady throughout", ja: "最後まで安定していました")
     }
 
+    /// 심박 판정에 쓰는 존 — 가장 큰 존 하나(동률이면 높은 존). 단, Zone 4+5 합이 그 존 이상이고 35% 이상이면
+    /// 고강도(4)로 본다. 존이 고르게 흩어진 빌드업(Z3 25% · Z4 22% · Z5 22%)이 "템포 구간에 머물렀다"로
+    /// 읽히던 결함(2026-10-08) — 도넛 캡션과 총평이 같은 규칙을 쓴다.
+    static let highZonesVerdictMinFrac = 0.35
+    static func verdictZone(fractions: [Int: Double]) -> (zone: Int, isHighCombined: Bool, frac: Double)? {
+        let visible = fractions.filter { $0.value > 0.01 }
+        let total = visible.values.reduce(0, +)
+        guard total > 0,
+              let dom = visible.max(by: { ($0.value, $0.key) < ($1.value, $1.key) })?.key else { return nil }
+        let domFrac = (visible[dom] ?? 0) / total
+        let high = ((visible[4] ?? 0) + (visible[5] ?? 0)) / total
+        if dom <= 3, high >= domFrac, high >= highZonesVerdictMinFrac {
+            return (4, true, high)
+        }
+        return (dom, false, domFrac)
+    }
+
     /// 심박존 도넛 캡션 — 4존 이상이 최다 구간일 때.
     static func highIntensityZoneCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared

@@ -108,7 +108,7 @@ enum RunSummary {
     /// VO2max 등급 — 리듬 카드 게이지 캡션과 같은 경계.
     static func vo2Level(_ vo2: Double) -> (index: Int, name: String) {
         let L = AppLanguage.shared
-        let names = [L.s("낮음", "Low", ja: "低い"), L.s("평균이하", "Below avg", ja: "平均以下"), L.s("평균이상", "Above avg", ja: "平均以上"), L.s("높음", "High", ja: "高い")]
+        let names = [L.s("낮음", "Low", ja: "低い"), L.s("평균 이하", "Below avg", ja: "平均以下"), L.s("평균 이상", "Above avg", ja: "平均以上"), L.s("높음", "High", ja: "高い")]
         var idx = vo2Bounds.count - 2
         for i in 0..<(vo2Bounds.count - 1) where vo2 < vo2Bounds[i + 1] { idx = i; break }
         return (idx, names[idx])
@@ -309,12 +309,14 @@ enum RunSummary {
         func frac(_ z: Int) -> Double { (visible[z] ?? 0) / total }
         let axis = L.s("심박", "Heart rate", ja: "心拍")
 
-        // 동률이면 높은 존이 이긴다(결정적 타이브레이크) — 근거 줄의 "Zone N"과 상태어 판정이 같은 규칙을 쓴다
-        guard let dom = visible.max(by: { ($0.value, $0.key) < ($1.value, $1.key) })?.key else { return nil }
-        let domPct = Int((frac(dom) * 100).rounded())
+        // 동률이면 높은 존이 이긴다(결정적 타이브레이크) — 근거 줄의 "Zone N"과 상태어 판정이 같은 규칙을 쓴다.
+        // Zone 4+5 합이 가장 큰 존 이상(35%↑)이면 고강도로 본다 — 도넛 캡션과 같은 FormNarrative.verdictZone
+        guard let verdict = FormNarrative.verdictZone(fractions: visible) else { return nil }
+        let dom = verdict.zone
+        let domPct = Int((verdict.frac * 100).rounded())
 
         // "Zone N X%"·"· T°C"는 로케일과 무관 — L.s 없이 그대로 쓴다(no-op 래핑 금지)
-        var evidence = "Zone \(dom) \(domPct)%"
+        var evidence = verdict.isHighCombined ? "Zone 4·5 \(domPct)%" : "Zone \(dom) \(domPct)%"
         if let avg = i.avgHeartRate {
             evidence += L.s(" · 평균 \(avg)", " · avg \(avg)", ja: " · 平均 \(avg)")
             // 러닝 전체 최고 심박 — "후반"이 아니라 실측 최고치 그 자체를 말한다
