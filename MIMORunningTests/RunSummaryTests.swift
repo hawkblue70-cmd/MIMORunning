@@ -487,6 +487,12 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next?.hasPrefix("충분히 회복됐습니다. 고강도 뒤에도") == true)
     }
 
+    @Test func restedWithinTwoWeeksAfterRaceStaysEasy() {
+        // 10K 사흘 뒤 — 부하·HRV가 회복이어도 템포·빌드업을 권하지 않는다(2026-10-07)
+        var i = restedInput(); i.daysSinceRace = 3; i.hardRunsLast14 = 1; i.runsLast14 = 6
+        #expect(lines(i)[3].next == "대회 3일 뒤입니다. 부하는 회복됐지만 대회 뒤 2주는 강도 없이 이지런으로 가세요(11일 남음).")
+    }
+
     @Test func hrvBelowSuppressesRested() {
         var i = restedInput(); i.hrvTrend = hrv(.below); i.hardRunsLast14 = 0; i.runsLast14 = 6
         #expect(lines(i)[3].next == "부하는 내려왔지만 HRV가 기준선 아래입니다. 수면이나 생활 피로 쪽일 수 있으니 하루 더 편하게 가세요.")

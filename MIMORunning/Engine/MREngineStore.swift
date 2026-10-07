@@ -1280,7 +1280,8 @@ final class MREngineStore: ObservableObject {
             let n = -daysFromToday(d)
             return n >= 1 && n < MRRhythmContext.postRaceEasyDays
         }
-        let registered = userInput.races.filter { within14($0.date) }.max { $0.date < $1.date }
+        // 끝난 대회는 나 탭이 예정 목록에서 지우므로(deletePastRaces) 끝난 대회 목록도 함께 본다 — 이름이 '대회'로만 나오지 않게
+        let registered = (userInput.races + storedFinishedRaces).filter { within14($0.date) }.max { $0.date < $1.date }
         let typed = pointRunTypes.filter { $0.value == .race && within14($0.key) }.keys.max()
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
                                 paces: mrPointPaces(halfEquivMin: halfEquivMin, thresholdPace: thresholdTrend?.current.paceSecPerKm),
