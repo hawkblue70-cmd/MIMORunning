@@ -69,7 +69,7 @@ struct MRMonthlyPlanCard: View {
     private var months: [Date] {
         let cal = Calendar.current
         var out: [Date] = []
-        var m = Self.firstMonth
+        var m = max(Self.firstMonth, MRMonthlyPlanStore.firstKeptMonth())   // 12개월까지만
         while m <= currentMonthStart {
             if !overlapsRace(m) && (m == currentMonthStart || !frozenWeeks(m).isEmpty) { out.append(m) }
             m = cal.date(byAdding: .month, value: 1, to: m) ?? currentMonthStart.addingTimeInterval(1)

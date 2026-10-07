@@ -57,10 +57,19 @@ enum MRMonthlyPlanStore {
         return v
     }
 
+    /// 보관 범위 — 이번 달 포함 12개월(2026-10-07 사용자 결정: 월간은 12개월, 대회 기록·계획은 모두 보관)
+    static let keepMonths = 12
+
+    /// 보관 시작 달(1일) — 이번 달에서 11개월 전
+    static func firstKeptMonth(now: Date = Date(), calendar cal: Calendar = .current) -> Date {
+        let thisMonth = cal.dateInterval(of: .month, for: now)?.start ?? now
+        return cal.date(byAdding: .month, value: -(keepMonths - 1), to: thisMonth) ?? thisMonth
+    }
+
     static func save(_ v: [MRMonthlyFrozenWeek]) {
-        // 1년 넘은 주는 버린다
-        let cutoff = Date().addingTimeInterval(-400 * 86_400)
-        if let d = try? JSONEncoder().encode(v.filter { $0.monday >= cutoff }) {
+        // 보관 시작 달과 겹치지 않는 주는 버린다(그 달 1일이 든 주는 남긴다)
+        let cutoff = firstKeptMonth().addingTimeInterval(-7 * 86_400)
+        if let d = try? JSONEncoder().encode(v.filter { $0.monday > cutoff }) {
             UserDefaults.standard.set(d, forKey: key)
         }
     }
