@@ -33,8 +33,8 @@ struct MRRaceJourneyShareCard: View {
 
     private var p: RJPalette { theme == .light ? .light : .dark }
 
-    /// 머리·예측·준비·막대·범례·바닥 ≈ 440 + 주별 줄(줄당 15)
-    static func height(weeks: Int) -> CGFloat { 440 + CGFloat(weeks) * 15 }
+    /// 머리·예측·준비·범례·바닥 ≈ 280 + 주당 두 줄(막대 + 수행 과정) 24 — 8주 472 · 18주 712
+    static func height(weeks: Int) -> CGFloat { 280 + CGFloat(weeks) * 24 }
 
     var body: some View {
         let L = AppLanguage.shared
@@ -82,20 +82,11 @@ struct MRRaceJourneyShareCard: View {
                     }
                 }
 
-                MRRaceJourneyWeekBars(weeks: j.weeks, palette: p)
-                    .frame(height: 96)
-                    .padding(.top, 10)
+                legend.padding(.top, 10)
 
-                legend.padding(.top, 6)
-
-                Rectangle().fill(p.divider).frame(height: 0.5).padding(.vertical, 8)
-
-                // 주별 한 줄 — 무엇을 했는지
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(j.weeks.enumerated()), id: \.offset) { _, w in
-                        weekLine(w)
-                    }
-                }
+                // 주마다 두 줄 — 가로 막대(종류별 쌓기 + 계획 세로선 + 실제/계획 km) · 그 주에 한 것
+                MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
+                    .padding(.top, 8)
 
                 Spacer(minLength: 6)
                 Text(L.s("계획부터 완주까지 · 미모러닝", "From plan to finish · MIMO Running", ja: "計画から完走まで · ミモラン"))
@@ -123,27 +114,6 @@ struct MRRaceJourneyShareCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
-    }
-
-    private func weekLine(_ w: MRRaceJourney.Week) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(Self.md(w.monday))
-                .foregroundStyle(p.sub)
-                .frame(width: 30, alignment: .leading)
-            Text(w.symbol ?? "")
-                .foregroundStyle(p.text)
-                .frame(width: 9, alignment: .leading)
-            Text(String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
-                .foregroundStyle(p.text)
-                .frame(width: 40, alignment: .leading)
-            Text(w.detail)
-                .foregroundStyle(p.text.opacity(0.85))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .font(.system(size: 9, weight: .medium, design: .rounded))
-        .monospacedDigit()
-        .frame(height: 13)
     }
 
     private var legend: some View {
@@ -232,45 +202,59 @@ struct MRRaceJourneyShareCard: View {
     }
 }
 
-// MARK: - 주간 막대 — 종류별 쌓기 + 계획선 + 수행 기호
+// MARK: - 주별 두 줄 — 가로 막대 + 수행 과정
 
-private struct MRRaceJourneyWeekBars: View {
+private struct MRRaceJourneyWeekRows: View {
     let weeks: [MRRaceJourney.Week]
     let palette: RJPalette
 
+    private static let barH: CGFloat = 8
+
     var body: some View {
-        GeometryReader { geo in
-            let n = max(weeks.count, 1)
-            let gap: CGFloat = n > 14 ? 2 : 4
-            let colW = (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
-            let symH: CGFloat = 11
-            let chartH = geo.size.height - symH
-            let maxKm = max(weeks.map { max($0.totalKm, $0.plannedKm) }.max() ?? 1, 1)
-            HStack(alignment: .bottom, spacing: gap) {
-                ForEach(Array(weeks.enumerated()), id: \.offset) { _, w in
-                    VStack(spacing: 2) {
-                        ZStack(alignment: .bottom) {
-                            VStack(spacing: 0) {
-                                ForEach([MRRaceJourney.Kind.race, .hard, .long, .easy], id: \.rawValue) { k in
-                                    if let km = w.km[k], km > 0 {
-                                        Rectangle().fill(palette.color(k))
-                                            .frame(height: chartH * km / maxKm)
+        let maxKm = max(weeks.map { max($0.totalKm, $0.plannedKm) }.max() ?? 1, 1)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(weeks.enumerated()), id: \.offset) { _, w in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(MRRaceJourneyShareCard.md(w.monday))
+                            .foregroundStyle(palette.sub)
+                            .frame(width: 30, alignment: .leading)
+                        Text(w.symbol ?? "")
+                            .foregroundStyle(palette.text)
+                            .frame(width: 9, alignment: .leading)
+                        GeometryReader { geo in
+                            let W = geo.size.width
+                            ZStack(alignment: .leading) {
+                                HStack(spacing: 0) {
+                                    ForEach([MRRaceJourney.Kind.easy, .long, .hard, .race], id: \.rawValue) { k in
+                                        if let km = w.km[k], km > 0 {
+                                            Rectangle().fill(palette.color(k)).frame(width: W * km / maxKm)
+                                        }
                                     }
                                 }
+                                .frame(height: Self.barH)
+                                .clipShape(RoundedRectangle(cornerRadius: 2))
+                                // 계획 km — 보라 세로선
+                                Rectangle().fill(palette.plan)
+                                    .frame(width: 1.5, height: Self.barH + 4)
+                                    .offset(x: min(W * w.plannedKm / maxKm, W - 1.5))
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 2))
-                            .frame(width: colW, height: chartH, alignment: .bottom)
-                            // 계획선
-                            Rectangle().fill(palette.plan)
-                                .frame(width: colW + 2, height: 1.5)
-                                .offset(y: -chartH * w.plannedKm / maxKm)
+                            .frame(height: geo.size.height)
                         }
-                        .frame(width: colW, height: chartH, alignment: .bottom)
-                        Text(w.symbol ?? "")
-                            .font(.system(size: 7))
-                            .foregroundStyle(palette.text.opacity(0.8))
-                            .frame(height: symH - 2)
+                        .frame(height: Self.barH + 4)
+                        Text(String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
+                            .foregroundStyle(palette.text)
+                            .frame(width: 38, alignment: .trailing)
                     }
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+
+                    Text(w.detail)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundStyle(palette.text.opacity(0.80))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.leading, 44)
                 }
             }
         }
