@@ -262,10 +262,11 @@ struct MRRaceJourneyShareCard: View {
 
     static func prepLines(_ j: MRRaceJourney) -> [(label: String, value: String)] {
         let L = AppLanguage.shared
+        let doneWeeks = j.weeks.filter { !$0.isFuture }.count   // 진행 중이면 이번 주까지
         var out: [(label: String, value: String)] = []
         out.append((j.month != nil || j.progress != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
-                    L.s("\(j.weeks.count)주 · \(j.runCount)회 · ", "\(j.weeks.count) wks · \(j.runCount) runs · ",
-                        ja: "\(j.weeks.count)週 · \(j.runCount)回 · ") + String(format: "%.0fkm", j.totalKm)))
+                    L.s("\(doneWeeks)주 · \(j.runCount)회 · ", "\(doneWeeks) wks · \(j.runCount) runs · ",
+                        ja: "\(doneWeeks)週 · \(j.runCount)回 · ") + String(format: "%.0fkm", j.totalKm)))
         var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))
             + String(format: "%.1fkm", j.longestKm)
         if j.hardPlanned > 0 {
@@ -329,8 +330,9 @@ private struct MRRaceJourneyWeekRows: View {
                             .frame(height: geo.size.height)
                         }
                         .frame(height: Self.barH + 4)
-                        Text(String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
-                            .foregroundStyle(palette.text)
+                        // 예정 주 — 실제 칸은 "—", 계획 km만
+                        Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
+                            .foregroundStyle(w.isFuture ? palette.sub : palette.text)
                             .frame(width: 38, alignment: .trailing)
                     }
                     .font(.system(size: 9, weight: .medium, design: .rounded))
@@ -338,7 +340,7 @@ private struct MRRaceJourneyWeekRows: View {
 
                     Text(w.detail)
                         .font(.system(size: 8.5, weight: .medium))
-                        .foregroundStyle(palette.text.opacity(0.80))
+                        .foregroundStyle(w.isFuture ? palette.sub : palette.text.opacity(0.80))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게

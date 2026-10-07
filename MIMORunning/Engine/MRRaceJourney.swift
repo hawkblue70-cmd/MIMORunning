@@ -26,6 +26,9 @@ struct MRRaceJourney: Identifiable {
         /// 1회일 때 숫자가 거리인지 헷갈림 · 이지도 같은 형식). 이지런·일반·종류 없는 짧은 러닝은 "이지" 하나로.
         /// 순서: 대회 → 강도 → 롱런 계열 → 이지(같은 묶음 안에서는 처음 나온 순서).
         let detail: String
+        /// 진행 중 계획(2026-10-07 사용자: 아직 안 한 주도 예정으로 표시) — 다음 주부터 · 이번 주
+        var isFuture: Bool = false
+        var isCurrent: Bool = false
         var totalKm: Double { km.values.reduce(0, +) }
     }
 
@@ -126,6 +129,7 @@ struct MRRaceJourney: Identifiable {
     /// 주별 막대·설명·수행 기호·강도 훈련 완료 — 대회 준비와 월간 훈련일지가 같이 쓴다.
     static func buildWeeks(_ weeksSorted: [MRPlanWeekSummary], span: [MRWorkout], raceRun: Date?,
                            types: [Date: WorkoutType], hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
+                           today: Date? = nil,
                            calendar cal: Calendar) -> (weeks: [Week], hardDone: Int, hardPlanned: Int) {
         let L = AppLanguage.shared
         var weeks: [Week] = []
@@ -164,10 +168,23 @@ struct MRRaceJourney: Identifiable {
                     return L.s("\(g.element.name) \(g.element.n)회 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
                                ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km")
                 }
-            let sym = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
-                                 actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
+            // 다음 주부터는 예정 — 실행 안내(계획 문구)와 강도 훈련만, 기호·실제 없음
+            if let t = today, mon > t {
+                var plan = w.breakdown
+                if let pt = w.point { plan += (plan.isEmpty ? "" : " · ") + pt.text }
+                weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: [:], symbol: nil,
+                                  detail: L.s("예정", "Planned", ja: "予定") + (plan.isEmpty ? "" : " · " + plan),
+                                  isFuture: true))
+                continue
+            }
+            let isCurrent = today.map { t in mon <= t && wEnd > t } ?? false
+            var sym: String? = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
+                                          actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
+            // 이번 주는 다 채웠을 때만(●·▲) — 대회 주차표와 같은 규칙
+            if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
-                              detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · ")))
+                              detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
+                              isCurrent: isCurrent))
             if w.point != nil {
                 hardPlanned += 1
                 if mrPointRun(weekRuns: ws, longRunKm: w.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil {
@@ -233,13 +250,14 @@ struct MRRaceJourney: Identifiable {
         let today = cal.startOfDay(for: now)
         let all = planWeeks.sorted { $0.monday < $1.monday }
         let weeksSorted = all.filter { cal.startOfDay(for: $0.monday) <= today }
-        guard let first = weeksSorted.first,
+        guard let first = all.first, !weeksSorted.isEmpty,
               let tomorrow = cal.date(byAdding: .day, value: 1, to: today),
               today < cal.startOfDay(for: raceDate) else { return nil }
         let start = cal.startOfDay(for: first.monday)
         let span = runs.filter { $0.start >= start && $0.start < tomorrow }.sorted { $0.start < $1.start }
-        let built = buildWeeks(weeksSorted, span: span, raceRun: nil, types: types,
-                               hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
+        // 아직 안 한 주까지 모두 — 다음 주부터는 예정으로(2026-10-07 사용자 요청)
+        let built = buildWeeks(all, span: span, raceRun: nil, types: types,
+                               hardStarts: hardStarts, pointTypes: pointTypes, today: today, calendar: cal)
         var j = MRRaceJourney(
             raceName: raceName, raceDate: raceDate, distanceM: distanceM, actualMin: 0,
             planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,

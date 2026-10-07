@@ -105,7 +105,10 @@ struct MRRaceJourneyTests {
             raceName: "x", raceDate: race, distanceM: MRDistance.dH, planWeeks: plan,
             goalMin: 110, projectedMin: 112, now: d(14),
             runs: [run(6, km: 10), run(13, km: 8), run(20, km: 9)], types: [:], hardStarts: [], pointTypes: [:]))
-        #expect(j.weeks.count == 2)
+        #expect(j.weeks.count == 4)                // 예정 주까지 모두(2026-10-07)
+        #expect(j.weeks.filter(\.isFuture).count == 2)
+        #expect(j.weeks[1].isCurrent && j.weeks[1].symbol == nil)   // 이번 주는 다 채우기 전엔 기호 없음
+        #expect(j.weeks[2].detail.hasPrefix("예정"))
         #expect(j.totalKm == 18)                  // 10/20 러닝은 아직 아님
         #expect(j.progress?.weekNumber == 2 && j.progress?.totalWeeks == 4)
         #expect(j.progress?.daysLeft == 18)
