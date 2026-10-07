@@ -6,16 +6,24 @@ import SwiftUI
 // 기록 · 예측(계획 시작 → 실제, 대회 전 앱 예측, 워치 VO2max 환산표) · 준비 요약 · 주간 막대(종류별 쌓기 + 계획선 + 수행 기호)
 // · 주별 한 줄(무엇을 했는지 — 러닝 종류 이름·km) · 다크/라이트.
 
+/// 애플 시스템 색(iOS 다크/라이트 값) — 2026-10-07 사용자 요청.
+/// 기록(시간) = systemYellow(지표 의미색 시간=노랑) · 이지 = systemGray · 롱런 = systemIndigo · 강도 = systemOrange
+/// · 대회 = systemYellow · 앱 예측 = systemGreen · 계획선 = label(흰/검) · 글자 = label / secondaryLabel · 바탕 = secondarySystemBackground.
 private struct RJPalette {
-    let easy, long, hard, race, plan, text, sub, divider: Color
+    let bg, easy, long, hard, race, plan, text, sub, divider, time, good: Color
     let raceBadgeOnLight: Bool
 
-    static let dark = RJPalette(easy: Color.white.opacity(0.32), long: Theme.violet, hard: Color(hex: "F5A524"),
-                                race: RaceBadge.color, plan: Theme.violetText, text: .white,
-                                sub: Color.white.opacity(0.62), divider: Color.white.opacity(0.12), raceBadgeOnLight: false)
-    static let light = RJPalette(easy: Color.black.opacity(0.18), long: Color(hex: "5B3FD9"), hard: Color(hex: "E08A00"),
-                                 race: RaceBadge.onLightColor, plan: Color(hex: "5B3FD9"), text: Color(hex: "0D0D0D"),
-                                 sub: Color(hex: "7A7A7A"), divider: Color.black.opacity(0.10), raceBadgeOnLight: true)
+    static let dark = RJPalette(
+        bg: Color(hex: "1C1C1E"), easy: Color(hex: "8E8E93"), long: Color(hex: "5E5CE6"), hard: Color(hex: "FF9F0A"),
+        race: Color(hex: "FFD60A"), plan: .white, text: .white, sub: Color(hex: "EBEBF5").opacity(0.6),
+        divider: Color(hex: "545458").opacity(0.65), time: Color(hex: "FFD60A"), good: Color(hex: "30D158"),
+        raceBadgeOnLight: false)
+    /// 라이트 — 흰 바탕에서 노랑 글자는 안 읽혀 기록 숫자는 진한 노랑(접근성 대비 높인 systemYellow 계열)
+    static let light = RJPalette(
+        bg: .white, easy: Color(hex: "8E8E93"), long: Color(hex: "5856D6"), hard: Color(hex: "FF9500"),
+        race: Color(hex: "FFCC00"), plan: .black, text: .black, sub: Color(hex: "3C3C43").opacity(0.6),
+        divider: Color(hex: "3C3C43").opacity(0.29), time: Color(hex: "A07800"), good: Color(hex: "248A3D"),
+        raceBadgeOnLight: true)
 
     func color(_ k: MRRaceJourney.Kind) -> Color {
         switch k {
@@ -33,18 +41,13 @@ struct MRRaceJourneyShareCard: View {
 
     private var p: RJPalette { theme == .light ? .light : .dark }
 
-    /// 머리·예측·준비·범례·바닥 ≈ 280 + 주당 두 줄(막대 + 수행 과정) 24 — 8주 472 · 18주 712
-    static func height(weeks: Int) -> CGFloat { 280 + CGFloat(weeks) * 24 }
+    /// 내보내기 폭 — 리듬·폼 인사이트 카드와 같은 360, 높이는 자연 높이(18주면 길게)
+    static let exportWidth: CGFloat = 360
 
     var body: some View {
         let L = AppLanguage.shared
         ZStack {
-            if theme == .light {
-                SummaryCardPalette.light.background
-            } else {
-                LinearGradient(colors: [Color(hex: "1A1130"), Color(hex: "0D0D12")],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
+            p.bg
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     MIMOWordmark(size: 9, strokeMIMO: theme == .light)
@@ -61,10 +64,10 @@ struct MRRaceJourneyShareCard: View {
                 HStack(alignment: .lastTextBaseline, spacing: 6) {
                     Text(mrFormatDisplay(j.actualMin))
                         .font(.system(size: 34, weight: .black).width(.condensed))
-                        .foregroundStyle(p.text)
+                        .foregroundStyle(p.time)
                     Text(Self.distanceName(j.distanceM))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(p.long)
+                        .foregroundStyle(p.text)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -88,14 +91,14 @@ struct MRRaceJourneyShareCard: View {
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
                     .padding(.top, 8)
 
-                Spacer(minLength: 6)
                 Text(L.s("계획부터 완주까지 · 미모러닝", "From plan to finish · MIMO Running", ja: "計画から完走まで · ミモラン"))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(p.sub)
-                    .padding(.bottom, 10)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
             }
             .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
@@ -110,7 +113,7 @@ struct MRRaceJourneyShareCard: View {
             Text(value)
                 .font(.system(size: 11, weight: highlight ? .bold : .medium, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(highlight ? p.plan : p.text)
+                .foregroundStyle(highlight ? p.good : p.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
@@ -271,31 +274,27 @@ struct MRRaceJourneyShareScreen: View {
     @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
-    private let cardW: CGFloat = 300
-    private var cardH: CGFloat { MRRaceJourneyShareCard.height(weeks: journey.weeks.count) }
-
     var body: some View {
         NavigationStack {
-            ZStack {
-                Theme.background.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Spacer(minLength: 8)
+            VStack(spacing: 0) {
+                // 리듬·폼 인사이트 내보내기와 같은 방식 — 카드 전체를 자연 높이로 스크롤 미리보기
+                ScrollView {
                     MRRaceJourneyShareCard(j: journey, theme: cardTheme)
                         .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-                        .frame(width: cardW, height: cardH)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
-                        .scaleEffect(min(1, 560 / cardH))
-                        .frame(height: min(cardH, 560))
-                    Spacer(minLength: 16)
-                    themeToggle
-                        .padding(.horizontal, 24)
-                    Spacer(minLength: 12)
-                    shareCTA
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 36)
+                        .frame(width: MRRaceJourneyShareCard.exportWidth)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(20)
+                        .frame(maxWidth: .infinity)
                 }
+                themeToggle
+                    .padding(.horizontal, 24)
+                    .padding(.top, 10)
+                shareCTA
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    .padding(.bottom, 32)
             }
+            .background(Color(hex: "0D0D0F"))
             .navigationTitle(AppLanguage.shared.s("대회 준비 공유", "Share build-up", ja: "準備を共有"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -305,6 +304,7 @@ struct MRRaceJourneyShareScreen: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .task { await renderCard() }
         .onChange(of: cardTheme) { Task { await renderCard() } }
     }
@@ -356,15 +356,17 @@ struct MRRaceJourneyShareScreen: View {
     @MainActor
     private func renderCard() async {
         isRendering = true
+        // 1) 카드를 자연 높이로 렌더(폭 360) — 리듬·폼 인사이트 카드와 같은 방식
+        let bg = cardTheme == .light ? Color.white : Color(hex: "1C1C1E")
         let renderer = ImageRenderer(content:
             MRRaceJourneyShareCard(j: journey, theme: cardTheme)
                 .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-                .frame(width: cardW, height: cardH))
+                .frame(width: MRRaceJourneyShareCard.exportWidth)
+                .background(bg))
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
-        // 4:5 캔버스 — 다른 공유 카드와 같은 방식
-        let backdrop = cardTheme == .light ? SummaryCardPalette.light.background : Color(hex: "0D0D12")
-        previewImage = ShareCanvas.fit(raw, background: UIColor(backdrop), cornerRadius: 36)
+        // 2) 인스타그램 4:5 캔버스에 맞춤 합성 — 인사이트 카드와 같은 합성기, 단색 바탕(§5.8)
+        previewImage = ShareCanvas.fit(raw, background: UIColor(bg))
         isRendering = false
     }
 }
