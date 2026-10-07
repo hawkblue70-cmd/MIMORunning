@@ -376,23 +376,23 @@ enum RunChartBuilder {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Power — 5–95 percentile clamp, median 25 → mean 25
+        // Power — 5–95 percentile clamp, median 9 → mean 9 (케이던스와 같은 창, 2026-10-07)
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
-                                      smoothWindow: 25,
+                                      smoothWindow: 9,
                                       clamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 25) {
+                                      meanWindow: 9) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
         }
 
-        // Ground contact — hard clamp 150–400 ms → 5–95 percentile → median 25 → mean 25
+        // Ground contact — hard clamp 150–400 ms → 5–95 percentile → median 9 → mean 9 (케이던스와 같은 창, 2026-10-07)
         //   (러닝 지면접촉은 대개 200~300ms. 150 미만·400 초과는 걷기·정지·센서 튐)
         let gctRaw = rawPoints(gctSamples)
         if let s = makeSmoothedSeries(layer: .groundContact, rawPoints: gctRaw,
-                                      smoothWindow: 25,
+                                      smoothWindow: 9,
                                       clamp: .hard(min: 150, max: 400),
                                       secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 25) {
+                                      meanWindow: 9) {
             allSeries[.groundContact] = storedGctAvg.map { s.withAvg($0) } ?? s
         }
 
