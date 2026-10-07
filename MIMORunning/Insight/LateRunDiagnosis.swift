@@ -49,6 +49,14 @@ enum LateRunDiagnosis {
         var plannedFastFinish: Bool = false
         /// 효율 계산에서 뺀 더위 몫(bpm) — 기온이 15°C보다 높아 중반→후반 사이 더 오른 심박. 0이면 보정 없음.
         var heatAdjustBpm: Double = 0
+        /// 효율 계산에 쓴 평지 환산 페이스(초/km). 실측과 1초 이상 다르면 근거 줄도 이 값으로 적는다 —
+        /// 실측 페이스를 보여주고 %는 평지 환산으로 내면 숫자가 서로 안 맞아 보였다(2026-10-08).
+        var midGAPSecPerKm: Double? = nil
+        var lateGAPSecPerKm: Double? = nil
+        var usesFlatEquivalent: Bool {
+            guard let m = midGAPSecPerKm, let l = lateGAPSecPerKm else { return false }
+            return abs(m - mid.paceSecPerKm) >= 1 || abs(l - late.paceSecPerKm) >= 1
+        }
         var isFastFinish: Bool {
             paceChangeSec <= -LateRunDiagnosis.fastFinishSec || (plannedFastFinish && paceChangeSec < 0)
         }
@@ -259,7 +267,8 @@ enum LateRunDiagnosis {
         return Result(kind: kind, mid: mid, late: late, decouplingPct: decoupling,
                       legMetrics: legs, legMethod: legSig?.method, durationMin: durationMin,
                       efficiencyOnsetKm: on.efficiencyKm, paceOnsetKm: on.paceKm,
-                      plannedFastFinish: plannedFastFinish, heatAdjustBpm: heatAdjust)
+                      plannedFastFinish: plannedFastFinish, heatAdjustBpm: heatAdjust,
+                      midGAPSecPerKm: midGAP, lateGAPSecPerKm: lateGAP)
     }
 
     // MARK: - 시작 지점 — 페이스보다 심박이 먼저
@@ -498,8 +507,14 @@ enum LateRunDiagnosis {
     static func evidence(_ r: Result, heatDeltaBpm: Double? = nil) -> String {
         let L = AppLanguage.shared
         var pieces: [String] = []
-        pieces.append(L.s("중반→후반 페이스 \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))",
-                          "mid→late pace \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))", ja: "中盤→後半のペース \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))"))
+        if r.usesFlatEquivalent, let mg = r.midGAPSecPerKm, let lg = r.lateGAPSecPerKm {
+            // 효율(%)이 평지 환산으로 계산되니 페이스도 같은 값으로 — 실측과 섞으면 숫자가 서로 안 맞는다
+            pieces.append(L.s("중반→후반 평지 환산 페이스 \(mrFormatPace(mg))→\(mrFormatPace(lg))",
+                              "mid→late flat-equivalent pace \(mrFormatPace(mg))→\(mrFormatPace(lg))", ja: "中盤→後半の平地換算ペース \(mrFormatPace(mg))→\(mrFormatPace(lg))"))
+        } else {
+            pieces.append(L.s("중반→후반 페이스 \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))",
+                              "mid→late pace \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))", ja: "中盤→後半のペース \(mrFormatPace(r.mid.paceSecPerKm))→\(mrFormatPace(r.late.paceSecPerKm))"))
+        }
         if let a = r.mid.avgHR, let b = r.late.avgHR {
             let ai = Int(a.rounded()), bi = Int(b.rounded())
             pieces.append(L.s("심박 \(ai)→\(bi)", "HR \(ai)→\(bi)", ja: "心拍 \(ai)→\(bi)"))
@@ -570,7 +585,8 @@ enum LateRunDiagnosis {
 
     /// 다음 행동 — 유형별 대책(영상 요지: 거리만 늘리지 말고 무너지는 원인에 맞춰 훈련을 나눈다).
     /// - isRace: 대회면 "다음 대회" 기준 문장.
-    static func next(_ r: Result, heatDeltaBpm: Double? = nil, isRace: Bool = false) -> String? {
+    /// - isLongRun: 롱런 거리인가 — 아니면 "다음 롱런은" 대신 "다음 러닝은"(60분 넘는 평소 거리 러닝에도 진단이 붙는다)
+    static func next(_ r: Result, heatDeltaBpm: Double? = nil, isRace: Bool = false, isLongRun: Bool = true) -> String? {
         let L = AppLanguage.shared
         let hot = (heatDeltaBpm ?? 0) >= RunSummary.heatNoteMinBpm
         switch r.kind {
@@ -595,8 +611,11 @@ enum LateRunDiagnosis {
             return isRace
                 ? L.s("다음 대회는 초반을 5~10초/km 늦게 시작하고, 롱런 후반에 목표 페이스를 넣어 지친 상태의 페이스를 연습해 보세요.",
                       "Start your next race 5–10 s/km slower, and practice goal pace late in long runs.", ja: "次のレースは序盤を5~10秒/km遅く入り、ロング走の後半に目標ペースを入れて疲れた状態でのペースを練習してみてください。")
-                : L.s("다음 롱런은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줍니다.",
-                      "Ease mid-run pace by 10 s/km next long run. A weekly 20-minute tempo lowers HR at the same pace.", ja: "次のロング走は中盤のペースを10秒/km落としてみてください。週1回20分のテンポ走が同じペースでの心拍を下げてくれます。")
+                : isLongRun
+                    ? L.s("다음 롱런은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줍니다.",
+                          "Ease mid-run pace by 10 s/km next long run. A weekly 20-minute tempo lowers HR at the same pace.", ja: "次のロング走は中盤のペースを10秒/km落としてみてください。週1回20分のテンポ走が同じペースでの心拍を下げてくれます。")
+                    : L.s("다음 러닝은 중반 페이스를 10초/km 늦춰 보세요. 주 1회 템포 20분이 같은 페이스의 심박을 낮춰 줍니다.",
+                          "Ease mid-run pace by 10 s/km next run. A weekly 20-minute tempo lowers HR at the same pace.", ja: "次のランは中盤のペースを10秒/km落としてみてください。週1回20分のテンポ走が同じペースでの心拍を下げてくれます。")
         case .energy:
             return isRace
                 ? L.s("다음 대회는 30~40분부터 탄수화물을 나눠 먹고, 롱런에서 같은 보급을 미리 연습해 두세요.",

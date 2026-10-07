@@ -2836,7 +2836,11 @@ private struct RhythmInsightCard: View {
             return (L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb", ja: "後半の上りで心拍が上がりました"), Color.white.opacity(0.75))
         }
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
-        if diff >= 8  { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
+        // 전후반 평균으로는 8bpm 안이어도 총평이 "심박이 먼저 오름"이면 같은 말을 한다 — 반으로 나누면
+        // 중반이 섞여 마지막 구간 상승(149→161)이 묻혀 "끝까지 안정적"과 총평이 엇갈렸다(2026-10-08)
+        let lateRose = RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail,
+                                                         workoutType: rhythmWorkoutType, history: history)
+        if diff >= 8 || lateRose { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
         if diff <= -5 { return (L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"), Color(hex: "4C8DFF")) }
         return (FormNarrative.hrSteadyCaption(type: rhythmWorkoutType), Theme.positive)
     }
@@ -3746,6 +3750,11 @@ private struct PerformanceInsightCard: View {
                         "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"), neutral)
         }
         let aerobic = wt == .longRun || wt == .lsd || wt == .easy || wt == .general
+        // 전후반 5% 안이어도 총평 "후반"이 심박 신호면 "지켰다"고 하지 않는다 — 같은 화면에서 반대로 읽혔다
+        if pct <= 5, RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history) {
+            return (L.s("전후반으로는 5% 안이지만, 마지막 구간에서 같은 페이스에 심박이 올랐습니다.",
+                        "Within 5% half to half, but HR rose at the same pace in the final stretch.", ja: "前後半では5%以内ですが、最後の区間で同じペースでも心拍が上がりました。"), neutral)
+        }
         if pct <= 5 {
             return aerobic
                 ? (L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 거리를 유산소로 감당했습니다.",
@@ -6188,11 +6197,7 @@ struct InsightExportSheet: View {
     }
 
     private func weatherIcon(for tempC: Double) -> String {
-        let night = WeatherSnapshot.isNight(activity.date)
-        if let h = activity.humidityPercent, h >= 80 { return night ? "cloud.moon.rain.fill" : "cloud.rain.fill" }
-        if tempC >= 28 { return night ? "moon.fill" : "sun.max.fill" }
-        if tempC <= 2  { return "snowflake" }
-        return night ? "cloud.moon.fill" : "cloud.sun.fill"
+        WeatherSnapshot.icon(tempC: tempC, humidityPercent: activity.humidityPercent, at: activity.date)
     }
 
     @ViewBuilder

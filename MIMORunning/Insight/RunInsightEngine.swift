@@ -1423,7 +1423,7 @@ enum RunInsightEngine {
             let diffStr = "\(Int(abs(rawDiff).rounded()))"
             if rawDiff > 0 {
                 return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
-                    message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았습니다.",
+                    message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 낮았습니다.",
                                  "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
                     highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
             }
@@ -1431,7 +1431,7 @@ enum RunInsightEngine {
                 ? L.s("\(tempStr) 더위 영향일 수 있습니다.", "the \(tempStr) heat may be a factor.", ja: "\(tempStr)の暑さの影響かもしれません。")
                 : Self.efficiencyCause(activity: activity, history: history)
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
-                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높습니다. \(cause)",
+                message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                              "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
                 highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
         }
@@ -1450,12 +1450,12 @@ enum RunInsightEngine {
             let rawStr = "\(Int(abs(rawDiff).rounded()))"
             if heatHR.isFallback {
                 return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
-                    message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보입니다.",
+                    message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(rawStr)bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보입니다.",
                                  "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but allowing for typical heat effects (\(tempStr)) it looks like your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、一般的な暑さの影響(\(tempStr))を考慮すると普段の水準とみられます。"),
                     highlights: [rawStr + "bpm", tempStr])
             }
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("기온 감안", "Heat-Adjusted", ja: "気温を考慮"),
-                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(rawStr) bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준입니다.",
+                message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(rawStr)bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준입니다.",
                              "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but at \(tempStr) that is your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、\(tempStr)の気温を考慮すると普段の水準です。"),
                 highlights: [rawStr + "bpm", tempStr])
         }
@@ -1466,7 +1466,7 @@ enum RunInsightEngine {
         if diff >= 3 {
             guard rawDiff >= 3 else { return nil }
             return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
-                message: L.s("비슷한 페이스 최근 8주 \(sampleStr)회보다 심박이 \(diffStr) bpm 낮았습니다.",
+                message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 낮았습니다.",
                              "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
                 highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
         }
@@ -1480,12 +1480,12 @@ enum RunInsightEngine {
                 ? L.s("일반적인 더위 영향(\(tempStr))을 감안해도 ", "Even allowing for typical heat effects (\(tempStr)), ", ja: "一般的な暑さの影響(\(tempStr))を考慮しても")
                 : L.s("\(tempStr) 기온을 감안해도 ", "Even allowing for \(tempStr), ", ja: "\(tempStr)の気温を考慮しても")
         } else if histHeatDelta >= MRHeatHRModel.explainThresholdBpm {
-            prefix = L.s("더운 날이 많았던 최근 기록을 15°C 기준으로 맞추면 ", "With the recent, hotter runs adjusted to 15°C, ", ja: "暑い日が多かった最近の記録を15°C基準に揃えると")
+            prefix = L.s("최근 기록에 더운 날이 많아 15°C 기준으로 맞춰 비교했습니다. ", "With the recent, hotter runs adjusted to 15°C, ", ja: "暑い日が多かった最近の記録を15°C基準に揃えると")
         } else {
             prefix = ""
         }
         return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
-            message: L.s("\(prefix)비슷한 페이스 최근 8주 \(sampleStr)회 대비 심박이 \(diffStr) bpm 높습니다. \(cause)",
+            message: L.s("\(prefix)비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                          "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "\(prefix)近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
             highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
     }

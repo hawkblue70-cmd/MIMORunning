@@ -148,6 +148,12 @@ struct SplitsShareCardView: View {
 
     private var pal: SplitsPalette { theme == .light ? .light : .dark }
 
+    /// 날씨 스냅샷이 없을 때 — 인사이트 카드와 같은 기온·습도·밤 기준 아이콘(온도계만 따로 나오던 것). 기온도 없으면 온도계.
+    private var fallbackWeatherIcon: String {
+        guard let t = activity.temperatureC else { return "thermometer.medium" }
+        return WeatherSnapshot.icon(tempC: t, humidityPercent: activity.humidityPercent, at: activity.date)
+    }
+
     // Scale factor 300/360 = 5/6 applied throughout
     // Base 4:5 (300×375), grows dynamically for more splits
     static func cardHeight(splitCount: Int, hasZones: Bool = false, runMetricCount: Int = 0) -> CGFloat {
@@ -290,7 +296,7 @@ struct SplitsShareCardView: View {
                             }
                             if let w = weatherText {
                                 HStack(spacing: 3) {
-                                    Image(systemName: weatherIcon ?? "thermometer.medium")
+                                    Image(systemName: weatherIcon ?? fallbackWeatherIcon)
                                         .font(.system(size: 9, weight: .medium))
                                     Text(w)
                                         .font(.system(size: 9, weight: .medium))
@@ -446,6 +452,16 @@ struct SplitsShareCardView: View {
                             .font(.system(size: 8, weight: .semibold, design: .rounded))
                             .foregroundStyle(hrZoneNumber(for: hr).map(hrZoneColor) ?? .clear)
                             .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 12, alignment: .leading)
+                    } else if displaySplits.contains(where: { $0.avgHeartRate != nil }) {
+                        // 이 구간만 심박이 없으면 빈 칸을 "—"로 채워 열을 지킨다 — 칸이 통째로 빠져 페이스가 오른쪽으로 밀렸다
+                        Text("—")
+                            .font(.system(size: 8, design: .rounded))
+                            .foregroundStyle(pal.heartRate.opacity(0.5))
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 26, alignment: .trailing)
+                        Text("")
+                            .font(.system(size: 8, weight: .semibold, design: .rounded))
                             .frame(minWidth: 12, alignment: .leading)
                     }
                     if let cad = split.avgCadence {
@@ -751,6 +767,11 @@ struct SplitsShareCardScreen: View {
 
 struct IntervalsShareCardView: View {
     let activity: Activity
+    /// 날씨 스냅샷이 없을 때 — 구간 기록 카드와 같은 기온·습도·밤 기준 아이콘. 기온도 없으면 온도계.
+    private var fallbackWeatherIcon: String {
+        guard let t = activity.temperatureC else { return "thermometer.medium" }
+        return WeatherSnapshot.icon(tempC: t, humidityPercent: activity.humidityPercent, at: activity.date)
+    }
     let segments: [IntervalSegment]
     var miniMeImage: UIImage? = nil
     var weatherText: String? = nil
@@ -853,7 +874,7 @@ struct IntervalsShareCardView: View {
                             .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                         if let w = weatherText {
                             HStack(spacing: 3) {
-                                Image(systemName: weatherIcon ?? "thermometer.medium")
+                                Image(systemName: weatherIcon ?? fallbackWeatherIcon)
                                     .font(.system(size: 8))
                                 Text(w)
                                     .font(.system(size: 9, weight: .medium))

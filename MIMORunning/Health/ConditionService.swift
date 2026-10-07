@@ -94,6 +94,15 @@ struct WeatherSnapshot: Codable {
         return night ? "cloud.moon.fill" : "cloud.sun.fill"
     }
 
+    /// 날씨 스냅샷 없이 HealthKit 기온·습도만 있을 때의 아이콘 — 인사이트 카드·구간 기록 카드가 같은 값을 쓴다.
+    static func icon(tempC: Double, humidityPercent: Double?, at date: Date) -> String {
+        let night = isNight(date)
+        if let h = humidityPercent, h >= 80 { return night ? "cloud.moon.rain.fill" : "cloud.rain.fill" }
+        if tempC >= 28 { return night ? "moon.fill" : "sun.max.fill" }
+        if tempC <= 2  { return "snowflake" }
+        return night ? "cloud.moon.fill" : "cloud.sun.fill"
+    }
+
     static func isNight(_ date: Date) -> Bool {
         let h = Calendar.current.component(.hour, from: date)
         return h >= 19 || h < 6

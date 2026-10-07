@@ -147,6 +147,28 @@ enum RunSummaryBuilder {
         return values[mid]
     }
 
+    /// 총평 "후반" 줄과 같은 후반 진단 — 심박 차트 캡션·디커플링 문장이 총평과 같은 판정을 쓰게 공개한다.
+    static func lateRun(activity: Activity, detail: ActivityDetail?, workoutType: WorkoutType, history: [Activity],
+                        form: FormPhase.Result? = nil, baseline: RunningFormBaseline? = nil) -> LateRunDiagnosis.Result? {
+        guard let det = detail,
+              LateRunDiagnosis.applies(to: workoutType, durationMin: activity.duration / 60,
+                                       splits: det.splits, pausedSpans: det.pausedSpans,
+                                       isLongDistance: workoutType == .buildUp
+                                           && WorkoutTypeClassifier.isLongDistance(activity: activity, history: history))
+        else { return nil }
+        return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: activity.duration / 60,
+                                         form: form, baseline: baseline,
+                                         plannedFastFinish: workoutType == .buildUp,
+                                         temperatureC: activity.temperatureC, drift: LateRunDiagnosis.cachedDrift,
+                                         altitudeProfile: det.altitudeProfile)
+    }
+
+    /// 총평 "후반"이 "심박이 먼저 오름"(또는 다리·심박 함께)인가 — 심박 신호는 폼 기준선 없이도 같은 값이 나온다.
+    static func lateHRRoseFirst(activity: Activity, detail: ActivityDetail?, workoutType: WorkoutType, history: [Activity]) -> Bool {
+        guard let r = lateRun(activity: activity, detail: detail, workoutType: workoutType, history: history) else { return false }
+        return r.kind == .cardio || r.kind == .combined
+    }
+
     /// 총평 입력 조립 — 테스트·디버그용으로도 공개.
     static func input(_ c: Context) -> RunSummaryInput {
         var input = RunSummaryInput()
@@ -155,19 +177,8 @@ enum RunSummaryBuilder {
             return FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: c.formBaseline, formShifts: c.formShifts, workoutType: c.workoutType)
         }()
-        input.lateRun = {
-            guard let det = c.detail,
-                  LateRunDiagnosis.applies(to: c.workoutType, durationMin: c.activity.duration / 60,
-                                           splits: det.splits, pausedSpans: det.pausedSpans,
-                                           isLongDistance: c.workoutType == .buildUp
-                                               && WorkoutTypeClassifier.isLongDistance(activity: c.activity, history: c.history))
-            else { return nil }
-            return LateRunDiagnosis.diagnose(splits: det.splits, durationMin: c.activity.duration / 60,
-                                             form: input.form, baseline: c.formBaseline,
-                                             plannedFastFinish: c.workoutType == .buildUp,
-                                             temperatureC: c.activity.temperatureC, drift: LateRunDiagnosis.cachedDrift,
-                                             altitudeProfile: det.altitudeProfile)
-        }()
+        input.lateRun = lateRun(activity: c.activity, detail: c.detail, workoutType: c.workoutType,
+                                history: c.history, form: input.form, baseline: c.formBaseline)
         input.distKm = c.activity.distance / 1000
         let typicalKm = typicalRunDistanceKm(activity: c.activity, history: c.history)
         input.typicalKm = typicalKm
