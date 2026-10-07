@@ -97,6 +97,25 @@ struct MRArchiveDetailView: View {
                 }
             }
             .background(Color(red: 0.07, green: 0.07, blue: 0.08))
+            // 아래 고정 — 훈련일지 내보내기(대회 준비 공유 카드). 계획 스냅샷과 실제 기록이 있을 때만.
+            .safeAreaInset(edge: .bottom) {
+                if let j = journey {
+                    Button { shareJourney = j } label: {
+                        Label(AppLanguage.shared.s("훈련일지 내보내기", "Export training log", ja: "練習日誌を書き出す"),
+                              systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Theme.violet)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .background(Color(red: 0.07, green: 0.07, blue: 0.08))
+                }
+            }
             .navigationTitle(archive.raceName)
             .navigationDestination(for: Activity.self) { activity in
                 if let manager { ActivityDetailView(activity: activity, manager: manager) }
@@ -105,12 +124,6 @@ struct MRArchiveDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLanguage.shared.s("닫기", "Done", ja: "閉じる")) { dismiss() }
-                }
-                if let j = journey {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { shareJourney = j } label: { Image(systemName: "square.and.arrow.up") }
-                            .accessibilityLabel(AppLanguage.shared.s("대회 준비 공유", "Share build-up", ja: "準備を共有"))
-                    }
                 }
             }
         }
