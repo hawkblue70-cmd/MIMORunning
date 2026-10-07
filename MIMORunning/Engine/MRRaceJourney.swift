@@ -20,8 +20,9 @@ struct MRRaceJourney: Identifiable {
         let plannedKm: Double
         let km: [Kind: Double]
         let symbol: String?
-        /// "템포런 3회 21.4 · 롱런 16 · 이지 3회" — 같은 종류는 묶어 횟수(2회 이상)·km 합, 이지는 횟수.
-        /// 순서: 대회 → 강도 → 롱런 계열(처음 나온 순서).
+        /// "템포런 3회 21.4km · 거리주 1회 11.1km · 이지 2회 10km" — 같은 종류는 묶어 **언제나 횟수와 km 합**(2026-10-07 사용자:
+        /// 1회일 때 숫자가 거리인지 헷갈림 · 이지도 같은 형식). 이지런·일반·종류 없는 짧은 러닝은 "이지" 하나로.
+        /// 순서: 대회 → 강도 → 롱런 계열 → 이지(같은 묶음 안에서는 처음 나온 순서).
         let detail: String
         var totalKm: Double { km.values.reduce(0, +) }
     }
@@ -87,7 +88,6 @@ struct MRRaceJourney: Identifiable {
             let ws = span.filter { $0.start >= mon && $0.start < wEnd }
             var km: [Kind: Double] = [:]
             var groups: [(name: String, kind: Kind, n: Int, km: Double)] = []
-            var easyCount = 0
             for r in ws {
                 let d = r.distanceKm ?? 0
                 let k: Kind
@@ -101,25 +101,21 @@ struct MRRaceJourney: Identifiable {
                 } else {
                     k = .easy; name = ""
                 }
+                let label = k == .easy ? L.s("이지", "Easy", ja: "イージー") : name
                 km[k, default: 0] += d
-                if k == .easy {
-                    easyCount += 1
-                } else if let i = groups.firstIndex(where: { $0.name == name }) {
+                if let i = groups.firstIndex(where: { $0.name == label }) {
                     groups[i].n += 1; groups[i].km += d
                 } else {
-                    groups.append((name, k, 1, d))
+                    groups.append((label, k, 1, d))
                 }
             }
-            var named = groups.enumerated()
+            let named = groups.enumerated()
                 .sorted { ($0.element.kind.rawValue, -$0.offset) > ($1.element.kind.rawValue, -$1.offset) }
                 .map { g in
                     let kmStr = mrPointKmString((g.element.km * 10).rounded() / 10)
-                    return g.element.n > 1
-                        ? L.s("\(g.element.name) \(g.element.n)회 \(kmStr)", "\(g.element.name) ×\(g.element.n) \(kmStr)",
-                              ja: "\(g.element.name) \(g.element.n)回 \(kmStr)")
-                        : "\(g.element.name) \(kmStr)"
+                    return L.s("\(g.element.name) \(g.element.n)회 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
+                               ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km")
                 }
-            if easyCount > 0 { named.append(L.s("이지 \(easyCount)회", "easy ×\(easyCount)", ja: "イージー\(easyCount)回")) }
             let sym = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
                                  actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
             weeks.append(Week(monday: mon, plannedKm: w.weeklyKm, km: km, symbol: sym,

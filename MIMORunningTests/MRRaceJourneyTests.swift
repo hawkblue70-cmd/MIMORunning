@@ -37,15 +37,15 @@ struct MRRaceJourneyTests {
         #expect(j.weeks[0].symbol == symbolBoth)
         #expect(j.weeks[1].symbol == symbolOver)          // 대회 21.1 > 롱런 계획 10 × 1.1
         // 무엇을 했는지 — 종류 이름·km, 이지는 횟수(토 16km는 종류 없음 → 계획 롱런 80% 이상이라 롱런)
-        #expect(j.weeks[0].detail == "템포런 8 · 롱런 16 · 이지 1회")   // 강도 → 롱런 → 이지 순
-        #expect(j.weeks[1].detail == "대회 21.1 · 이지 1회")
+        #expect(j.weeks[0].detail == "템포런 1회 8km · 롱런 1회 16km · 이지 1회 8km")   // 강도 → 롱런 → 이지 순
+        #expect(j.weeks[1].detail == "대회 1회 21.1km · 이지 1회 6km")
         #expect(abs((j.appErrPct ?? 0) - 100.0 / 109) < 0.001)
         #expect(j.planStartPredMin == 112)
         #expect(j.vo2 == 45 && j.vo2PredMin != nil)
     }
 
     @Test func sameTypeIsGroupedWithCountAndKm() throws {
-        // 한 주에 템포런 세 번 · 거리주 · 이지 둘 → "템포런 3회 21.4 · 거리주 11.1 · 이지 2회"
+        // 한 주에 템포런 세 번 · 거리주 · 이지 둘 → "템포런 3회 21.4km · 거리주 1회 11.1km · 이지 2회 10km"
         let runs = [run(5, km: 7), run(6, km: 6), run(7, km: 8.4), run(8, km: 11.1), run(9, km: 5), run(10, km: 5), run(18, km: 10)]
         let types: [Date: WorkoutType] = [d(5): .tempo, d(6): .tempo, d(7): .tempo, d(8): .distanceRun, d(9): .easy, d(10): .easy]
         let j = try #require(MRRaceJourney.make(
@@ -54,7 +54,7 @@ struct MRRaceJourneyTests {
                         MRPlanWeekSummary(idx: 2, monday: cal.startOfDay(for: d(12)), phase: "테이퍼", longRunKm: 8, weeklyKm: 15)],
             planStartPredMin: nil, appPredMin: nil, vo2Samples: [],
             runs: runs, types: types, hardStarts: [], pointTypes: [:]))
-        #expect(j.weeks[0].detail == "템포런 3회 21.4 · 거리주 11.1 · 이지 2회")
+        #expect(j.weeks[0].detail == "템포런 3회 21.4km · 거리주 1회 11.1km · 이지 2회 10km")
     }
 
     @Test func heartRateIntensityDoesNotPaintHard() throws {

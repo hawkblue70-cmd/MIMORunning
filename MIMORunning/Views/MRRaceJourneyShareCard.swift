@@ -7,21 +7,22 @@ import SwiftUI
 // · 주별 한 줄(무엇을 했는지 — 러닝 종류 이름·km) · 다크/라이트.
 
 /// 애플 시스템 색(iOS 다크/라이트 값) — 2026-10-07 사용자 요청.
-/// 기록(시간) = systemYellow(지표 의미색 시간=노랑) · 이지 = systemGray · 롱런 = systemIndigo · 강도 = systemOrange
-/// · 대회 = systemYellow · 앱 예측 = systemGreen · 계획선 = label(흰/검) · 글자 = label / secondaryLabel · 바탕 = secondarySystemBackground.
+/// 막대 = 강도 사다리(A안, 애플 피트니스 심박 존처럼 차가운 → 뜨거운): 이지 systemBlue · 롱런 systemGreen · 강도 systemOrange · 대회 systemPink
+///   — 대회를 노랑으로 두면 기록 숫자(노랑)와 겹쳐 헷갈렸다.
+/// 기록(시간) = systemYellow(지표 의미색 시간=노랑) · 앱 예측 = systemGreen · 계획선 = label(흰/검) · 글자 = label / secondaryLabel · 바탕 = secondarySystemBackground.
 private struct RJPalette {
     let bg, easy, long, hard, race, plan, text, sub, divider, time, good: Color
     let raceBadgeOnLight: Bool
 
     static let dark = RJPalette(
-        bg: Color(hex: "1C1C1E"), easy: Color(hex: "8E8E93"), long: Color(hex: "5E5CE6"), hard: Color(hex: "FF9F0A"),
-        race: Color(hex: "FFD60A"), plan: .white, text: .white, sub: Color(hex: "EBEBF5").opacity(0.6),
+        bg: Color(hex: "1C1C1E"), easy: Color(hex: "0A84FF"), long: Color(hex: "30D158"), hard: Color(hex: "FF9F0A"),
+        race: Color(hex: "FF375F"), plan: .white, text: .white, sub: Color(hex: "EBEBF5").opacity(0.6),
         divider: Color(hex: "545458").opacity(0.65), time: Color(hex: "FFD60A"), good: Color(hex: "30D158"),
         raceBadgeOnLight: false)
     /// 라이트 — 흰 바탕에서 노랑 글자는 안 읽혀 기록 숫자는 진한 노랑(접근성 대비 높인 systemYellow 계열)
     static let light = RJPalette(
-        bg: .white, easy: Color(hex: "8E8E93"), long: Color(hex: "5856D6"), hard: Color(hex: "FF9500"),
-        race: Color(hex: "FFCC00"), plan: .black, text: .black, sub: Color(hex: "3C3C43").opacity(0.6),
+        bg: .white, easy: Color(hex: "007AFF"), long: Color(hex: "34C759"), hard: Color(hex: "FF9500"),
+        race: Color(hex: "FF2D55"), plan: .black, text: .black, sub: Color(hex: "3C3C43").opacity(0.6),
         divider: Color(hex: "3C3C43").opacity(0.29), time: Color(hex: "A07800"), good: Color(hex: "248A3D"),
         raceBadgeOnLight: true)
 
