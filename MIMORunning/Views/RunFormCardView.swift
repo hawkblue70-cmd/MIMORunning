@@ -41,6 +41,8 @@ struct RunFormCardView: View {
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
+    /// 러닝 날짜(Activity.date) → 신발 이름. 범례 아래 "신발별 비교" 한 줄용(2026-10-08). 비면 줄을 숨긴다.
+    var shoeByDate: [Date: String] = [:]
 
     /// 내보내기(촘촘 모드)면 섹션 간격 14→9 · 상하 여백 16→12 · 문장 줄 간격 −1
     @Environment(\.insightCompact) private var compact
@@ -1689,7 +1691,58 @@ struct RunFormCardView: View {
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용입니다.", "\nLimited samples — treat as reference only.", ja: "\n比較対象が少ないため参考用です。")
             : ""
-        return line1 + dotLine + colorLine + caveat
+        return line1 + dotLine + colorLine + caveat + (shoeCompareLine().map { "\n" + $0 } ?? "")
+    }
+
+    /// 러닝 기록 → 날짜별 신발 이름 표. 러닝 일기(WorkoutStory.shoeID)에 신발을 고른 러닝만 들어간다.
+    static func shoeNames(history: [Activity], stories: [WorkoutStory], shoes: [Shoe]) -> [Date: String] {
+        let nameByID = Dictionary(shoes.map { ($0.id.uuidString, $0.displayName) }, uniquingKeysWith: { a, _ in a })
+        let shoeByWorkout = Dictionary(stories.compactMap { s in s.shoeID.map { (s.workoutID, $0) } },
+                                       uniquingKeysWith: { a, _ in a })
+        var out: [Date: String] = [:]
+        for a in history where a.type == .running {
+            if let sid = shoeByWorkout[a.id.uuidString], let n = nameByID[sid] { out[a.date] = n }
+        }
+        return out
+    }
+
+    /// 신발별 비교 한 줄 — 오늘과 같은 페이스 구간·12개월 안 러닝을 오늘 신발 / 다른 신발로 나눠 지면접촉·수직진폭 평균.
+    /// 양쪽 다 3회 이상일 때만(그보다 적으면 우연에 좌우된다). 오늘 지면접촉이 같은 신발 러닝 범위 안인지 끝에 붙인다.
+    private func shoeCompareLine() -> String? {
+        let L = AppLanguage.shared
+        guard let shoe = shoeByDate[activity.date], let base = baseline, let pace = activity.paceSecPerKm else { return nil }
+        let band = base.cutoffs.band(of: pace)
+        let since = Calendar.current.date(byAdding: .year, value: -1, to: activity.date) ?? .distantPast
+        let pool = base.allFormSamples.filter { s in
+            s.date < activity.date && s.date >= since
+                && !Calendar.current.isDate(s.date, inSameDayAs: activity.date)
+                && base.cutoffs.band(of: s.paceSecPerKm) == band
+                && (s.groundContactTime != nil || s.verticalOscillation != nil)
+        }
+        let same  = pool.filter { shoeByDate[$0.date] == shoe }
+        let other = pool.filter { shoeByDate[$0.date].map { $0 != shoe } ?? false }
+        guard same.count >= 3, other.count >= 3 else { return nil }
+        func mean(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.reduce(0, +) / Double(v.count) }
+        func part(_ g: Double?, _ v: Double?) -> String {
+            [g.map { L.s("지면접촉 \(Int($0.rounded()))ms", "contact \(Int($0.rounded()))ms", ja: "接地 \(Int($0.rounded()))ms") },
+             v.map { L.s("수직진폭 \(String(format: "%.1f", $0))cm", "oscillation \(String(format: "%.1f", $0))cm", ja: "上下動 \(String(format: "%.1f", $0))cm") }]
+                .compactMap { $0 }.joined(separator: " · ")
+        }
+        let sameG = mean(same.compactMap(\.groundContactTime)), sameV = mean(same.compactMap(\.verticalOscillation))
+        let otherG = mean(other.compactMap(\.groundContactTime)), otherV = mean(other.compactMap(\.verticalOscillation))
+        var line = L.s("👟 \(shoe) \(same.count)회: \(part(sameG, sameV)) / 다른 신발 \(other.count)회: \(part(otherG, otherV))",
+                       "👟 \(shoe), \(same.count) runs: \(part(sameG, sameV)) / other shoes, \(other.count) runs: \(part(otherG, otherV))",
+                       ja: "👟 \(shoe) \(same.count)回: \(part(sameG, sameV)) / 他の靴 \(other.count)回: \(part(otherG, otherV))")
+        // 오늘 지면접촉이 같은 신발 러닝의 최저~최고 안인가 — 신발 탓인지 오늘만의 일인지
+        let sameGs = same.compactMap(\.groundContactTime)
+        if let today = avgGroundContactTime, let lo = sameGs.min(), let hi = sameGs.max() {
+            line += today >= lo - 0.5 && today <= hi + 0.5
+                ? L.s(" — 오늘 지면접촉은 이 신발 평소 범위입니다", " — today's contact is usual for this shoe", ja: " — 今日の接地時間はこの靴のいつもの範囲です")
+                : (today > hi
+                    ? L.s(" — 오늘 지면접촉은 이 신발 평소보다도 깁니다", " — today's contact is longer than usual even for this shoe", ja: " — 今日の接地時間はこの靴のいつもより長いです")
+                    : L.s(" — 오늘 지면접촉은 이 신발 평소보다 짧습니다", " — today's contact is shorter than usual for this shoe", ja: " — 今日の接地時間はこの靴のいつもより短いです"))
+        }
+        return line
     }
 
     // MARK: - Narrative
