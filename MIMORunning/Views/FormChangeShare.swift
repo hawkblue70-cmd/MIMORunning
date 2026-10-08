@@ -106,7 +106,7 @@ struct FormChangeSummaryBox: View {
         let L = AppLanguage.shared
         VStack(alignment: .leading, spacing: compact ? 5 : 6) {
             Text(L.s("폼 요약 · 최근 4주 vs 3개월 전", "Form summary · last 4 weeks vs 3 months ago", ja: "フォーム要約 · 直近4週 vs 3か月前"))
-                .font(.system(size: compact ? 9 : 11)).foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: compact ? 9 : 12)).foregroundStyle(.white.opacity(0.6))
             // 2×2 — 글머리 점은 지표 색(공중 시간은 계산값이라 회색)
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 ForEach(Array(stride(from: 0, to: values.count, by: 2)), id: \.self) { i in
@@ -114,14 +114,14 @@ struct FormChangeSummaryBox: View {
                         ForEach(values[i..<min(i + 2, values.count)], id: \.label) { v in
                             HStack(spacing: 6) {
                                 Circle().fill(v.tint).frame(width: 6, height: 6)
-                                Text(v.label).font(.system(size: compact ? 11 : 12)).foregroundStyle(.white.opacity(0.75))
-                                Text(v.value).font(.system(size: compact ? 11 : 12, weight: .semibold)).foregroundStyle(.white)
+                                Text(v.label).font(.system(size: compact ? 11 : 13)).foregroundStyle(.white.opacity(0.75))
+                                Text(v.value).font(.system(size: compact ? 11 : 13, weight: .semibold)).foregroundStyle(.white)
                             }
                         }
                     }
                 }
             }
-            Text(pattern).font(.system(size: compact ? 13 : 14, weight: .semibold)).foregroundStyle(.white)
+            Text(pattern).font(.system(size: compact ? 13 : 15, weight: .semibold)).foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)

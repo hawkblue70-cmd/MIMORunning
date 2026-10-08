@@ -30,8 +30,9 @@ struct FormChangeCard: View {
         let turns = C.turns(line, threshold: metric.turnThreshold)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
+                // 제목·본문 글자 크기는 바로 위 후반 내구성 카드와 같게(제목 16·본문 13·각주 11, 2026-10-08)
                 Text(L.s("폼 변화", "Form change", ja: "フォームの変化"))
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
                 Spacer()
                 // 내보내기 — 6개월 칩 앞(2026-10-08 사용자 요청). 지금 기간 그대로 요약 + 지표 네 개 2×2 한 장
                 if model != nil {
@@ -57,31 +58,31 @@ struct FormChangeCard: View {
                 Text(L.s("폼 데이터가 있는 러닝이 최근 1년 \(C.minModelRuns)회 이상 쌓이면 보여 드립니다.",
                          "Shown once the last year has \(C.minModelRuns)+ runs with form data.",
                          ja: "フォームデータのあるランが直近1年で\(C.minModelRuns)回以上たまると表示します。"))
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65))
+                    .font(.system(size: 13)).foregroundStyle(.white.opacity(0.65))
             } else if line.count < 2 {
                 Text(L.s("이 기간에 흐름을 그릴 만큼 러닝이 없습니다.", "Not enough runs in this period to draw a trend.",
                          ja: "この期間は流れを描けるほどランがありません。"))
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65))
+                    .font(.system(size: 13)).foregroundStyle(.white.opacity(0.65))
             } else {
                 if let seg = C.lastSegment(line, turns: turns) {
                     Text(FormChangeStyle.conclusion(seg, metric))
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                     if metric == .contact, abs(seg.change) >= metric.turnThreshold, let r = rhythmNote(from: seg.from, to: now) {
-                        Text(r).font(.system(size: 12)).foregroundStyle(tint(metric))
+                        Text(r).font(.system(size: 13)).foregroundStyle(tint(metric))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 FormChangeChart(metric: metric, pts: pts, line: line, turns: turns, from: from, to: now, months: months)
                 ForEach(Array(turnLines(line: line, turns: turns).enumerated()), id: \.offset) { _, t in
-                    Text(t).font(.system(size: 11)).foregroundStyle(tint(metric))
+                    Text(t).font(.system(size: 12)).foregroundStyle(tint(metric))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(FormChangeStyle.footnote)
-                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(FormChangeStyle.hint(metric))
-                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
             }
         }
         .padding(14)
@@ -137,10 +138,10 @@ struct FormChangeCard: View {
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 10, weight: .semibold)) }
+                if let systemImage { Image(systemName: systemImage).font(.system(size: 11, weight: .semibold)) }
                 Text(title)
             }
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(on ? (tint == nil ? Color.white : Color.black) : Color.white.opacity(0.55))
                 .padding(.horizontal, 9).padding(.vertical, 5)
                 .background(on ? (tint ?? Theme.violet) : Color.white.opacity(0.08))
