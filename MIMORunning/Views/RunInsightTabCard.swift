@@ -182,7 +182,7 @@ private struct CadenceTrackView: View {
 }
 
 /// 반원 게이지(케이던스·유산소) 공통 배율 — 리듬·퍼포먼스 카드가 같은 크기를 쓰도록 한 곳에서만 정한다(§5.8).
-private let insightGaugeScale: CGFloat = 0.72  // 0.9 → 0.72(2026-10-08 사용자: 2×2에서 아래 반원이 커 보여 어색 — 기존의 80%)
+private let insightGaugeScale: CGFloat = 0.75  // 0.9 → 0.75(2026-10-08 사용자: 2×2에서 아래 반원이 커 보여 어색 — 기존의 약 83%)
 
 private struct CadenceRPMGaugeView: View {
     let cadence: Int
