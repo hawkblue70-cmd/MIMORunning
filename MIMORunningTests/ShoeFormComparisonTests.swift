@@ -111,7 +111,7 @@ struct ShoeFormComparisonTests {
         let st = try #require(C.shoeStats(.stride, samples: s, model: m).first { $0.shoeID == "A" })
         #expect(st.differs)
         #expect(abs(st.mean - 0.04) < 0.005)
-        #expect(C.Metric.stride.rounded(0.034) == 0.03)
+        #expect(C.Metric.stride.rounded(0.0344) == 0.034)
     }
 
     @Test func flightTimeIsStepTimeMinusContact() {

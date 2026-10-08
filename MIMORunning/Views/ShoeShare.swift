@@ -20,12 +20,13 @@ struct ShoeCompareChart: View {
 
     var body: some View {
         let domain = Self.domain(rows.map(\.stat), metric)
+        let ticks = Self.ticks(domain, metric, maxCount: compact ? 3 : 5)
         VStack(alignment: .leading, spacing: 0) {
             ForEach(rows, id: \.id) { r in
                 if compact {
                     VStack(alignment: .leading, spacing: 0) {
                         name(r).font(.system(size: 8, weight: r.mine ? .semibold : .regular)).lineLimit(1)
-                        bar(r, domain: domain).frame(height: 13)
+                        bar(r, domain: domain, ticks: ticks).frame(height: 13)
                     }
                     .frame(height: 26)
                 } else {
@@ -33,7 +34,7 @@ struct ShoeCompareChart: View {
                         name(r).font(.system(size: 10, weight: r.mine ? .semibold : .regular))
                             .lineLimit(2).minimumScaleFactor(0.8)
                             .frame(width: Self.nameColumn, alignment: .leading)
-                        bar(r, domain: domain)
+                        bar(r, domain: domain, ticks: ticks)
                     }
                     .frame(height: 34)
                 }
@@ -44,7 +45,7 @@ struct ShoeCompareChart: View {
                     .chartXScale(domain: domain)
                     .chartYAxis(.hidden)
                     .chartXAxis {
-                        AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { x in
+                        AxisMarks(values: ticks) { x in
                             AxisValueLabel {
                                 Text(FormChangeStyle.fmt(x.as(Double.self) ?? 0, metric))
                                     .font(.system(size: compact ? 7.5 : 9)).foregroundStyle(.white.opacity(0.7))
@@ -69,7 +70,26 @@ struct ShoeCompareChart: View {
     }
 
     /// 한 줄의 막대 — 0 점선 + 95% 범위 + 평균 점(축 글자 없이 눈금선만)
-    private func bar(_ r: Row, domain: ClosedRange<Double>) -> some View {
+    /// 눈금 — 범위 안쪽(양끝 12% 제외)에 들어오는 '보기 좋은 간격'의 배수만. 자동 눈금은 범위 끝에 걸려
+    /// 글자가 잘리면 빠져서 진폭·보폭은 '+0.0cm' 하나만 남았다(2026-10-08).
+    static func ticks(_ domain: ClosedRange<Double>, _ m: ShoeFormComparison.Metric, maxCount: Int = 5) -> [Double] {
+        let steps: [Double]
+        switch m {
+        case .contact, .flight: steps = [1, 2, 5, 10, 20]
+        case .oscillation:      steps = [0.05, 0.1, 0.2, 0.5, 1]
+        case .stride:           steps = [0.002, 0.005, 0.01, 0.02, 0.05]
+        case .cadence:          steps = [0.5, 1, 2, 5]
+        }
+        let w = domain.upperBound - domain.lowerBound
+        let lo = domain.lowerBound + w * 0.12, hi = domain.upperBound - w * 0.12
+        for st in steps {
+            let t = stride(from: (lo / st).rounded(.up) * st, through: hi + 1e-12, by: st).map { ($0 / st).rounded() * st }
+            if t.count <= maxCount { return t }
+        }
+        return [0]
+    }
+
+    private func bar(_ r: Row, domain: ClosedRange<Double>, ticks: [Double]) -> some View {
         let tint = r.mine ? FormChangeStyle.tint(metric) : Color.white
         return Chart {
             RuleMark(x: .value("0", 0))
@@ -89,7 +109,7 @@ struct ShoeCompareChart: View {
         .chartYScale(domain: -1...1)
         .chartYAxis(.hidden)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: compact ? 3 : 4)) { _ in
+            AxisMarks(values: ticks) { _ in
                 AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
             }
         }

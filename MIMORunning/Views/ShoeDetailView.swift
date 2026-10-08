@@ -107,18 +107,8 @@ struct ShoeDetailView: View {
         }
     }
 
-    /// 차이 표기(부호 포함) — 판정과 같은 반올림
-    private func fmt(_ v: Double, _ m: C.Metric) -> String {
-        let r = m.rounded(v)
-        let sign = r >= 0 ? "+" : "−"
-        switch m {
-        case .contact:     return "\(sign)\(Int(abs(r)))ms"
-        case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
-        case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
-        case .cadence:     return "\(sign)\(Int(abs(r)))spm"
-        case .flight:      return "\(sign)\(Int(abs(r)))ms"
-        }
-    }
+    /// 차이 표기(부호 포함) — 판정과 같은 반올림, 폼 변화 카드와 같은 표기
+    private func fmt(_ v: Double, _ m: C.Metric) -> String { FormChangeStyle.fmt(v, m) }
 
     /// 반올림한 값이 문턱 이상인가
     private func notable(_ v: Double, _ m: C.Metric) -> Bool { abs(m.rounded(v)) >= m.noticeable }

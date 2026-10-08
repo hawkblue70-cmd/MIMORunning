@@ -50,7 +50,7 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return v.rounded()
             case .oscillation: return (v * 10).rounded() / 10
-            case .stride:      return (v * 100).rounded() / 100
+            case .stride:      return (v * 1000).rounded() / 1000   // 0.1cm — cm로 표기(2026-10-08, m 두 자리는 전부 '+0.00m'였음)
             case .cadence, .flight: return v.rounded()
             }
         }

@@ -38,7 +38,7 @@ enum FormChangeStyle {
         switch m {
         case .contact:     return "\(sign)\(Int(abs(r)))ms"
         case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
-        case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
+        case .stride:      return "\(sign)\(String(format: "%.1f", abs(r) * 100))cm"
         case .cadence:     return "\(sign)\(Int(abs(r)))spm"
         case .flight:      return "\(sign)\(Int(abs(r)))ms"
         }
