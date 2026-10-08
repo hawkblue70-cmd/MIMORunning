@@ -23,7 +23,7 @@ private struct RJPalette {
     static let light = RJPalette(
         bg: .white, easy: Color(hex: "007AFF"), long: Color(hex: "34C759"), hard: Color(hex: "FF9500"),
         race: Color(hex: "FF2D55"), plan: .black, text: .black, sub: Color(hex: "3C3C43").opacity(0.6),
-        divider: Color(hex: "3C3C43").opacity(0.29), time: Color(hex: "A07800"), good: Color(hex: "248A3D"),
+        divider: Color(hex: "3C3C43").opacity(0.29), time: .black, good: Color(hex: "248A3D"),   // 기록 숫자 라이트는 검정(2026-10-09 사용자), 다크는 노랑 그대로
         raceBadgeOnLight: true)
 
     func color(_ k: MRRaceJourney.Kind) -> Color {
