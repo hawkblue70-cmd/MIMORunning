@@ -78,6 +78,8 @@ enum ShoeFormComparison {
         var cadence: Double? = nil
         /// nil = 신발 기록 없음(기준·흐름에만 쓰인다)
         let shoeID: String?
+        /// 기온(°C, 운동 메타데이터) — 보정에는 아직 안 쓴다. `temperatureCheck` 확인용(2026-10-08)
+        var temperatureC: Double? = nil
 
         var speed: Double { paceSecPerKm > 0 ? 1000 / paceSecPerKm : 0 }   // m/s
         var km: Double { distanceM / 1000 }
@@ -88,13 +90,66 @@ enum ShoeFormComparison {
         }
     }
 
-    static func samples(inputs: [FormInput], shoeOf: (UUID) -> String?) -> [Sample] {
+    static func samples(inputs: [FormInput], shoeOf: (UUID) -> String?,
+                        temperatureOf: (UUID) -> Double? = { _ in nil }) -> [Sample] {
         inputs.map {
             Sample(date: $0.date, distanceM: $0.distanceM, paceSecPerKm: $0.paceSecPerKm,
                    contact: $0.avgGroundContactTime, oscillation: $0.avgVerticalOscillation,
                    stride: $0.avgStrideLength, cadence: $0.avgCadence.map(Double.init),
-                   shoeID: shoeOf($0.activityID))
+                   shoeID: shoeOf($0.activityID), temperatureC: temperatureOf($0.activityID))
         }
+    }
+
+    // MARK: - 기온 확인(보정에 넣기 전, 2026-10-08)
+
+    struct TemperatureCheck {
+        let n: Int
+        let tempMin: Double, tempMax: Double
+        /// 같은 페이스·거리에서 기온 10°C당 변화
+        let per10C: Double
+        /// 95% 범위 반폭(per10C 기준)
+        let half10C: Double
+        /// 잔차 표준편차 — 페이스·거리만 / +기온
+        let sdBase: Double, sdWithTemp: Double
+        /// 6개월 흐름선(4주 이동평균)의 최고−최저 — 기온 보정 전 / 후
+        let swingBase: Double, swingWithTemp: Double
+    }
+
+    /// 기온 있는 러닝(최근 1년)만으로 페이스·거리 모델과 +기온 모델을 나란히 맞춰 비교. 신발 효과는 빼지 않는다(확인용).
+    static func temperatureCheck(_ m: Metric, samples: [Sample], asOf: Date) -> TemperatureCheck? {
+        let since = Calendar.current.date(byAdding: .day, value: -modelWindowDays, to: asOf) ?? .distantPast
+        let pts = samples.filter { $0.date >= since && $0.date <= asOf && $0.speed > 0 && m.raw($0) != nil && $0.temperatureC != nil }
+        guard pts.count >= minModelRuns else { return nil }
+        let ys = pts.map { m.raw($0)! }
+        let temps = pts.map { $0.temperatureC! }
+        guard let base = leastSquares(pts.map { [1, $0.speed, $0.km] }, ys),
+              let withT = leastSquares(pts.map { [1, $0.speed, $0.km, $0.temperatureC!] }, ys) else { return nil }
+        func resid(_ c: [Double], _ rows: [[Double]]) -> [Double] {
+            zip(rows, ys).map { r, y in y - zip(c, r).reduce(0) { $0 + $1.0 * $1.1 } }
+        }
+        let rb = resid(base, pts.map { [1, $0.speed, $0.km] })
+        let rt = resid(withT, pts.map { [1, $0.speed, $0.km, $0.temperatureC!] })
+        func sd(_ v: [Double]) -> Double {
+            let mu = v.reduce(0, +) / Double(v.count)
+            return (v.map { ($0 - mu) * ($0 - mu) }.reduce(0, +) / Double(max(1, v.count - 1))).squareRoot()
+        }
+        // 기온 계수의 표준오차 — 다른 변수를 뺀 기온 잔여 분산으로 근사
+        let tMean = temps.reduce(0, +) / Double(temps.count)
+        let tOnOthers = leastSquares(pts.map { [1, $0.speed, $0.km] }, temps) ?? [tMean, 0, 0]
+        let tRes = zip(pts, temps).map { p, t in t - (tOnOthers[0] + tOnOthers[1] * p.speed + tOnOthers[2] * p.km) }
+        let sxx = tRes.map { $0 * $0 }.reduce(0, +)
+        let s2 = rt.map { $0 * $0 }.reduce(0, +) / Double(max(1, pts.count - 4))
+        let se = sxx > 0 ? (s2 / sxx).squareRoot() : .infinity
+        let from = Calendar.current.date(byAdding: .month, value: -6, to: asOf)!
+        func swing(_ r: [Double]) -> Double {
+            let line = trend(zip(pts, r).filter { $0.0.date >= from }.map { Point(date: $0.0.date, value: $0.1, shoeID: nil) },
+                             from: from, to: asOf).map(\.value)
+            return (line.max() ?? 0) - (line.min() ?? 0)
+        }
+        return TemperatureCheck(n: pts.count, tempMin: temps.min()!, tempMax: temps.max()!,
+                                per10C: withT[3] * 10, half10C: 1.96 * se * 10,
+                                sdBase: sd(rb), sdWithTemp: sd(rt),
+                                swingBase: swing(rb), swingWithTemp: swing(rt))
     }
 
     // MARK: - 기준(이 속도·거리면 보통 얼마)

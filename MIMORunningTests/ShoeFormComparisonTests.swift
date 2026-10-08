@@ -157,6 +157,23 @@ struct ShoeFormComparisonTests {
         #expect(big.metric == .oscillation)
     }
 
+    @Test func temperatureCheckFindsTemperatureEffect() throws {
+        // 접지 = 400 − 50·속도 + 0.5ms/°C(10°C당 +5ms), 기온은 계절처럼 오르내림
+        let s = (0..<80).map { i -> C.Sample in
+            let pace = 300.0 + Double(i % 7) * 15, km = 5.0 + Double(i % 5) * 3
+            let t = 15 + 12 * sin(Double(i) / 80 * .pi * 2)
+            var x = C.Sample(date: day(-i * 3), distanceM: km * 1000, paceSecPerKm: pace,
+                             contact: 400 - 50 * (1000 / pace) + 0.5 * t + Double(i % 3 - 1), oscillation: nil, shoeID: nil)
+            x.temperatureC = t
+            return x
+        }
+        let c = try #require(C.temperatureCheck(.contact, samples: s, asOf: now))
+        #expect(abs(c.per10C - 5) < 0.5)
+        #expect(abs(c.per10C) > c.half10C)
+        #expect(c.sdWithTemp < c.sdBase)
+        #expect(c.swingWithTemp < c.swingBase)
+    }
+
     @Test func roundingMatchesJudgement() {
         #expect(C.Metric.contact.rounded(7.6) == 8)
         #expect(C.Metric.oscillation.rounded(0.26) == 0.3)

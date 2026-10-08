@@ -122,7 +122,22 @@ struct FormChangeCard: View {
     private func load() {
         let shoeByWorkout = Dictionary(stories.compactMap { s in s.shoeID.map { (s.workoutID, $0) } },
                                        uniquingKeysWith: { a, _ in a })
-        samples = C.samples(inputs: manager.formInputs, shoeOf: { shoeByWorkout[$0.uuidString] })
+        let tempByID = Dictionary(manager.activities.compactMap { a in a.temperatureC.map { (a.id, $0) } },
+                                  uniquingKeysWith: { a, _ in a })
+        samples = C.samples(inputs: manager.formInputs, shoeOf: { shoeByWorkout[$0.uuidString] },
+                            temperatureOf: { tempByID[$0] })
+        #if DEBUG
+        // 기온 확인(2026-10-08) — 보정에 넣을지 판단용. 계수가 크고 흐름선 흔들림이 줄면 넣는다.
+        let withTemp = samples.filter { $0.temperatureC != nil }.count
+        print("[폼기온] 폼 러닝 \(samples.count)회 중 기온 있음 \(withTemp)회")
+        for m in C.Metric.shown {
+            guard let t = C.temperatureCheck(m, samples: samples, asOf: Date()) else {
+                print("[폼기온] \(m): 표본 부족"); continue
+            }
+            print(String(format: "[폼기온] %@ n=%d 기온 %.0f~%.0f°C · 10°C당 %+.3f (±%.3f) · 잔차SD %.3f→%.3f · 6개월 흐름 폭 %.3f→%.3f",
+                         "\(m)", t.n, t.tempMin, t.tempMax, t.per10C, t.half10C, t.sdBase, t.sdWithTemp, t.swingBase, t.swingWithTemp))
+        }
+        #endif
         let typeOf = manager.workoutTypeLookup()
         let runs = manager.activities.filter { $0.type == .running }
         raceDates = runs.filter { typeOf($0.id) == .race }.map(\.date)
