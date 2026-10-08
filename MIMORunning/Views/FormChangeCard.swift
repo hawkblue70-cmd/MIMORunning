@@ -51,7 +51,7 @@ struct FormChangeCard: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(C.Metric.shown, id: \.self) { m in
-                        chip(metricName(m), on: metric == m) { metric = m }
+                        chip(metricName(m), on: metric == m, tint: tint(m)) { metric = m }
                     }
                 }
             }
@@ -70,18 +70,18 @@ struct FormChangeCard: View {
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                     if metric == .contact, abs(seg.change) >= metric.turnThreshold, let r = rhythmNote(from: seg.from, to: now) {
-                        Text(r).font(.system(size: 12)).foregroundStyle(Theme.violetText)
+                        Text(r).font(.system(size: 12)).foregroundStyle(tint(metric))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 chart(pts: pts, line: line, turns: turns, from: from, to: now)
                 ForEach(Array(turnLines(line: line, turns: turns).enumerated()), id: \.offset) { _, t in
-                    Text(t).font(.system(size: 11)).foregroundStyle(Theme.violetText)
+                    Text(t).font(.system(size: 11)).foregroundStyle(tint(metric))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(L.s("같은 페이스·거리로 보정하고 신발 효과를 뺀 값 · 흰 선 = 4주 이동평균 · ▲정점 ▼바닥 = 선이 방향을 바꾼 곳 · 점선 0 = 내 평소",
-                         "Adjusted for pace and distance, shoe effect removed · white line = 4-week average · ▲peak ▼low = where the line turned · dashed 0 = usual",
-                         ja: "同じペース・距離で補正し靴の影響を除いた値 · 白い線 = 4週移動平均 · ▲山 ▼谷 = 線の向きが変わった所 · 点線0 = いつもの値"))
+                Text(L.s("같은 페이스·거리로 보정하고 신발 효과를 뺀 값 · 색 선 = 4주 이동평균 · ▲정점 ▼바닥 = 선이 방향을 바꾼 곳 · 점선 0 = 내 평소",
+                         "Adjusted for pace and distance, shoe effect removed · colored line = 4-week average · ▲peak ▼low = where the line turned · dashed 0 = usual",
+                         ja: "同じペース・距離で補正し靴の影響を除いた値 · 色の線 = 4週移動平均 · ▲山 ▼谷 = 線の向きが変わった所 · 点線0 = いつもの値"))
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
                 Text({
@@ -151,13 +151,26 @@ struct FormChangeCard: View {
         return f.string(from: d)
     }
 
-    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+    /// 지표 색 — 애플 시스템 색(다크 모드 값), 앱의 지표 의미색과 같은 계열(2026-10-08 사용자 결정 A안).
+    /// 기간 칩은 브랜드 보라 그대로.
+    private func tint(_ m: C.Metric) -> Color {
+        switch m {
+        case .contact:      return Color(hex: "40C8E0")   // Teal — 지면접촉 청록
+        case .oscillation:  return Color(hex: "FF375F")   // Pink — 종합 차트 진폭 마젠타 계열
+        case .stride:       return Color(hex: "FF9F0A")   // Orange — 보폭 주황
+        case .cadence:      return Color(hex: "FFD60A")   // Yellow — 케이던스 노랑
+        case .flight:       return Color.white
+        }
+    }
+
+    /// `tint`가 있으면 밝은 지표 색 바탕이라 글자는 검정
+    private func chip(_ title: String, on: Bool, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(on ? Color.white : Color.white.opacity(0.55))
+                .foregroundStyle(on ? (tint == nil ? Color.white : Color.black) : Color.white.opacity(0.55))
                 .padding(.horizontal, 9).padding(.vertical, 5)
-                .background(on ? Theme.violet : Color.white.opacity(0.08))
+                .background(on ? (tint ?? Theme.violet) : Color.white.opacity(0.08))
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -294,17 +307,17 @@ struct FormChangeCard: View {
             }
             ForEach(Array(line.enumerated()), id: \.offset) { _, t in
                 LineMark(x: .value("d", t.date), y: .value("trend", t.value))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(tint(metric))
                     .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .interpolationMethod(.monotone)
             }
             ForEach(Array(turns.enumerated()), id: \.offset) { _, t in
                 PointMark(x: .value("d", t.date), y: .value("turn", t.value))
                     .symbolSize(60)
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(tint(metric))
                     .annotation(position: t.isPeak ? .top : .bottom, spacing: 2) {
                         Text("\(t.isPeak ? "▲" : "▼") \(day(t.date))")
-                            .font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.violetText)
+                            .font(.system(size: 9, weight: .semibold)).foregroundStyle(tint(metric))
                     }
             }
         }
