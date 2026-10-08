@@ -17,6 +17,8 @@ struct ShoeCompareChart: View {
     var compact = false
 
     static let nameColumn: CGFloat = 112
+    /// 공유 칸 — 막대를 이름보다 오른쪽으로 들여 이름 줄과 구분(2026-10-08 사용자 요청)
+    static let compactInset: CGFloat = 18
 
     var body: some View {
         let domain = Self.domain(rows.map(\.stat), metric)
@@ -27,6 +29,7 @@ struct ShoeCompareChart: View {
                     VStack(alignment: .leading, spacing: 0) {
                         name(r).font(.system(size: 8, weight: r.mine ? .semibold : .regular)).lineLimit(1)
                         bar(r, domain: domain, ticks: ticks).frame(height: 13)
+                            .padding(.leading, Self.compactInset)
                     }
                     .frame(height: 26)
                 } else {
@@ -40,7 +43,8 @@ struct ShoeCompareChart: View {
                 }
             }
             HStack(spacing: 8) {
-                if !compact { Color.clear.frame(width: Self.nameColumn, height: 1) }
+                // 막대와 같은 왼쪽 들여쓰기 — 눈금이 막대와 맞게
+                Color.clear.frame(width: compact ? Self.compactInset - 8 : Self.nameColumn, height: 1)
                 Chart { RuleMark(x: .value("0", 0)).foregroundStyle(.clear) }
                     .chartXScale(domain: domain)
                     .chartYAxis(.hidden)
