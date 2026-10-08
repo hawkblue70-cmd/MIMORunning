@@ -128,9 +128,9 @@ struct ShoeDetailView: View {
                 Button { metric = m } label: {
                     Text(metricName(m))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(on ? Color.white : Color.white.opacity(0.6))
+                        .foregroundStyle(on ? Color.black : Color.white.opacity(0.6))
                         .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(on ? Theme.violet : Color.white.opacity(0.08))
+                        .background(on ? FormChangeStyle.tint(m) : Color.white.opacity(0.08))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -154,7 +154,7 @@ struct ShoeDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let r = rhythmSentence() {
-                Text(r).font(.system(size: 13)).foregroundStyle(Theme.violetText)
+                Text(r).font(.system(size: 13)).foregroundStyle(FormChangeStyle.tint(.contact))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -220,38 +220,34 @@ struct ShoeDetailView: View {
                          ja: "同じ時期に他の靴で走ったランが必要です。"))
                     .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
             } else {
-                Chart {
-                    RuleMark(x: .value("0", 0))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        .foregroundStyle(Color.white.opacity(0.35))
+                // 신발 이름 열(왼쪽) + 막대(오른쪽) — 이름이 막대 위에 겹치지 않게 줄마다 나눠 그리고, x축은 맨 아래 한 줄.
+                // 모든 줄이 같은 x 범위·같은 폭이라 0선·눈금이 이어진다(2026-10-08 사용자 요청).
+                let domain = compareDomain(ordered)
+                VStack(spacing: 0) {
                     ForEach(ordered, id: \.shoeID) { s in
-                        let mine = s.shoeID == myID
-                        if let h = s.half {
-                            RuleMark(xStart: .value("lo", s.mean - h), xEnd: .value("hi", s.mean + h), y: .value("shoe", rowName(s)))
-                                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
-                                .foregroundStyle((mine ? Theme.violet : Color.white).opacity(0.35))
+                        HStack(spacing: 8) {
+                            Text(rowName(s))
+                                .font(.system(size: 10, weight: s.shoeID == myID ? .semibold : .regular))
+                                .foregroundStyle(s.shoeID == myID ? FormChangeStyle.tint(metric) : .white.opacity(0.85))
+                                .lineLimit(2).minimumScaleFactor(0.8)
+                                .frame(width: Self.nameColumn, alignment: .leading)
+                            compareRow(s, domain: domain)
                         }
-                        PointMark(x: .value("avg", s.mean), y: .value("shoe", rowName(s)))
-                            .symbolSize(mine ? 110 : 80)
-                            .foregroundStyle(mine ? Theme.violet : Color.white.opacity(0.85))
+                        .frame(height: 34)
+                    }
+                    HStack(spacing: 8) {
+                        Color.clear.frame(width: Self.nameColumn, height: 1)
+                        Chart { RuleMark(x: .value("0", 0)).foregroundStyle(.clear) }
+                            .chartXScale(domain: domain)
+                            .chartYAxis(.hidden)
+                            .chartXAxis {
+                                AxisMarks(values: .automatic(desiredCount: 4)) { x in
+                                    AxisValueLabel { Text(fmt(x.as(Double.self) ?? 0, metric)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
+                                }
+                            }
+                            .frame(height: 20)
                     }
                 }
-                .chartYScale(domain: ordered.map(rowName))
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5)) { x in
-                        AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
-                        AxisValueLabel { Text(fmt(x.as(Double.self) ?? 0, metric)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { y in
-                        AxisValueLabel {
-                            Text(y.as(String.self) ?? "").font(.system(size: 10)).foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1).minimumScaleFactor(0.75).frame(width: 120, alignment: .leading)
-                        }
-                    }
-                }
-                .frame(height: CGFloat(ordered.count) * 36 + 28)
                 Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 차이 없음",
                          "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = no difference",
                          ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば差なし"))
@@ -260,7 +256,7 @@ struct ShoeDetailView: View {
                 ForEach(ordered.prefix(5), id: \.shoeID) { s in
                     Text(shoeLine(s))
                         .font(.system(size: 12))
-                        .foregroundStyle(s.shoeID == myID ? Theme.violetText : .white.opacity(0.75))
+                        .foregroundStyle(s.shoeID == myID ? FormChangeStyle.tint(metric) : .white.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -270,6 +266,44 @@ struct ShoeDetailView: View {
         .background(Theme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .padding(.horizontal, 16)
+    }
+
+    private static let nameColumn: CGFloat = 112
+    // 색: 지표 칩·이 신발 점·막대·이름·한 줄 = 지표의 애플 시스템 색(폼 변화 카드와 같은 FormChangeStyle.tint, 2026-10-08)
+
+    /// 모든 줄이 같이 쓰는 x 범위 — 0과 모든 95% 막대를 담고 양끝 10% 여유
+    private func compareDomain(_ stats: [C.ShoeStat]) -> ClosedRange<Double> {
+        let lo = min(0, stats.map { $0.mean - ($0.half ?? 0) }.min() ?? 0)
+        let hi = max(0, stats.map { $0.mean + ($0.half ?? 0) }.max() ?? 0)
+        let pad = max((hi - lo) * 0.1, metric.noticeable / 2)
+        return (lo - pad)...(hi + pad)
+    }
+
+    /// 신발 한 줄의 막대 — 0 점선 + 95% 범위 + 평균 점(축 글자 없이 눈금선만)
+    private func compareRow(_ s: C.ShoeStat, domain: ClosedRange<Double>) -> some View {
+        let mine = s.shoeID == myID
+        return Chart {
+            RuleMark(x: .value("0", 0))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .foregroundStyle(Color.white.opacity(0.35))
+            if let h = s.half {
+                RuleMark(xStart: .value("lo", max(domain.lowerBound, s.mean - h)),
+                         xEnd: .value("hi", min(domain.upperBound, s.mean + h)), y: .value("y", 0))
+                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .foregroundStyle((mine ? FormChangeStyle.tint(metric) : Color.white).opacity(0.35))
+            }
+            PointMark(x: .value("avg", s.mean), y: .value("y", 0))
+                .symbolSize(mine ? 110 : 80)
+                .foregroundStyle(mine ? FormChangeStyle.tint(metric) : Color.white.opacity(0.85))
+        }
+        .chartXScale(domain: domain)
+        .chartYScale(domain: -1...1)
+        .chartYAxis(.hidden)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
+            }
+        }
     }
 
     /// 신발 한 줄 — 방향 사실만(좋다·나쁘다로 단정하지 않는다: 접지가 긴 신발이 나쁜 신발은 아니다)
