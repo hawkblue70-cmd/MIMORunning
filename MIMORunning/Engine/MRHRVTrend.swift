@@ -17,9 +17,28 @@ private func mrHRVNightKey(_ t: Date, calendar: Calendar) -> Date? {
     return nil
 }
 
+/// 잠든 구간 사이가 이보다 짧으면 한 수면 세션으로 잇는다 — 화장실·뒤척임처럼 밤중에 잠깐 깬 시간도 세션 안.
+let mrHRVSessionGapMinutes: Double = 90
+
+/// 잠든 구간들을 수면 세션(처음 잠든 시각 ~ 마지막 기상)으로 합친다. 사이가 `gapMinutes` 이하면 같은 세션.
+func mrSleepSessions(_ asleep: [(start: Date, end: Date)],
+                     gapMinutes: Double = mrHRVSessionGapMinutes) -> [(start: Date, end: Date)] {
+    var out: [(start: Date, end: Date)] = []
+    for iv in asleep.sorted(by: { $0.start < $1.start }) {
+        if let last = out.last, iv.start.timeIntervalSince(last.end) <= gapMinutes * 60 {
+            out[out.count - 1].end = max(last.end, iv.end)
+        } else {
+            out.append(iv)
+        }
+    }
+    return out
+}
+
 /// 밤별 중앙값.
-/// - `asleep`(잠든 구간)이 있으면 **잠든 동안 찍힌 값만** 그 밤에 넣는다(구간 끝 = 기상 시각의 밤 키). 기상 후 깨어 있을 때 값은
-///   수면 값보다 낮아 중앙값을 끌어내리므로 버린다 — 애플 건강의 '수면' HRV와 같은 재료. 구간 경계 ±15분은 포함.
+/// - `asleep`(잠든 구간)이 있으면 **수면 세션 동안 찍힌 값만** 그 밤에 넣는다(세션 끝 = 마지막 기상 시각의 밤 키).
+///   애플 건강의 '수면' HRV처럼 밤중에 잠깐 깬 시간(화장실·새벽 뒤척임)의 값도 넣는다 — 하룻밤 샘플이 3~4개라
+///   하나만 빠져도 중앙값이 크게 흔들린다(2026-10-09: 7:09 뒤척임 중 53ms가 빠져 22ms·'낮음'으로 판정, 넣으면 25.5ms·평소 범위).
+///   마지막 기상 후 값은 버린다(러닝 직후 19ms가 어젯밤 값이 되던 2026-10-08 문제). 세션 경계 ±15분은 포함.
 /// - 수면 기록이 없는 밤은 창 규칙으로 폴백: **전날 15:00 ~ 당일 12:00** — 15시 이후 샘플은 다음 날 키, 12시 전은 그날 키, 12~15시는 버림.
 /// 10ms 미만은 측정 노이즈로 버린다. 반환은 날짜(자정) 오름차순.
 func mrHRVNightMedians(samples: [(Date, Double)],
@@ -29,7 +48,7 @@ func mrHRVNightMedians(samples: [(Date, Double)],
     let margin: TimeInterval = 15 * 60
     // 잠든 구간 → 밤 키(기상 시각 기준). 여백을 미리 더하고 시작 시각으로 정렬해 이진 탐색한다 —
     // 수면 단계 샘플은 60일에 수천 개, HRV 샘플은 천 개 남짓이라 선형 탐색(수백만 비교)은 메인 스레드를 초 단위로 세운다.
-    let keyed: [(start: TimeInterval, end: TimeInterval, key: Date)] = asleep.compactMap { iv in
+    let keyed: [(start: TimeInterval, end: TimeInterval, key: Date)] = mrSleepSessions(asleep).compactMap { iv in
         guard let k = mrHRVNightKey(iv.end, calendar: calendar) ?? mrHRVNightKey(iv.start, calendar: calendar) else { return nil }
         return (iv.start.timeIntervalSinceReferenceDate - margin, iv.end.timeIntervalSinceReferenceDate + margin, k)
     }.sorted { $0.start < $1.start }

@@ -142,7 +142,8 @@ final class MREngineStore: ObservableObject {
     private static let hrvCacheNightsKey = "mimo.hrvCache.nights"
     private static let hrvCacheRuleKey   = "mimo.hrvCache.rule"
     /// 밤 묶기 규칙 버전 — 바뀌면 캐시를 버리고 다시 읽는다. 1 = 창 규칙(15시~12시) · 2 = 잠든 구간 한정(2026-09-23)
-    private static let hrvNightRuleVersion = 2
+    ///   · 3 = 수면 세션(잠깐 깬 시간 포함, 2026-10-09)
+    private static let hrvNightRuleVersion = 3
 
     private func loadPersistedHRV() -> (fetchedAt: Date, nights: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard

@@ -91,6 +91,30 @@ struct MRHRVTrendTests {
         #expect(nights.map(\.date) == [day(0)])
     }
 
+    @Test func briefAwakeningsInsideSessionAreKept() {
+        // 23:41~05:10 잠듦 · 05:10~05:55 화장실 · 05:55~06:55 잠듦 · 06:55~07:30 뒤척임 · 07:30~08:33 잠듦
+        // 7:09 뒤척임 중 53도 세션 안 → 21·22·29·53 중앙값 25.5 (2026-10-09 실제 밤)
+        let asleep: [(start: Date, end: Date)] = [
+            (at(day: -1, hour: 23, minute: 41), at(day: 0, hour: 5, minute: 10)),
+            (at(day: 0, hour: 5, minute: 55), at(day: 0, hour: 6, minute: 55)),
+            (at(day: 0, hour: 7, minute: 30), at(day: 0, hour: 8, minute: 33)),
+        ]
+        let nights = mrHRVNightMedians(samples: [
+            (at(day: 0, hour: 1), 21), (at(day: 0, hour: 3), 22), (at(day: 0, hour: 5, minute: 30), 29),
+            (at(day: 0, hour: 7, minute: 9), 53),
+            (at(day: 0, hour: 10), 18),   // 마지막 기상 후 → 버림
+        ], asleep: asleep)
+        #expect(nights.map(\.value) == [25.5])
+    }
+
+    @Test func longGapSplitsSessions() {
+        // 06:30 기상 후 3시간 뒤 낮잠(09:30~10:00) — 다른 세션이라 그 사이 08:00 값은 버린다
+        let asleep: [(start: Date, end: Date)] = lastNightAsleep + [(at(day: 0, hour: 9, minute: 30), at(day: 0, hour: 10))]
+        #expect(mrSleepSessions(asleep).count == 2)
+        let nights = mrHRVNightMedians(samples: [(at(day: 0, hour: 3), 30), (at(day: 0, hour: 8), 18)], asleep: asleep)
+        #expect(nights.map(\.value) == [30])
+    }
+
     // MARK: 추세
 
     /// 4주(−34…−7)는 base, 7일(−6…0)은 recent 값으로 채운 밤 시계열.

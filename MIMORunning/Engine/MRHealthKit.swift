@@ -252,8 +252,8 @@ struct MRHealthKit {
 
     /// 수면 HRV(SDNN) 원본 샘플. 밤 묶기는 `mrHRVNightMedians`가 한다.
     /// 60일이면 7일 창 + 4주 기준선(34일)에 여유가 있다. 그 이상은 쓰지 않는다.
-    /// 잠든 구간(core·deep·REM·unspecified)의 시작·끝. 밤 HRV를 "잠든 동안"으로 한정하는 데 쓴다 —
-    /// 기상 후 깨어 있을 때 찍힌 값은 수면 값보다 낮아 밤 중앙값을 끌어내린다(애플 '수면' 항목과 같은 재료로 맞춘다).
+    /// 잠든 구간(core·deep·REM·unspecified)의 시작·끝. `mrSleepSessions`가 수면 세션으로 이어 밤 HRV를 "자는 동안"으로 한정한다 —
+    /// 마지막 기상 후 값은 빼고, 밤중에 잠깐 깬 시간은 넣는다(애플 '수면' 항목과 같은 재료로 맞춘다).
     func fetchAsleepIntervals(days: Int = 60) async throws -> [(start: Date, end: Date)] {
         guard let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return [] }
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
