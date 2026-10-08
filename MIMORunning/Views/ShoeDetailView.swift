@@ -15,6 +15,8 @@ struct ShoeDetailView: View {
     @State private var runs: [ShoeFormComparison.Run] = []
     @State private var shoeDistances: [(date: Date, meters: Double)] = []
     @State private var selected: ShoeFormComparison.Group? = nil
+    /// 한 차트에 그릴 지표 — 칩으로 고른다
+    @State private var metric: ShoeFormComparison.Metric = .efficiency
     @State private var loaded = false
 
     private typealias C = ShoeFormComparison
@@ -37,9 +39,8 @@ struct ShoeDetailView: View {
                             .foregroundStyle(.white.opacity(0.72))
                             .padding(.horizontal, 16)
                     } else {
-                        groupChips
+                        compareCard
                         if let g = selected {
-                            compareCard(g)
                             wearCard(g)
                         }
                         Text(L.s("같은 러닝 종류·비슷한 거리끼리만 비교합니다. 심박 효율 = 속도 ÷ 평균 심박(심박 한 번에 가는 거리) — 높을수록 같은 심박에 더 빨리 갑니다.",
@@ -125,7 +126,6 @@ struct ShoeDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
         }
     }
 
@@ -151,104 +151,115 @@ struct ShoeDetailView: View {
         }
     }
 
-    /// 이 신발 vs 다른 신발 한 줄 — 차이가 문턱보다 작으면 "비슷합니다"
-    private func verdict(_ m: C.Metric, _ g: C.Group) -> String? {
-        guard let d = C.difference(m, shoeID: myID, group: g, runs: runs) else { return nil }
-        let a = abs(d.diff)
-        if a < m.noticeable {
-            return L.s("다른 신발과 비슷합니다(\(d.diff >= 0 ? "+" : "−")\(fmt(m, a))).",
-                       "About the same as your other shoes (\(d.diff >= 0 ? "+" : "−")\(fmt(m, a))).",
-                       ja: "他の靴とほぼ同じです(\(d.diff >= 0 ? "+" : "−")\(fmt(m, a)))。")
-        }
-        let up = d.diff > 0
-        switch m {
-        case .efficiency:
-            return up
-                ? L.s("다른 신발보다 심박 한 번에 \(fmt(m, a)) 더 갑니다 — 같은 심박에 더 빠릅니다.",
-                      "\(fmt(m, a)) more per heartbeat than your other shoes — faster at the same heart rate.",
-                      ja: "他の靴より心拍1回で\(fmt(m, a))多く進みます — 同じ心拍でより速いです。")
-                : L.s("다른 신발보다 심박 한 번에 \(fmt(m, a)) 덜 갑니다 — 같은 속도에 심박이 더 오릅니다.",
-                      "\(fmt(m, a)) less per heartbeat than your other shoes — your HR runs higher at the same speed.",
-                      ja: "他の靴より心拍1回で\(fmt(m, a))少なく進みます — 同じ速度で心拍が上がります。")
-        case .contact:
-            return L.s("다른 신발보다 지면접촉이 \(fmt(m, a)) \(up ? "깁니다" : "짧습니다").",
-                       "Ground contact is \(fmt(m, a)) \(up ? "longer" : "shorter") than in your other shoes.",
-                       ja: "他の靴より接地時間が\(fmt(m, a))\(up ? "長いです" : "短いです")。")
-        case .oscillation:
-            return L.s("다른 신발보다 수직진폭이 \(fmt(m, a)) \(up ? "큽니다" : "작습니다").",
-                       "Vertical oscillation is \(fmt(m, a)) \(up ? "higher" : "lower") than in your other shoes.",
-                       ja: "他の靴より上下動が\(fmt(m, a))\(up ? "大きいです" : "小さいです")。")
-        case .cadence:
-            return L.s("다른 신발보다 케이던스가 \(fmt(m, a)) \(up ? "높습니다" : "낮습니다").",
-                       "Cadence is \(fmt(m, a)) \(up ? "higher" : "lower") than in your other shoes.",
-                       ja: "他の靴よりケイデンスが\(fmt(m, a))\(up ? "高いです" : "低いです")。")
-        case .stride:
-            return L.s("다른 신발보다 보폭이 \(fmt(m, a)) \(up ? "깁니다" : "짧습니다").",
-                       "Stride is \(fmt(m, a)) \(up ? "longer" : "shorter") than in your other shoes.",
-                       ja: "他の靴よりストライドが\(fmt(m, a))\(up ? "長いです" : "短いです")。")
+    /// 이 신발이 뛴 묶음마다 신발별 평균 — 한 차트(세로 = 러닝 종류·거리, 색 = 신발)
+    private struct Point: Identifiable {
+        let id = UUID()
+        let row: String
+        let shoe: String
+        let value: Double
+        let count: Int
+        let mine: Bool
+    }
+
+    /// 신발 색 — 이 신발은 보라, 나머지는 순서대로
+    private static let otherColors: [Color] = [Color.white.opacity(0.85), Color(hex: "4FD1C5"), Color(hex: "FF9A3C"), Color(hex: "FF6FA8"), Color(hex: "B7E34B")]
+
+    private var shoeOrder: [String] {
+        let ids = Set(runs.filter { r in groups.contains { $0.group == r.group } }.map(\.shoeID))
+        return [myID] + ids.subtracting([myID]).sorted { shoeName($0) < shoeName($1) }
+    }
+
+    private func color(of id: String) -> Color {
+        if id == myID { return Theme.violet }
+        let i = (shoeOrder.firstIndex(of: id) ?? 1) - 1
+        return Self.otherColors[max(0, i) % Self.otherColors.count]
+    }
+
+    private var metricChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(C.Metric.allCases, id: \.self) { m in
+                    let on = m == metric
+                    Button { metric = m } label: {
+                        Text(metricName(m))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(on ? Color.white : Color.white.opacity(0.6))
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(on ? Theme.violet : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
-    private func compareCard(_ g: C.Group) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L.s("신발 비교 · \(g.label)", "Shoe comparison · \(g.label)", ja: "靴の比較 · \(g.label)"))
+    private var compareCard: some View {
+        let order = shoeOrder
+        let rows = groups.map(\.group)
+        let points: [Point] = rows.flatMap { g in
+            C.stats(metric, group: g, runs: runs).map {
+                Point(row: g.label, shoe: shoeName($0.shoeID), value: $0.mean, count: $0.count, mine: $0.shoeID == myID)
+            }
+        }
+        let rowLabels = rows.map(\.label).filter { r in points.contains { $0.row == r } }
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L.s("신발 비교", "Shoe comparison", ja: "靴の比較"))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
-            let others = Set(runs.filter { $0.group == g && $0.shoeID != myID }.map(\.shoeID))
-            if others.isEmpty {
-                Text(L.s("이 묶음을 다른 신발로 뛴 기록이 아직 없어 이 신발 값만 보입니다.",
-                         "No runs in this group with other shoes yet — only this shoe is shown.",
-                         ja: "このグループを他の靴で走った記録がまだないため、この靴の値だけ表示します。"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.6))
+            metricChips
+            if let hb = metric.higherIsBetter {
+                Text("\(metricName(metric)) · " + (hb ? L.s("높을수록 좋음", "higher is better", ja: "高いほど良い")
+                                                    : L.s("낮을수록 좋음", "lower is better", ja: "低いほど良い")))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
             }
-            ForEach(C.Metric.allCases, id: \.self) { m in
-                let st = C.stats(m, group: g, runs: runs)
-                if !st.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(metricName(m)).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                            if let hb = m.higherIsBetter {
-                                Text(hb ? L.s("높을수록 좋음", "higher is better", ja: "高いほど良い")
-                                        : L.s("낮을수록 좋음", "lower is better", ja: "低いほど良い"))
-                                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
-                            }
+            if points.isEmpty {
+                Text(L.s("이 지표가 기록된 러닝이 없습니다.", "No runs with this metric.", ja: "この指標が記録されたランはありません。"))
+                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+            } else {
+                Chart(points) { p in
+                    PointMark(x: .value("v", p.value), y: .value("row", p.row))
+                        .symbolSize(p.mine ? 110 : 80)
+                        .foregroundStyle(color(of: order.first { shoeName($0) == p.shoe } ?? ""))
+                        .annotation(position: .bottom, spacing: 1) {
+                            Text("\(p.count)").font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.6))
                         }
-                        Chart {
-                            ForEach(st, id: \.shoeID) { s in
-                                let row = "\(shoeName(s.shoeID)) · \(s.count)"
-                                let mine = s.shoeID == myID
-                                RuleMark(xStart: .value("min", s.min), xEnd: .value("max", s.max), y: .value("shoe", row))
-                                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
-                                    .foregroundStyle(Color.white.opacity(0.22))
-                                PointMark(x: .value("avg", s.mean), y: .value("shoe", row))
-                                    .symbolSize(70)
-                                    .foregroundStyle(mine ? Theme.violet : Color.white.opacity(0.75))
-                                    .annotation(position: .top, spacing: 2) {
-                                        Text(fmt(m, s.mean)).font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(mine ? Theme.violetText : .white.opacity(0.7))
-                                    }
-                            }
-                        }
-                        .chartXScale(domain: .automatic(includesZero: false))
-                        .chartXAxis(.hidden)
-                        .chartYAxis {
-                            AxisMarks { v in
-                                AxisValueLabel { Text(v.as(String.self) ?? "").font(.system(size: 10)).foregroundStyle(.white.opacity(0.8)) }
-                            }
-                        }
-                        .frame(height: CGFloat(st.count) * 34 + 8)
-                        if let v = verdict(m, g) {
-                            Text(v).font(.system(size: 11)).foregroundStyle(Theme.violetText)
-                                .fixedSize(horizontal: false, vertical: true)
+                }
+                .chartYScale(domain: rowLabels)
+                .chartXScale(domain: .automatic(includesZero: false))
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { v in
+                        AxisGridLine().foregroundStyle(Color.white.opacity(0.08))
+                        AxisValueLabel { Text(fmt(metric, v.as(Double.self) ?? 0)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { v in
+                        AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
+                        AxisValueLabel {
+                            Text(v.as(String.self) ?? "").font(.system(size: 10)).foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(1).minimumScaleFactor(0.8).frame(width: 112, alignment: .leading)
                         }
                     }
                 }
+                .frame(height: CGFloat(rowLabels.count) * 46 + 28)
+                // 범례 — 신발 색과 이름
+                HStack(spacing: 12) {
+                    ForEach(order, id: \.self) { id in
+                        HStack(spacing: 4) {
+                            Circle().fill(color(of: id)).frame(width: 8, height: 8)
+                            Text(shoeName(id)).font(.system(size: 10)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                        }
+                    }
+                }
+                Text(L.s("점 = 평균 · 점 아래 숫자 = 횟수", "Dot = average · number below = runs", ja: "点 = 平均 · 点の下の数字 = 回数"))
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
+                if let v = summary(rows) {
+                    Text(v).font(.system(size: 12)).foregroundStyle(Theme.violetText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Text(L.s("점 = 평균 · 막대 = 최저~최고 · 숫자 = 횟수 · 보라 = 이 신발",
-                     "Dot = average · bar = min–max · number = runs · violet = this shoe",
-                     ja: "点 = 平均 · 棒 = 最低~最高 · 数字 = 回数 · 紫 = この靴"))
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -257,13 +268,36 @@ struct ShoeDetailView: View {
         .padding(.horizontal, 16)
     }
 
+    /// 묶음마다 이 신발 vs 다른 신발 — "템포런 · 5~10km: 8ms 깁니다 · 이지런 · 5~10km: 비슷합니다"
+    private func summary(_ rows: [C.Group]) -> String? {
+        let parts: [String] = rows.compactMap { g in
+            guard let d = C.difference(metric, shoeID: myID, group: g, runs: runs) else { return nil }
+            let a = abs(d.diff)
+            if a < metric.noticeable { return "\(g.label): " + L.s("비슷합니다", "about the same", ja: "ほぼ同じ") }
+            let up = d.diff > 0
+            let word: String = {
+                switch metric {
+                case .efficiency:  return up ? L.s("심박당 더 갑니다", "more per beat", ja: "心拍あたり多く進む") : L.s("심박당 덜 갑니다", "less per beat", ja: "心拍あたり少なく進む")
+                case .contact, .stride: return up ? L.s("깁니다", "longer", ja: "長い") : L.s("짧습니다", "shorter", ja: "短い")
+                case .oscillation: return up ? L.s("큽니다", "higher", ja: "大きい") : L.s("작습니다", "lower", ja: "小さい")
+                case .cadence:     return up ? L.s("높습니다", "higher", ja: "高い") : L.s("낮습니다", "lower", ja: "低い")
+                }
+            }()
+            return "\(g.label): \(fmt(metric, a)) \(word)"
+        }
+        guard !parts.isEmpty else { return nil }
+        return L.s("\(shoe.displayName) — 다른 신발 대비 ", "\(shoe.displayName) vs other shoes — ", ja: "\(shoe.displayName) — 他の靴と比べて ")
+            + parts.joined(separator: " · ")
+    }
+
     // MARK: - 누적 km에 따른 변화
 
     private func wearCard(_ g: C.Group) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L.s("누적 km에 따른 변화 · \(g.label)", "Change with mileage · \(g.label)", ja: "累計kmによる変化 · \(g.label)"))
+            Text(L.s("누적 km에 따른 변화", "Change with mileage", ja: "累計kmによる変化"))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
+            groupChips
             ForEach([C.Metric.efficiency, .contact], id: \.self) { m in
                 let pts = C.wear(m, shoeID: myID, group: g, runs: runs, allShoeDistances: shoeDistances)
                 if !pts.isEmpty {
