@@ -214,7 +214,7 @@ struct ShoeShareCard: View {
             } else {
                 if let l = p.line {
                     Text(l).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2, reservesSpace: true)   // 한 줄이어도 두 줄 높이 — 칸끼리 차트 시작 위치가 맞게
                 }
                 ShoeCompareChart(rows: p.rows, metric: p.metric, compact: true)
             }

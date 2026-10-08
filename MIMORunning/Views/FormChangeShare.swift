@@ -280,7 +280,7 @@ struct FormChangeShareCard: View {
                 if let seg = p.segment {
                     Text(FormChangeStyle.conclusion(seg, p.metric, withName: false))
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2, reservesSpace: true)   // 한 줄이어도 두 줄 높이 — 칸끼리 차트 시작 위치가 맞게
                 }
                 FormChangeChart(metric: p.metric, pts: p.pts, line: p.line, turns: p.turns,
                                 from: data.from, to: data.to, months: data.months, compact: true)
