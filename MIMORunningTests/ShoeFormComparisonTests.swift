@@ -2,50 +2,77 @@ import Testing
 import Foundation
 @testable import MIMORunning
 
-@Suite("신발별 폼 비교")
+@Suite("신발별 폼 비교 — 페이스·거리 보정")
 struct ShoeFormComparisonTests {
     private typealias C = ShoeFormComparison
-    private func run(_ day: Int, shoe: String, type: WorkoutType = .general, km: Double = 8,
-                     pace: Double = 390, hr: Int? = 140, gct: Double? = 260, vo: Double? = 8.7) -> C.Run {
-        C.Run(date: Date(timeIntervalSince1970: Double(day) * 86_400), distanceM: km * 1000, paceSecPerKm: pace,
-              avgHeartRate: hr, cadence: 172, stride: 0.9, contact: gct, oscillation: vo,
-              shoeID: shoe, group: C.Group(type: type, bucket: .of(km * 1000)))
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// 지면접촉 = 400 − 50·속도(m/s) + 1·거리(km) + 신발 효과 + 잡음
+    private func sample(_ i: Int, shoe: String?, effect: Double = 0, noise: Double = 0) -> C.Sample {
+        let pace = 300.0 + Double(i % 7) * 15          // 5'00"~6'30"
+        let km = 5.0 + Double(i % 5) * 3                 // 5~17km
+        let speed = 1000 / pace
+        let gct = 400 - 50 * speed + 1 * km + effect + noise
+        return C.Sample(date: now.addingTimeInterval(Double(-i) * 86_400), distanceM: km * 1000, paceSecPerKm: pace,
+                        avgHeartRate: 140, contact: gct, oscillation: 8.5, shoeID: shoe)
     }
 
-    @Test func bucketsByDistance() {
-        #expect(C.DistanceBucket.of(4_999) == .under5)
-        #expect(C.DistanceBucket.of(8_140) == .from5)
-        #expect(C.DistanceBucket.of(10_000) == .from10)
-        #expect(C.DistanceBucket.of(21_097) == .from21)
+    @Test func modelRemovesPaceAndDistance() throws {
+        let s = (0..<40).map { sample($0, shoe: nil) }
+        let m = try #require(C.fit(.contact, samples: s, asOf: now))
+        #expect(abs(m.b - -50) < 0.01)
+        #expect(abs(m.c - 1) < 0.01)
+        // 보정 후 차이는 0 — 페이스·거리가 달라도
+        #expect(s.allSatisfy { abs(C.residual(.contact, $0, model: m) ?? 99) < 0.01 })
     }
 
-    @Test func efficiencyIsMetersPerBeat() {
-        // 6'30"/km = 153.8m/분 ÷ 140bpm ≈ 1.10m
-        let e = run(1, shoe: "A").efficiency ?? 0
-        #expect(abs(e - 1.0989) < 0.001)
-        #expect(run(1, shoe: "A", hr: nil).efficiency == nil)
+    @Test func needsTwentyRunsInLastYear() {
+        let s = (0..<19).map { sample($0, shoe: nil) }
+        #expect(C.fit(.contact, samples: s, asOf: now) == nil)
     }
 
-    @Test func comparesOnlyWithinSameTypeAndDistance() {
-        let runs = [run(1, shoe: "A", gct: 270), run(2, shoe: "A", gct: 266),
-                    run(3, shoe: "B", gct: 258), run(4, shoe: "B", gct: 256),
-                    run(5, shoe: "B", type: .interval, km: 8, gct: 220),   // 다른 종류 — 섞이면 안 된다
-                    run(6, shoe: "B", km: 16, gct: 280)]                   // 다른 거리 — 섞이면 안 된다
-        let g = C.Group(type: .general, bucket: .from5)
-        let d = C.difference(.contact, shoeID: "A", group: g, runs: runs)
-        #expect(d?.diff == 11)   // 268 − 257
-        #expect(d?.mine == 2 && d?.others == 2)
-        #expect(C.groups(for: "A", in: runs).first?.group == g)
-        #expect(C.stats(.contact, group: g, runs: runs).count == 2)
+    @Test func shoeEffectSurvivesMixedPaces() throws {
+        // 기준은 신발 없는 러닝 30회, 신발 A는 +10ms, B는 0 — 페이스·거리는 제각각
+        var s = (0..<30).map { sample($0, shoe: nil, noise: Double($0 % 3) - 1) }
+        s += (30..<42).map { sample($0, shoe: "A", effect: 10, noise: Double($0 % 3) - 1) }
+        s += (42..<54).map { sample($0, shoe: "B", noise: Double($0 % 3) - 1) }
+        let m = try #require(C.fit(.contact, samples: s, asOf: now))
+        let st = C.shoeStats(.contact, samples: s, model: m)
+        let a = try #require(st.first { $0.shoeID == "A" }), b = try #require(st.first { $0.shoeID == "B" })
+        #expect(a.differs)
+        // 기준은 모든 신발 러닝으로 만든다 — A(+10)가 기준을 약 2ms 끌어올려 B는 −2ms 근처.
+        // 화면은 문턱 절반(4ms) 안이면 "평소와 같음"이라 쓴다
+        #expect(abs(b.mean) < C.Metric.contact.noticeable / 2)
+        #expect(a.mean - b.mean > 9 && a.mean - b.mean < 11)
     }
 
-    @Test func wearUsesCumulativeKmAndHalvesNeedSix() {
-        let runs = (1...6).map { run($0, shoe: "A", gct: 250 + Double($0) * 2) }
-        let dists = (1...6).map { (date: Date(timeIntervalSince1970: Double($0) * 86_400), meters: 10_000.0) }
-        let pts = C.wear(.contact, shoeID: "A", group: nil, runs: runs, allShoeDistances: dists)
-        #expect(pts.map(\.km) == [10, 20, 30, 40, 50, 60])
-        let h = C.halves(pts)
-        #expect(h?.early == 254 && h?.late == 260)
-        #expect(C.halves(Array(pts.prefix(5))) == nil)
+    @Test func wearComparesNewStretchWithLastFive() throws {
+        let base = (0..<30).map { sample($0, shoe: nil) }
+        let m = try #require(C.fit(.contact, samples: base, asOf: now))
+        // 신발 A 12회, 10km씩 — 앞 10회(100km)는 0, 뒤 2회는 +12ms → 새 신발 뒤 5회 미만이라 변화 판단 안 함
+        func shoeRun(_ k: Int, effect: Double) -> C.Sample {
+            let s = sample(k, shoe: "A", effect: effect)
+            return C.Sample(date: now.addingTimeInterval(Double(k) * 86_400), distanceM: s.distanceM, paceSecPerKm: s.paceSecPerKm,
+                            avgHeartRate: 140, contact: s.contact, oscillation: 8.5, shoeID: "A")
+        }
+        var runs = (0..<12).map { shoeRun($0, effect: $0 < 10 ? 0 : 12) }
+        var dists = runs.map { (date: $0.date, meters: 10_000.0) }
+        var v = try #require(C.verdict(C.wear(.contact, shoeID: "A", samples: runs, model: m, shoeDistances: dists)))
+        #expect(v.earlyRuns == 10)
+        #expect(v.change == nil)
+        // 뒤에 3회 더(+12) → 새 신발 뒤 5회 → 최근 5회 평균 +12
+        runs += (12..<15).map { shoeRun($0, effect: 12) }
+        dists = runs.map { (date: $0.date, meters: 10_000.0) }
+        v = try #require(C.verdict(C.wear(.contact, shoeID: "A", samples: runs, model: m, shoeDistances: dists)))
+        #expect(abs((v.change ?? 0) - 12) < 0.01)
+    }
+
+    @Test func efficiencyResidualIsPercent() throws {
+        let s = (0..<25).map { sample($0, shoe: nil) }
+        let m = try #require(C.fit(.efficiency, samples: s, asOf: now))
+        let r = C.Sample(date: now, distanceM: 8000, paceSecPerKm: 390, avgHeartRate: 130, contact: nil, oscillation: nil, shoeID: "A")
+        let e = m.expected(r)
+        let res = try #require(C.residual(.efficiency, r, model: m))
+        #expect(abs(res - ((r.efficiency! - e) / e * 100)) < 1e-9)
     }
 }

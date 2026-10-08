@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// 나 탭 › 신발 › 신발 상세 — 같은 러닝 종류·거리끼리 신발별 폼·심박 효율 비교 + 이 신발의 누적 km에 따른 변화(2026-10-08).
-/// 계산은 `ShoeFormComparison` 하나. 표본이 적어도 보여 주고 횟수를 같이 적는다.
+/// 나 탭 › 신발 › 신발 상세(2026-10-08) — 질문 둘에 답한다: 이 신발은 거리가 쌓이며 변하나(수명) · 다른 신발과 다른가.
+/// 값은 전부 "이 속도·거리면 내 평소" 대비 차이(ShoeFormComparison) — 러닝 종류로 쪼개지 않는다.
 struct ShoeDetailView: View {
     let shoe: Shoe
     var manager: HealthKitManager
@@ -12,43 +12,42 @@ struct ShoeDetailView: View {
     @Query private var shoes: [Shoe]
     @Environment(\.dismiss) private var dismiss
 
-    @State private var runs: [ShoeFormComparison.Run] = []
+    @State private var samples: [ShoeFormComparison.Sample] = []
     @State private var shoeDistances: [(date: Date, meters: Double)] = []
-    @State private var selected: ShoeFormComparison.Group? = nil
-    /// 한 차트에 그릴 지표 — 칩으로 고른다
-    @State private var metric: ShoeFormComparison.Metric = .efficiency
+    @State private var metric: ShoeFormComparison.Metric = .contact
     @State private var loaded = false
 
     private typealias C = ShoeFormComparison
     private var L: AppLanguage { AppLanguage.shared }
     private var myID: String { shoe.id.uuidString }
-    private var groups: [(group: C.Group, count: Int)] { C.groups(for: myID, in: runs) }
+    private var totalKm: Double { shoeDistances.reduce(0) { $0 + $1.meters } / 1000 }
+    private var model: C.Model? { C.fit(metric, samples: samples, asOf: Date()) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    header
                     if !loaded {
                         ProgressView().tint(.white).frame(maxWidth: .infinity).padding(.top, 40)
-                    } else if groups.isEmpty {
-                        Text(L.s("이 신발로 기록된 러닝이 아직 없습니다. 러닝 상세에서 신발을 고르면 쌓입니다.",
-                                 "No runs recorded with this shoe yet. Pick the shoe on a run's detail page and they'll add up.",
-                                 ja: "この靴で記録されたランはまだありません。ランの詳細で靴を選ぶと貯まります。"))
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .padding(.horizontal, 16)
                     } else {
-                        compareCard
-                        if let g = selected {
-                            wearCard(g)
+                        headline
+                        metricChips.padding(.horizontal, 16)
+                        if let m = model {
+                            wearCard(m)
+                            compareCard(m)
+                            Text(L.s("0 = 내 평소 — 최근 1년 러닝 \(m.n)회로 만든 '이 속도·거리면 보통 얼마'. 페이스와 거리 영향을 빼고 신발만 봅니다.",
+                                     "0 = your usual — what your last \(m.n) runs say to expect at that speed and distance. Pace and distance are taken out so only the shoe remains.",
+                                     ja: "0 = いつもの値 — 直近1年のラン\(m.n)回から作った「この速度・距離ならふつうはいくつ」。ペースと距離の影響を除き、靴だけを見ます。"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .padding(.horizontal, 16)
+                        } else {
+                            Text(L.s("이 지표가 있는 러닝이 최근 1년 \(C.minModelRuns)회 이상 쌓이면 비교합니다.",
+                                     "Comparisons start once the last year has \(C.minModelRuns)+ runs with this metric.",
+                                     ja: "この指標があるランが直近1年で\(C.minModelRuns)回以上たまると比較します。"))
+                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.72))
+                                .padding(.horizontal, 16)
                         }
-                        Text(L.s("같은 러닝 종류·비슷한 거리끼리만 비교합니다. 심박 효율 = 속도 ÷ 평균 심박(심박 한 번에 가는 거리) — 높을수록 같은 심박에 더 빨리 갑니다.",
-                                 "Only runs of the same type and similar distance are compared. HR efficiency = speed ÷ average HR (distance per heartbeat) — higher means faster at the same heart rate.",
-                                 ja: "同じランの種類・近い距離同士だけを比較します。心拍効率 = 速度 ÷ 平均心拍(心拍1回で進む距離) — 高いほど同じ心拍でより速く走れます。"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .padding(.horizontal, 16)
                     }
                     Spacer(minLength: 24)
                 }
@@ -69,19 +68,13 @@ struct ShoeDetailView: View {
         .task { load() }
     }
 
-    // MARK: - 데이터
-
     private func load() {
         let shoeByWorkout = Dictionary(stories.compactMap { s in s.shoeID.map { (s.workoutID, $0) } },
                                        uniquingKeysWith: { a, _ in a })
-        let typeOf = manager.workoutTypeLookup()
-        runs = C.runs(inputs: manager.formInputs,
-                      shoeOf: { shoeByWorkout[$0.uuidString] },
-                      typeOf: typeOf)
+        samples = C.samples(inputs: manager.formInputs, shoeOf: { shoeByWorkout[$0.uuidString] })
         shoeDistances = manager.activities
             .filter { $0.type == .running && shoeByWorkout[$0.id.uuidString] == myID }
             .map { ($0.date, $0.distance) }
-        selected = C.groups(for: myID, in: runs).first?.group
         loaded = true
     }
 
@@ -89,174 +82,222 @@ struct ShoeDetailView: View {
         shoes.first { $0.id.uuidString == id }?.displayName ?? L.s("삭제된 신발", "Removed shoe", ja: "削除した靴")
     }
 
-    // MARK: - 머리
+    // MARK: - 표기
 
-    private var header: some View {
-        let km = shoeDistances.reduce(0) { $0 + $1.meters } / 1000
-        return HStack(alignment: .firstTextBaseline, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(format: km >= 100 ? "%.0f" : "%.1f", km))
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(L.s("누적 km", "total km", ja: "累計km")).font(.caption).foregroundStyle(.secondary)
+    private func metricName(_ m: C.Metric) -> String {
+        switch m {
+        case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
+        case .efficiency:  return L.s("심박 효율", "HR efficiency", ja: "心拍効率")
+        case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
+        }
+    }
+
+    /// 차이 표기 — 부호 포함
+    private func fmt(_ v: Double) -> String {
+        let sign = v >= 0 ? "+" : "−"
+        switch metric {
+        case .contact:     return "\(sign)\(Int(abs(v).rounded()))ms"
+        case .efficiency:  return "\(sign)\(String(format: "%.1f", abs(v)))%"
+        case .oscillation: return "\(sign)\(String(format: "%.1f", abs(v)))cm"
+        }
+    }
+
+    /// 차이가 좋은 쪽인가
+    private func isBetter(_ d: Double) -> Bool { metric.higherIsBetter ? d > 0 : d < 0 }
+
+    private var metricChips: some View {
+        HStack(spacing: 8) {
+            ForEach(C.Metric.allCases, id: \.self) { m in
+                let on = m == metric
+                Button { metric = m } label: {
+                    Text(metricName(m))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(on ? Color.white : Color.white.opacity(0.6))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(on ? Theme.violet : Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(shoeDistances.count)")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(L.s("러닝", "runs", ja: "ラン")).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - 결론 한 줄
+
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(String(format: totalKm >= 100 ? "%.0f" : "%.1f", totalKm))
+                    .font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                Text("km").font(.system(size: 14)).foregroundStyle(.secondary)
+                Text(L.s("· 러닝 \(shoeDistances.count)회", "· \(shoeDistances.count) runs", ja: "· ラン\(shoeDistances.count)回"))
+                    .font(.system(size: 14)).foregroundStyle(.secondary)
             }
+            if let m = model {
+                Text(wearSentence(m)).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(L.s("흔히 500~800km에서 바꿉니다(관행, 근거는 약함)",
+                     "Shoes are commonly replaced at 500–800 km (convention, weak evidence)",
+                     ja: "一般に500~800kmで交換します(慣行、根拠は弱い)"))
+                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
         }
         .padding(.horizontal, 16)
     }
 
-    private var groupChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(groups, id: \.group) { g in
-                    let on = g.group == selected
-                    Button { selected = g.group } label: {
-                        Text("\(g.group.label) \(g.count)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(on ? Color.white : Color.white.opacity(0.6))
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(on ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+    /// 수명 결론 — 새 신발 때 대비 최근 5회
+    private func wearSentence(_ m: C.Model) -> String {
+        let pts = C.wear(metric, shoeID: myID, samples: samples, model: m, shoeDistances: shoeDistances)
+        let name = metricName(metric)
+        guard let v = C.verdict(pts) else {
+            return L.s("\(name) 기록이 \(pts.count)회라 아직 변화를 말하지 않습니다.",
+                       "Only \(pts.count) runs with \(name) — too early to call a change.",
+                       ja: "\(name)の記録が\(pts.count)回なので、まだ変化は判断しません。")
         }
-    }
-
-    // MARK: - 신발 비교
-
-    private func metricName(_ m: C.Metric) -> String {
-        switch m {
-        case .efficiency:  return L.s("심박 효율", "HR efficiency", ja: "心拍効率")
-        case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
-        case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
-        case .cadence:     return L.s("케이던스", "Cadence", ja: "ケイデンス")
-        case .stride:      return L.s("보폭", "Stride", ja: "ストライド")
+        guard let ch = v.change else {
+            return L.s("새 신발 구간(\(v.earlyRuns)회) 뒤 러닝이 5회 쌓이면 변화를 봅니다.",
+                       "Change is checked once 5 runs follow the new-shoe stretch (\(v.earlyRuns) runs).",
+                       ja: "新品の区間(\(v.earlyRuns)回)の後にランが5回たまると変化を見ます。")
         }
-    }
-
-    private func fmt(_ m: C.Metric, _ v: Double) -> String {
-        switch m {
-        case .efficiency:  return String(format: "%.2fm", v)
-        case .contact:     return String(format: "%.0fms", v)
-        case .oscillation: return String(format: "%.1fcm", v)
-        case .cadence:     return String(format: "%.0fspm", v)
-        case .stride:      return String(format: "%.2fm", v)
+        if abs(ch) < metric.noticeable {
+            return L.s("\(name) 새 신발 때와 같음(\(fmt(ch))) — 교체 신호 없음",
+                       "\(name) same as when new (\(fmt(ch))) — no sign to replace",
+                       ja: "\(name)は新品のときと同じ(\(fmt(ch))) — 交換のサインなし")
         }
+        return isBetter(ch)
+            ? L.s("\(name) 새 신발 때보다 좋아짐(\(fmt(ch)))",
+                  "\(name) better than when new (\(fmt(ch)))",
+                  ja: "\(name)は新品のときより良くなりました(\(fmt(ch)))")
+            : L.s("\(name) 새 신발 때보다 나빠짐(\(fmt(ch))) — 쿠션 상태를 확인하세요",
+                  "\(name) worse than when new (\(fmt(ch))) — check the cushioning",
+                  ja: "\(name)が新品のときより悪化(\(fmt(ch))) — クッションの状態を確認してください")
     }
 
-    /// 이 신발이 뛴 묶음마다 신발별 평균 — 한 차트(세로 = 러닝 종류·거리, 색 = 신발)
-    private struct Point: Identifiable {
-        let id = UUID()
-        let row: String
-        let shoe: String
-        let value: Double
-        let count: Int
-        let mine: Bool
-    }
+    // MARK: - ① 수명 — 누적 km
 
-    /// 신발 색 — 이 신발은 보라, 나머지는 순서대로
-    private static let otherColors: [Color] = [Color.white.opacity(0.85), Color(hex: "4FD1C5"), Color(hex: "FF9A3C"), Color(hex: "FF6FA8"), Color(hex: "B7E34B")]
-
-    private var shoeOrder: [String] {
-        let ids = Set(runs.filter { r in groups.contains { $0.group == r.group } }.map(\.shoeID))
-        return [myID] + ids.subtracting([myID]).sorted { shoeName($0) < shoeName($1) }
-    }
-
-    private func color(of id: String) -> Color {
-        if id == myID { return Theme.violet }
-        let i = (shoeOrder.firstIndex(of: id) ?? 1) - 1
-        return Self.otherColors[max(0, i) % Self.otherColors.count]
-    }
-
-    private var metricChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(C.Metric.allCases, id: \.self) { m in
-                    let on = m == metric
-                    Button { metric = m } label: {
-                        Text(metricName(m))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(on ? Color.white : Color.white.opacity(0.6))
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(on ? Theme.violet : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var compareCard: some View {
-        let order = shoeOrder
-        let rows = groups.map(\.group)
-        let points: [Point] = rows.flatMap { g in
-            C.stats(metric, group: g, runs: runs).map {
-                Point(row: g.label, shoe: shoeName($0.shoeID), value: $0.mean, count: $0.count, mine: $0.shoeID == myID)
-            }
-        }
-        let rowLabels = rows.map(\.label).filter { r in points.contains { $0.row == r } }
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(L.s("신발 비교", "Shoe comparison", ja: "靴の比較"))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-            metricChips
-            if let hb = metric.higherIsBetter {
-                Text("\(metricName(metric)) · " + (hb ? L.s("높을수록 좋음", "higher is better", ja: "高いほど良い")
-                                                    : L.s("낮을수록 좋음", "lower is better", ja: "低いほど良い")))
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-            }
-            if points.isEmpty {
-                Text(L.s("이 지표가 기록된 러닝이 없습니다.", "No runs with this metric.", ja: "この指標が記録されたランはありません。"))
+    private func wearCard(_ m: C.Model) -> some View {
+        let pts = C.wear(metric, shoeID: myID, samples: samples, model: m, shoeDistances: shoeDistances)
+        let v = C.verdict(pts)
+        let maxKm = max(totalKm * 1.15, 200)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(L.s("① 수명 — 누적 km에 따른 변화", "① Lifespan — change with mileage", ja: "① 寿命 — 累計kmによる変化"))
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+            if pts.isEmpty {
+                Text(L.s("이 신발로 \(metricName(metric))이 기록된 러닝이 없습니다.",
+                         "No runs in this shoe with \(metricName(metric)).",
+                         ja: "この靴で\(metricName(metric))が記録されたランはありません。"))
                     .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
             } else {
-                Chart(points) { p in
-                    PointMark(x: .value("v", p.value), y: .value("row", p.row))
-                        .symbolSize(p.mine ? 110 : 80)
-                        .foregroundStyle(color(of: order.first { shoeName($0) == p.shoe } ?? ""))
-                        .annotation(position: .bottom, spacing: 1) {
-                            Text("\(p.count)").font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.6))
+                Chart {
+                    if maxKm >= 500 {
+                        RectangleMark(xStart: .value("a", 500), xEnd: .value("b", min(800, maxKm)))
+                            .foregroundStyle(Color.white.opacity(0.05))
+                    }
+                    if let v {
+                        RectangleMark(xStart: .value("a", 0), xEnd: .value("b", maxKm),
+                                      yStart: .value("lo", v.earlyMean - max(v.earlySD, metric.noticeable / 2)),
+                                      yEnd: .value("hi", v.earlyMean + max(v.earlySD, metric.noticeable / 2)))
+                            .foregroundStyle(Theme.violet.opacity(0.12))
+                    }
+                    RuleMark(y: .value("0", 0))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Color.white.opacity(0.35))
+                    ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
+                        PointMark(x: .value("km", p.km), y: .value("v", p.value))
+                            .symbolSize(30)
+                            .foregroundStyle(Color.white.opacity(0.55))
+                    }
+                    ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
+                        if let r = p.rolling {
+                            LineMark(x: .value("km", p.km), y: .value("roll", r))
+                                .foregroundStyle(Theme.violet)
+                                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                .interpolationMethod(.monotone)
                         }
+                    }
                 }
-                .chartYScale(domain: rowLabels)
-                .chartXScale(domain: .automatic(includesZero: false))
+                .chartXScale(domain: 0...maxKm)
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { v in
-                        AxisGridLine().foregroundStyle(Color.white.opacity(0.08))
-                        AxisValueLabel { Text(fmt(metric, v.as(Double.self) ?? 0)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
+                    AxisMarks(values: .automatic(desiredCount: 4)) { x in
+                        AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
+                        AxisValueLabel { Text("\(Int(x.as(Double.self) ?? 0))km").font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading) { v in
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { y in
                         AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
-                        AxisValueLabel {
-                            Text(v.as(String.self) ?? "").font(.system(size: 10)).foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1).minimumScaleFactor(0.8).frame(width: 112, alignment: .leading)
-                        }
+                        AxisValueLabel { Text(fmt(y.as(Double.self) ?? 0)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
                     }
                 }
-                .frame(height: CGFloat(rowLabels.count) * 46 + 28)
-                // 범례 — 신발 색과 이름
-                HStack(spacing: 12) {
-                    ForEach(order, id: \.self) { id in
-                        HStack(spacing: 4) {
-                            Circle().fill(color(of: id)).frame(width: 8, height: 8)
-                            Text(shoeName(id)).font(.system(size: 10)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
-                        }
-                    }
-                }
-                Text(L.s("점 = 평균 · 점 아래 숫자 = 횟수", "Dot = average · number below = runs", ja: "点 = 平均 · 点の下の数字 = 回数"))
+                .frame(height: 180)
+                Text(L.s("점 = 러닝 하나 · 보라 선 = 최근 5회 평균 · 보라 띠 = 새 신발 때(처음 100km) · 점선 0 = 내 평소",
+                         "Dot = one run · violet line = last-5 average · violet band = when new (first 100 km) · dashed 0 = your usual",
+                         ja: "点 = ラン1回 · 紫の線 = 直近5回平均 · 紫の帯 = 新品のとき(最初の100km) · 点線0 = いつもの値"))
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
-                if let v = summary(rows) {
-                    Text(v).font(.system(size: 12)).foregroundStyle(Theme.violetText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - ② 신발 비교
+
+    private func compareCard(_ m: C.Model) -> some View {
+        let stats = C.shoeStats(metric, samples: samples, model: m)
+        let ordered = stats.filter { $0.shoeID == myID } + stats.filter { $0.shoeID != myID }
+        let rowName: (C.ShoeStat) -> String = { "\(shoeName($0.shoeID)) (\($0.n))" }
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(L.s("② 신발 비교 — 같은 페이스·거리라면", "② Shoes compared — at the same pace & distance", ja: "② 靴の比較 — 同じペース・距離なら"))
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+            if ordered.isEmpty {
+                Text(L.s("신발을 고른 러닝이 없습니다.", "No runs with a shoe selected.", ja: "靴を選んだランがありません。"))
+                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+            } else {
+                Chart {
+                    RuleMark(x: .value("0", 0))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Color.white.opacity(0.35))
+                    ForEach(ordered, id: \.shoeID) { s in
+                        let mine = s.shoeID == myID
+                        if let h = s.half {
+                            RuleMark(xStart: .value("lo", s.mean - h), xEnd: .value("hi", s.mean + h), y: .value("shoe", rowName(s)))
+                                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
+                                .foregroundStyle((mine ? Theme.violet : Color.white).opacity(0.35))
+                        }
+                        PointMark(x: .value("avg", s.mean), y: .value("shoe", rowName(s)))
+                            .symbolSize(mine ? 110 : 80)
+                            .foregroundStyle(mine ? Theme.violet : Color.white.opacity(0.85))
+                    }
+                }
+                .chartYScale(domain: ordered.map(rowName))
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { x in
+                        AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
+                        AxisValueLabel { Text(fmt(x.as(Double.self) ?? 0)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { y in
+                        AxisValueLabel {
+                            Text(y.as(String.self) ?? "").font(.system(size: 10)).foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(1).minimumScaleFactor(0.75).frame(width: 120, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(height: CGFloat(ordered.count) * 36 + 28)
+                Text(L.s("점 = 평균 · 막대 = 95% 범위(횟수가 적을수록 김) · 괄호 = 횟수 · 막대가 0을 넘나들면 차이 없음",
+                         "Dot = average · bar = 95% range (longer with fewer runs) · () = runs · a bar crossing 0 means no difference",
+                         ja: "点 = 平均 · 棒 = 95%範囲(回数が少ないほど長い) · () = 回数 · 棒が0をまたげば差なし"))
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(ordered.prefix(4), id: \.shoeID) { s in
+                    Text(shoeLine(s))
+                        .font(.system(size: 12))
+                        .foregroundStyle(s.shoeID == myID ? Theme.violetText : .white.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -268,104 +309,21 @@ struct ShoeDetailView: View {
         .padding(.horizontal, 16)
     }
 
-    /// 묶음마다 이 신발 vs 다른 신발 — "템포런 · 5~10km: 8ms 깁니다 · 이지런 · 5~10km: 비슷합니다"
-    private func summary(_ rows: [C.Group]) -> String? {
-        let parts: [String] = rows.compactMap { g in
-            guard let d = C.difference(metric, shoeID: myID, group: g, runs: runs) else { return nil }
-            let a = abs(d.diff)
-            if a < metric.noticeable { return "\(g.label): " + L.s("비슷합니다", "about the same", ja: "ほぼ同じ") }
-            let up = d.diff > 0
-            let word: String = {
-                switch metric {
-                case .efficiency:  return up ? L.s("심박당 더 갑니다", "more per beat", ja: "心拍あたり多く進む") : L.s("심박당 덜 갑니다", "less per beat", ja: "心拍あたり少なく進む")
-                case .contact, .stride: return up ? L.s("깁니다", "longer", ja: "長い") : L.s("짧습니다", "shorter", ja: "短い")
-                case .oscillation: return up ? L.s("큽니다", "higher", ja: "大きい") : L.s("작습니다", "lower", ja: "小さい")
-                case .cadence:     return up ? L.s("높습니다", "higher", ja: "高い") : L.s("낮습니다", "lower", ja: "低い")
-                }
-            }()
-            return "\(g.label): \(fmt(metric, a)) \(word)"
+    /// 신발 한 줄 판정 — 5회 미만은 "아직", 범위가 0을 넘나들면 "평소와 같음"
+    private func shoeLine(_ s: C.ShoeStat) -> String {
+        let name = shoeName(s.shoeID), mn = metricName(metric)
+        if s.n < C.minShoeRuns {
+            return L.s("\(name): \(s.n)회 — 아직 판단하기 이릅니다",
+                       "\(name): \(s.n) runs — too early to tell",
+                       ja: "\(name): \(s.n)回 — まだ判断できません")
         }
-        guard !parts.isEmpty else { return nil }
-        return L.s("\(shoe.displayName) — 다른 신발 대비 ", "\(shoe.displayName) vs other shoes — ", ja: "\(shoe.displayName) — 他の靴と比べて ")
-            + parts.joined(separator: " · ")
-    }
-
-    // MARK: - 누적 km에 따른 변화
-
-    private func wearCard(_ g: C.Group) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L.s("누적 km에 따른 변화", "Change with mileage", ja: "累計kmによる変化"))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-            groupChips
-            ForEach([C.Metric.efficiency, .contact], id: \.self) { m in
-                let pts = C.wear(m, shoeID: myID, group: g, runs: runs, allShoeDistances: shoeDistances)
-                if !pts.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(metricName(m)).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                        Chart {
-                            ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
-                                PointMark(x: .value("km", p.km), y: .value("v", p.value))
-                                    .symbolSize(40)
-                                    .foregroundStyle(Theme.violet)
-                            }
-                            if pts.count >= 2 {
-                                ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
-                                    LineMark(x: .value("km", p.km), y: .value("v", p.value))
-                                        .foregroundStyle(Theme.violet.opacity(0.35))
-                                        .lineStyle(StrokeStyle(lineWidth: 1))
-                                }
-                            }
-                        }
-                        .chartYScale(domain: .automatic(includesZero: false))
-                        .chartXAxis {
-                            AxisMarks(values: .automatic(desiredCount: 4)) { v in
-                                AxisValueLabel { Text("\(Int(v.as(Double.self) ?? 0))km").font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
-                            }
-                        }
-                        .chartYAxis {
-                            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
-                                AxisValueLabel { Text(fmt(m, v.as(Double.self) ?? 0)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
-                                AxisGridLine().foregroundStyle(Color.white.opacity(0.08))
-                            }
-                        }
-                        .frame(height: 120)
-                        Text(wearNote(m, pts)).font(.system(size: 11)).foregroundStyle(Theme.violetText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+        if !s.differs || abs(s.mean) < metric.noticeable / 2 {
+            return L.s("\(name): \(mn) 평소와 같음(\(fmt(s.mean)))",
+                       "\(name): \(mn) same as usual (\(fmt(s.mean)))",
+                       ja: "\(name): \(mn)はいつもと同じ(\(fmt(s.mean)))")
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 16)
-    }
-
-    private func wearNote(_ m: C.Metric, _ pts: [(km: Double, value: Double)]) -> String {
-        guard let h = C.halves(pts) else {
-            return L.s("아직 \(pts.count)회입니다. 6회부터 앞뒤를 비교합니다.",
-                       "\(pts.count) runs so far — the early/late comparison starts at 6.",
-                       ja: "まだ\(pts.count)回です。6回から前後を比較します。")
-        }
-        let d = h.late - h.early
-        if abs(d) < m.noticeable {
-            return L.s("앞쪽 절반과 뒤쪽 절반이 비슷합니다(\(fmt(m, h.early)) → \(fmt(m, h.late))).",
-                       "Early and late runs are about the same (\(fmt(m, h.early)) → \(fmt(m, h.late))).",
-                       ja: "前半と後半はほぼ同じです(\(fmt(m, h.early)) → \(fmt(m, h.late)))。")
-        }
-        let worse: Bool = {
-            guard let hb = m.higherIsBetter else { return false }
-            return hb ? d < 0 : d > 0
-        }()
-        let base = L.s("앞쪽 절반 \(fmt(m, h.early)) → 뒤쪽 절반 \(fmt(m, h.late)).",
-                       "Early \(fmt(m, h.early)) → late \(fmt(m, h.late)).",
-                       ja: "前半 \(fmt(m, h.early)) → 後半 \(fmt(m, h.late))。")
-        return worse
-            ? base + L.s(" 거리가 쌓이며 나빠지는 쪽입니다 — 쿠션이 닳는 신호일 수 있습니다.",
-                         " Getting worse as mileage builds — possibly the cushioning wearing out.",
-                         ja: " 距離が増えるにつれ悪くなる方向です — クッションがへたってきたサインかもしれません。")
-            : base
+        return isBetter(s.mean)
+            ? L.s("\(name): \(mn) 평소보다 좋음(\(fmt(s.mean)))", "\(name): \(mn) better than usual (\(fmt(s.mean)))", ja: "\(name): \(mn)はいつもより良い(\(fmt(s.mean)))")
+            : L.s("\(name): \(mn) 평소보다 나쁨(\(fmt(s.mean)))", "\(name): \(mn) worse than usual (\(fmt(s.mean)))", ja: "\(name): \(mn)はいつもより悪い(\(fmt(s.mean)))")
     }
 }
