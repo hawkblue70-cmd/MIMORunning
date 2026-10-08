@@ -191,6 +191,23 @@ struct FormChangeChart: View {
     }
 }
 
+/// 2열 칸 — 한 줄의 두 칸 높이를 같게(긴 결론이 두 줄이어도 옆 칸과 위아래가 맞게). 칸은 maxHeight .infinity로 채운다.
+struct TwoColumnGrid<Item, Cell: View>: View {
+    let items: [Item]
+    @ViewBuilder let cell: (Item) -> Cell
+
+    var body: some View {
+        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+            ForEach(Array(stride(from: 0, to: items.count, by: 2)), id: \.self) { i in
+                GridRow(alignment: .top) {
+                    cell(items[i])
+                    if i + 1 < items.count { cell(items[i + 1]) } else { Color.clear }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - 공유 데이터·카드
 
 struct FormChangeShareData: Identifiable {
@@ -238,9 +255,7 @@ struct FormChangeShareCard: View {
                     .padding(.top, 10)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                ForEach(data.panels, id: \.metric) { p in panel(p) }
-            }
+            TwoColumnGrid(items: data.panels) { panel($0) }
             .padding(.top, 10)
 
             Text(FormChangeStyle.footnote)
@@ -279,7 +294,7 @@ struct FormChangeShareCard: View {
             }
         }
         .padding(8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

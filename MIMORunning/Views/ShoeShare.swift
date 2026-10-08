@@ -175,15 +175,12 @@ struct ShoeShareCard: View {
                     .padding(.top, 3)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                      alignment: .leading, spacing: 8) {
-                ForEach(data.panels, id: \.metric) { panel($0) }
-            }
+            TwoColumnGrid(items: data.panels) { panel($0) }
             .padding(.top, 10)
 
-            Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 차이 없음",
-                     "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = no difference",
-                     ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば差なし")
+            Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 같음 · 안 넘어도 말할 만한 차이보다 작으면 차이 작음",
+                     "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = same · not crossing but below a noticeable size = small difference",
+                     ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば同じ · またがなくても目立つ差より小さければ小さな差")
                  + (data.modelRuns.map {
                      L.s(" · 0 = 같은 시기 다른 신발(최근 1년 러닝 \($0)회로 페이스·거리 영향을 뺀 값)",
                          " · 0 = other shoes in the same weeks (pace and distance taken out using \($0) runs)",
@@ -219,7 +216,7 @@ struct ShoeShareCard: View {
             }
         }
         .padding(8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -228,7 +225,7 @@ struct ShoeShareCard: View {
 struct ShoeShareScreen: View {
     let data: ShoeShareData
     var body: some View {
-        DarkCardShareScreen(title: AppLanguage.shared.s("신발 공유", "Share shoe", ja: "靴を共有"),
+        DarkCardShareScreen(title: AppLanguage.shared.s("러닝화 폼 데이터 내보내기", "Export shoe form data", ja: "シューズのフォームデータを書き出す"),
                             width: ShoeShareCard.exportWidth) {
             ShoeShareCard(data: data)
         }

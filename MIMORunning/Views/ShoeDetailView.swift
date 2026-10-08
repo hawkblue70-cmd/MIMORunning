@@ -51,6 +51,19 @@ struct ShoeDetailView: View {
                                 .padding(.horizontal, 16)
                         }
                     }
+                    if loaded {
+                        // 내보내기 — 맨 아래(2026-10-08 사용자 요청). 결론 + 지표 네 개 신발 비교 2×2 한 장
+                        Button { shareData = makeShareData() } label: {
+                            Label(L.s("러닝화 폼 데이터 내보내기", "Export shoe form data", ja: "シューズのフォームデータを書き出す"),
+                                  systemImage: "square.and.arrow.up")
+                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Theme.violet)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                    }
                     Spacer(minLength: 24)
                 }
                 .padding(.top, 8)
@@ -140,20 +153,6 @@ struct ShoeDetailView: View {
                 Text("km").font(.system(size: 14)).foregroundStyle(.secondary)
                 Text(L.s("· 러닝 \(shoeDistances.count)회", "· \(shoeDistances.count) runs", ja: "· ラン\(shoeDistances.count)回"))
                     .font(.system(size: 14)).foregroundStyle(.secondary)
-                Spacer()
-                // 내보내기 — 신발 성격 한 장(결론 + 지표 네 개 신발 비교 2×2)
-                Button { shareData = makeShareData() } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 10, weight: .semibold))
-                        Text(L.s("내보내기", "Export", ja: "書き出し"))
-                    }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.75))
-                    .padding(.horizontal, 9).padding(.vertical, 5)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
             }
             if let c = characterSentence() {
                 Text(c).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -175,8 +174,9 @@ struct ShoeDetailView: View {
             guard let mod = model(m), let s = C.shoeStats(m, samples: samples, model: mod).first(where: { $0.shoeID == myID }) else { continue }
             runs = max(runs, s.n)
             guard s.n >= C.minShoeRuns else { continue }
-            parts.append(s.differs && notable(s.mean, m)
-                ? "\(shortName(m)) \(fmt(s.mean, m))"
+            // 막대가 0을 안 넘지만 말할 만한 차이보다 작으면 '차이 작음' — 막대와 글이 어긋나지 않게(2026-10-08)
+            parts.append(s.differs && notable(s.mean, m) ? "\(shortName(m)) \(fmt(s.mean, m))"
+                : s.differs ? "\(shortName(m)) " + L.s("차이 작음", "small difference", ja: "小さな差")
                 : "\(shortName(m)) " + L.s("같음", "same", ja: "同じ"))
         }
         if parts.isEmpty {
@@ -226,9 +226,9 @@ struct ShoeDetailView: View {
             } else {
                 // 신발 이름 열(왼쪽) + 막대(오른쪽) — 이름이 막대 위에 겹치지 않게(2026-10-08 사용자 요청), 공유 카드와 같은 컴포넌트
                 ShoeCompareChart(rows: ordered.map(row), metric: metric)
-                Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 차이 없음",
-                         "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = no difference",
-                         ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば差なし"))
+                Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 같음 · 안 넘어도 말할 만한 차이보다 작으면 차이 작음",
+                         "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = same · not crossing but below a noticeable size = small difference",
+                         ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば同じ · またがなくても目立つ差より小さければ小さな差"))
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(ordered.prefix(5), id: \.shoeID) { s in
@@ -286,7 +286,12 @@ struct ShoeDetailView: View {
         if s.n < C.minShoeRuns {
             return L.s("\(name): \(s.n)회 — 아직 판단하기 이릅니다", "\(name): \(s.n) runs — too early to tell", ja: "\(name): \(s.n)回 — まだ判断できません")
         }
-        if !s.differs || !notable(s.mean, metric) {
+        if s.differs && !notable(s.mean, metric) {
+            return L.s("\(name): \(mn) 다른 신발과 차이 작음(\(fmt(s.mean, metric)))",
+                       "\(name): \(mn) small difference from other shoes (\(fmt(s.mean, metric)))",
+                       ja: "\(name): \(mn)は他の靴と小さな差(\(fmt(s.mean, metric)))")
+        }
+        if !s.differs {
             return L.s("\(name): \(mn) 다른 신발과 같음(\(fmt(s.mean, metric)))",
                        "\(name): \(mn) same as other shoes (\(fmt(s.mean, metric)))",
                        ja: "\(name): \(mn)は他の靴と同じ(\(fmt(s.mean, metric)))")
