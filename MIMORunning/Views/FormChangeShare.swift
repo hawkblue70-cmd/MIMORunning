@@ -287,8 +287,11 @@ struct FormChangeShareCard: View {
 
 // MARK: - 공유 화면 — 대회 준비 공유와 같은 방식(자연 높이 렌더 → 4:5 캔버스)
 
-struct FormChangeShareScreen: View {
-    let data: FormChangeShareData
+/// 폼 변화·신발 성격 공유가 같이 쓰는 화면 — 미리보기와 출력이 같은 카드 뷰(§5.8), 다크만
+struct DarkCardShareScreen<Card: View>: View {
+    let title: String
+    let width: CGFloat
+    @ViewBuilder let card: () -> Card
     @State private var previewImage: UIImage?
     @State private var isRendering = true
     @State private var showShareSheet = false
@@ -299,8 +302,8 @@ struct FormChangeShareScreen: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    FormChangeShareCard(data: data)
-                        .frame(width: FormChangeShareCard.exportWidth)
+                    card()
+                        .frame(width: width)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .padding(20)
                         .frame(maxWidth: .infinity)
@@ -327,7 +330,7 @@ struct FormChangeShareScreen: View {
                 .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 32)
             }
             .background(Color(hex: "0D0D0F"))
-            .navigationTitle(L.s("폼 변화 공유", "Share form change", ja: "フォームの変化を共有"))
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -344,13 +347,23 @@ struct FormChangeShareScreen: View {
         isRendering = true
         let bg = Color(hex: "1C1C1E")
         let renderer = ImageRenderer(content:
-            FormChangeShareCard(data: data)
+            card()
                 .environment(\.colorScheme, .dark)
-                .frame(width: FormChangeShareCard.exportWidth)
+                .frame(width: width)
                 .background(bg))
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
         previewImage = ShareCanvas.fit(raw, background: UIColor(bg))
         isRendering = false
+    }
+}
+
+struct FormChangeShareScreen: View {
+    let data: FormChangeShareData
+    var body: some View {
+        DarkCardShareScreen(title: AppLanguage.shared.s("폼 변화 공유", "Share form change", ja: "フォームの変化を共有"),
+                            width: FormChangeShareCard.exportWidth) {
+            FormChangeShareCard(data: data)
+        }
     }
 }

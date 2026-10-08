@@ -17,6 +17,7 @@ struct ShoeDetailView: View {
     @State private var shoeDistances: [(date: Date, meters: Double)] = []
     @State private var metric: ShoeFormComparison.Metric = .contact
     @State private var loaded = false
+    @State private var shareData: ShoeShareData?
 
     private typealias C = ShoeFormComparison
     private var L: AppLanguage { AppLanguage.shared }
@@ -67,6 +68,7 @@ struct ShoeDetailView: View {
         }
         .preferredColorScheme(.dark)
         .task { load() }
+        .sheet(item: $shareData) { ShoeShareScreen(data: $0) }
     }
 
     private func load() {
@@ -148,6 +150,20 @@ struct ShoeDetailView: View {
                 Text("km").font(.system(size: 14)).foregroundStyle(.secondary)
                 Text(L.s("· 러닝 \(shoeDistances.count)회", "· \(shoeDistances.count) runs", ja: "· ラン\(shoeDistances.count)回"))
                     .font(.system(size: 14)).foregroundStyle(.secondary)
+                Spacer()
+                // 내보내기 — 신발 성격 한 장(결론 + 지표 네 개 신발 비교 2×2)
+                Button { shareData = makeShareData() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 10, weight: .semibold))
+                        Text(L.s("내보내기", "Export", ja: "書き出し"))
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.75))
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
             if let c = characterSentence() {
                 Text(c).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -208,9 +224,7 @@ struct ShoeDetailView: View {
     // MARK: - 신발 비교 — 같은 시기 대비
 
     private func compareCard(_ mod: C.Model) -> some View {
-        let stats = C.shoeStats(metric, samples: samples, model: mod)
-        let ordered = stats.filter { $0.shoeID == myID } + stats.filter { $0.shoeID != myID }
-        let rowName: (C.ShoeStat) -> String = { "\(shoeName($0.shoeID)) (\($0.n))" }
+        let ordered = ordered(metric, mod)
         return VStack(alignment: .leading, spacing: 10) {
             Text(L.s("신발 비교 — 같은 시기 다른 신발 대비", "Shoes — vs other shoes in the same weeks", ja: "靴の比較 — 同じ時期の他の靴と比べて"))
                 .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -220,41 +234,15 @@ struct ShoeDetailView: View {
                          ja: "同じ時期に他の靴で走ったランが必要です。"))
                     .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
             } else {
-                // 신발 이름 열(왼쪽) + 막대(오른쪽) — 이름이 막대 위에 겹치지 않게 줄마다 나눠 그리고, x축은 맨 아래 한 줄.
-                // 모든 줄이 같은 x 범위·같은 폭이라 0선·눈금이 이어진다(2026-10-08 사용자 요청).
-                let domain = compareDomain(ordered)
-                VStack(spacing: 0) {
-                    ForEach(ordered, id: \.shoeID) { s in
-                        HStack(spacing: 8) {
-                            Text(rowName(s))
-                                .font(.system(size: 10, weight: s.shoeID == myID ? .semibold : .regular))
-                                .foregroundStyle(s.shoeID == myID ? FormChangeStyle.tint(metric) : .white.opacity(0.85))
-                                .lineLimit(2).minimumScaleFactor(0.8)
-                                .frame(width: Self.nameColumn, alignment: .leading)
-                            compareRow(s, domain: domain)
-                        }
-                        .frame(height: 34)
-                    }
-                    HStack(spacing: 8) {
-                        Color.clear.frame(width: Self.nameColumn, height: 1)
-                        Chart { RuleMark(x: .value("0", 0)).foregroundStyle(.clear) }
-                            .chartXScale(domain: domain)
-                            .chartYAxis(.hidden)
-                            .chartXAxis {
-                                AxisMarks(values: .automatic(desiredCount: 4)) { x in
-                                    AxisValueLabel { Text(fmt(x.as(Double.self) ?? 0, metric)).font(.system(size: 9)).foregroundStyle(.white.opacity(0.7)) }
-                                }
-                            }
-                            .frame(height: 20)
-                    }
-                }
+                // 신발 이름 열(왼쪽) + 막대(오른쪽) — 이름이 막대 위에 겹치지 않게(2026-10-08 사용자 요청), 공유 카드와 같은 컴포넌트
+                ShoeCompareChart(rows: ordered.map(row), metric: metric)
                 Text(L.s("점 = 같은 시기(앞뒤 2주) 다른 신발 대비 평균 · 막대 = 95% 범위 · 괄호 = 횟수 · 막대가 0을 넘나들면 차이 없음",
                          "Dot = average vs other shoes in the same ±2 weeks · bar = 95% range · () = runs · crossing 0 = no difference",
                          ja: "点 = 同じ時期(前後2週)の他の靴との差の平均 · 棒 = 95%範囲 · () = 回数 · 棒が0をまたげば差なし"))
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(ordered.prefix(5), id: \.shoeID) { s in
-                    Text(shoeLine(s))
+                    Text(shoeLine(s, metric))
                         .font(.system(size: 12))
                         .foregroundStyle(s.shoeID == myID ? FormChangeStyle.tint(metric) : .white.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
@@ -268,46 +256,42 @@ struct ShoeDetailView: View {
         .padding(.horizontal, 16)
     }
 
-    private static let nameColumn: CGFloat = 112
     // 색: 지표 칩·이 신발 점·막대·이름·한 줄 = 지표의 애플 시스템 색(폼 변화 카드와 같은 FormChangeStyle.tint, 2026-10-08)
 
-    /// 모든 줄이 같이 쓰는 x 범위 — 0과 모든 95% 막대를 담고 양끝 10% 여유
-    private func compareDomain(_ stats: [C.ShoeStat]) -> ClosedRange<Double> {
-        let lo = min(0, stats.map { $0.mean - ($0.half ?? 0) }.min() ?? 0)
-        let hi = max(0, stats.map { $0.mean + ($0.half ?? 0) }.max() ?? 0)
-        let pad = max((hi - lo) * 0.1, metric.noticeable / 2)
-        return (lo - pad)...(hi + pad)
+    private func row(_ s: C.ShoeStat) -> ShoeCompareChart.Row {
+        .init(id: s.shoeID, name: "\(shoeName(s.shoeID)) (\(s.n))", stat: s, mine: s.shoeID == myID)
     }
 
-    /// 신발 한 줄의 막대 — 0 점선 + 95% 범위 + 평균 점(축 글자 없이 눈금선만)
-    private func compareRow(_ s: C.ShoeStat, domain: ClosedRange<Double>) -> some View {
-        let mine = s.shoeID == myID
-        return Chart {
-            RuleMark(x: .value("0", 0))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                .foregroundStyle(Color.white.opacity(0.35))
-            if let h = s.half {
-                RuleMark(xStart: .value("lo", max(domain.lowerBound, s.mean - h)),
-                         xEnd: .value("hi", min(domain.upperBound, s.mean + h)), y: .value("y", 0))
-                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .foregroundStyle((mine ? FormChangeStyle.tint(metric) : Color.white).opacity(0.35))
-            }
-            PointMark(x: .value("avg", s.mean), y: .value("y", 0))
-                .symbolSize(mine ? 110 : 80)
-                .foregroundStyle(mine ? FormChangeStyle.tint(metric) : Color.white.opacity(0.85))
+    /// 이 신발 먼저, 나머지는 비교 횟수 순
+    private func ordered(_ m: C.Metric, _ mod: C.Model) -> [C.ShoeStat] {
+        let stats = C.shoeStats(m, samples: samples, model: mod)
+        return stats.filter { $0.shoeID == myID } + stats.filter { $0.shoeID != myID }
+    }
+
+    // MARK: - 공유
+
+    private func makeShareData() -> ShoeShareData {
+        let panels = C.Metric.shown.map { m -> ShoeShareData.Panel in
+            guard let mod = model(m) else { return .init(metric: m, rows: [], line: nil) }
+            let o = ordered(m, mod)
+            let mine = o.first { $0.shoeID == myID }
+            return .init(metric: m, rows: o.prefix(ShoeShareCard.maxRows).map(row),
+                         line: mine.map { shoeLine($0, m, withName: false) })
         }
-        .chartXScale(domain: domain)
-        .chartYScale(domain: -1...1)
-        .chartYAxis(.hidden)
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
-            }
-        }
+        return ShoeShareData(shoeName: shoe.displayName, totalKm: totalKm, runs: shoeDistances.count,
+                             character: characterSentence(), rhythm: rhythmSentence(), panels: panels,
+                             modelRuns: model(.contact)?.n)
     }
 
     /// 신발 한 줄 — 방향 사실만(좋다·나쁘다로 단정하지 않는다: 접지가 긴 신발이 나쁜 신발은 아니다)
-    private func shoeLine(_ s: C.ShoeStat) -> String {
+    /// `withName == false`면 "이 신발:" 없이(공유 칸 — 칸 제목이 지표, 카드 제목이 신발)
+    private func shoeLine(_ s: C.ShoeStat, _ metric: C.Metric, withName: Bool = true) -> String {
+        let line = shoeLineNamed(s, metric)
+        guard !withName, let r = line.range(of: ": ") else { return line }
+        return String(line[r.upperBound...])
+    }
+
+    private func shoeLineNamed(_ s: C.ShoeStat, _ metric: C.Metric) -> String {
         let name = shoeName(s.shoeID), mn = metricName(metric)
         if s.n < C.minShoeRuns {
             return L.s("\(name): \(s.n)회 — 아직 판단하기 이릅니다", "\(name): \(s.n) runs — too early to tell", ja: "\(name): \(s.n)回 — まだ判断できません")
