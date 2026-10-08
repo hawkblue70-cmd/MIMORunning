@@ -298,8 +298,12 @@ struct ShoeDetailView: View {
             return L.s("\(name): 보폭이 다른 신발보다 \(amount) \(longer ? "깁니다" : "짧습니다")",
                        "\(name): stride \(amount) \(longer ? "longer" : "shorter") than other shoes",
                        ja: "\(name): ストライドが他の靴より\(amount)\(longer ? "長いです" : "短いです")")
-        case .cadence, .flight:
-            // 칩에는 없는 문장 전용 지표 — 이 화면에서 고를 수 없다
+        case .cadence:
+            return L.s("\(name): 케이던스가 다른 신발보다 \(amount) \(longer ? "높습니다" : "낮습니다")",
+                       "\(name): cadence \(amount) \(longer ? "higher" : "lower") than other shoes",
+                       ja: "\(name): ケイデンスが他の靴より\(amount)\(longer ? "高いです" : "低いです")")
+        case .flight:
+            // 칩에 없는 문장 전용 지표
             return L.s("\(name): \(mn) \(fmt(s.mean, metric))", "\(name): \(mn) \(fmt(s.mean, metric))", ja: "\(name): \(mn) \(fmt(s.mean, metric))")
         }
     }

@@ -13,11 +13,11 @@ enum ShoeFormComparison {
 
     enum Metric: CaseIterable {
         case contact, oscillation, stride
-        /// 문장 전용(칩에는 없음) — 지면접촉이 길어진 게 리듬(케이던스) 때문인지 공중 시간 때문인지 가른다(2026-10-08)
+        /// 케이던스는 칩에도 쓴다('총총' 여부 — 보폭의 거울이지만 spm이 직관적). 공중 시간은 문장 전용(2026-10-08)
         case cadence, flight
 
         /// 화면 칩·신발 결론에 쓰는 지표
-        static let shown: [Metric] = [.contact, .oscillation, .stride]
+        static let shown: [Metric] = [.contact, .oscillation, .stride, .cadence]
 
         /// 말할 만한 차이 — 하루 사이 자연 변동보다 큰 값으로 정함(통제 연구 없음)
         var noticeable: Double {
@@ -270,6 +270,39 @@ enum ShoeFormComparison {
             return
         }
         out.append(t)
+    }
+
+    /// 최근 4주 평균 − 3개월 전 4주(76~104일 전) 평균 — 양쪽 3회 이상
+    static func recentChange(_ pts: [Point], asOf: Date) -> Double? {
+        let cal = Calendar.current
+        func win(_ a: Int, _ b: Int) -> [Double] {
+            let lo = cal.date(byAdding: .day, value: -b, to: asOf)!, hi = cal.date(byAdding: .day, value: -a, to: asOf)!
+            return pts.filter { $0.date >= lo && $0.date <= hi }.map(\.value)
+        }
+        let now = win(0, 28), then = win(76, 104)
+        guard now.count >= 3, then.count >= 3 else { return nil }
+        return now.reduce(0, +) / Double(now.count) - then.reduce(0, +) / Double(then.count)
+    }
+
+    /// 폼 요약 패턴 — 케이던스·접지·진폭 변화의 방향(꺾임 문턱 기준)으로. 방향 사실만 말한다(효율·힘은 말하지 않음).
+    enum Pattern: Equatable {
+        case quickSteps     // 케이던스↑ + (접지↓ 또는 진폭↓) — 잔걸음(총총)
+        case longStride     // 케이던스↓ + (진폭↑ 또는 접지↑) — 큰 걸음
+        case lowGlide       // 케이던스 그대로 + 진폭↓ — 같은 리듬에서 낮게
+        case bouncier       // 케이던스 그대로 + 진폭↑ — 같은 리듬에서 더 튐
+        case unchanged      // 셋 다 문턱 안
+        case mixed
+    }
+
+    static func pattern(cadence: Double, contact: Double, oscillation: Double) -> Pattern {
+        func dir(_ v: Double, _ m: Metric) -> Int { abs(v) < m.turnThreshold ? 0 : (v > 0 ? 1 : -1) }
+        let c = dir(cadence, .cadence), g = dir(contact, .contact), o = dir(oscillation, .oscillation)
+        if c == 0 && g == 0 && o == 0 { return .unchanged }
+        if c > 0 && (g < 0 || o < 0) && g <= 0 && o <= 0 { return .quickSteps }
+        if c < 0 && (o > 0 || g > 0) && g >= 0 && o >= 0 { return .longStride }
+        if c == 0 && o < 0 { return .lowGlide }
+        if c == 0 && o > 0 { return .bouncier }
+        return .mixed
     }
 
     /// 마지막 꺾임(없으면 선 시작) 이후 변화 — 결론 한 줄용

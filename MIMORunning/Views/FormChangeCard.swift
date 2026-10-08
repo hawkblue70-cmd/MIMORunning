@@ -36,9 +36,23 @@ struct FormChangeCard: View {
                     chip(L.s("\(n)개월", "\(n)mo", ja: "\(n)か月"), on: months == n) { months = n }
                 }
             }
-            HStack(spacing: 8) {
-                ForEach(C.Metric.shown, id: \.self) { m in
-                    chip(metricName(m), on: metric == m) { metric = m }
+            if let sum = summary(now: now) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(sum.values).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(sum.pattern).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(C.Metric.shown, id: \.self) { m in
+                        chip(metricName(m), on: metric == m) { metric = m }
+                    }
                 }
             }
             if model == nil {
@@ -75,7 +89,8 @@ struct FormChangeCard: View {
                     case .contact:     return L.s("아래 = 같은 조건에서 접지가 짧음", "Lower = shorter contact at the same pace", ja: "下 = 同じ条件で接地が短い")
                     case .oscillation: return L.s("아래 = 같은 조건에서 덜 튐", "Lower = less bounce at the same pace", ja: "下 = 同じ条件で上下動が小さい")
                     case .stride:      return L.s("위 = 같은 페이스에서 보폭이 김(그만큼 케이던스는 낮음)", "Higher = longer stride at the same pace (cadence lower by as much)", ja: "上 = 同じペースでストライドが長い(その分ケイデンスは低い)")
-                    case .cadence, .flight: return ""   // 칩에 없음
+                    case .cadence:     return L.s("위 = 같은 페이스에서 발을 빨리 굴림(그만큼 보폭은 짧음)", "Higher = quicker steps at the same pace (stride shorter by as much)", ja: "上 = 同じペースで足を速く回す(その分ストライドは短い)")
+                    case .flight:      return ""   // 칩에 없음
                     }
                 }())
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
@@ -192,6 +207,38 @@ struct FormChangeCard: View {
             return L.s("\(name) 시작 \(day(s.date))", "\(name) first run \(day(s.date))", ja: "\(name) 使い始め \(day(s.date))")
         }
         return out
+    }
+
+    /// 폼 요약 — 최근 4주 vs 3개월 전(같은 페이스·거리 보정, 신발 효과 뺌)의 케이던스·접지·진폭·공중 시간과 패턴 한 줄
+    private func summary(now: Date) -> (values: String, pattern: String)? {
+        func change(_ m: C.Metric) -> Double? {
+            guard let mod = C.fit(m, samples: samples, asOf: now) else { return nil }
+            let from = Calendar.current.date(byAdding: .day, value: -110, to: now)!
+            return C.recentChange(C.formPoints(m, samples: samples, model: mod, from: from), asOf: now)
+        }
+        guard let c = change(.cadence), let g = change(.contact), let o = change(.oscillation) else { return nil }
+        let f = change(.flight)
+        var vals = [L.s("케이던스", "cadence", ja: "ケイデンス") + " " + fmt(c, .cadence),
+                    L.s("접지", "contact", ja: "接地") + " " + fmt(g, .contact),
+                    L.s("진폭", "oscillation", ja: "上下動") + " " + fmt(o, .oscillation)]
+        if let f { vals.append(L.s("공중 시간", "flight", ja: "滞空") + " " + fmt(f, .flight)) }
+        let head = L.s("폼 요약 · 최근 4주 vs 3개월 전 — ", "Form summary · last 4 weeks vs 3 months ago — ", ja: "フォーム要約 · 直近4週 vs 3か月前 — ")
+        let text: String
+        switch C.pattern(cadence: c, contact: g, oscillation: o) {
+        case .quickSteps:
+            text = L.s("잔걸음(총총)으로 바뀌는 중 — 발을 빨리 굴리고 덜 튑니다", "Shifting to quicker, shorter steps — faster turnover, less bounce", ja: "小刻みな走りに変わりつつあります — 速く回し、上下動が小さい")
+        case .longStride:
+            text = L.s("큰 걸음으로 바뀌는 중 — 한 걸음을 길게, 더 튑니다", "Shifting to longer strides — longer steps, more bounce", ja: "大きな歩幅に変わりつつあります — 一歩が長く、上下動が大きい")
+        case .lowGlide:
+            text = L.s("같은 리듬에서 낮게 깔려 달리는 쪽 — 덜 튑니다", "Same rhythm, running lower — less bounce", ja: "同じリズムで低く走る方向 — 上下動が小さい")
+        case .bouncier:
+            text = L.s("같은 리듬에서 더 튀는 쪽입니다", "Same rhythm, more bounce", ja: "同じリズムで上下動が大きい方向です")
+        case .unchanged:
+            text = L.s("폼 변화 없음 — 세 지표 모두 평소 흔들림 안입니다", "No form change — all three within usual variation", ja: "フォームの変化なし — 3指標ともいつもの揺れの範囲内です")
+        case .mixed:
+            text = L.s("뚜렷한 한 방향은 없습니다", "No single clear direction", ja: "はっきりした一つの方向はありません")
+        }
+        return (head + vals.joined(separator: " · "), text)
     }
 
     /// 지면접촉이 움직인 같은 기간 — 케이던스·공중 시간(같은 보정·신발 효과 뺌) 흐름선의 변화로

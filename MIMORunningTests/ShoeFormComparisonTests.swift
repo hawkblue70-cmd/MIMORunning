@@ -121,6 +121,16 @@ struct ShoeFormComparisonTests {
         #expect(!C.Metric.shown.contains(.flight))
     }
 
+    @Test func patternFromCadenceContactOscillation() {
+        #expect(C.pattern(cadence: 3, contact: -6, oscillation: -0.2) == .quickSteps)
+        #expect(C.pattern(cadence: -3, contact: 2, oscillation: 0.2) == .longStride)
+        #expect(C.pattern(cadence: 0.5, contact: 6, oscillation: -0.2) == .lowGlide)
+        #expect(C.pattern(cadence: 0, contact: 0, oscillation: 0.2) == .bouncier)
+        #expect(C.pattern(cadence: 0.5, contact: 2, oscillation: 0.1) == .unchanged)
+        #expect(C.pattern(cadence: 3, contact: 6, oscillation: -0.2) == .mixed)   // 케이던스↑인데 접지↑ — 한 방향 아님
+        #expect(C.Metric.shown.contains(.cadence))
+    }
+
     @Test func roundingMatchesJudgement() {
         #expect(C.Metric.contact.rounded(7.6) == 8)
         #expect(C.Metric.oscillation.rounded(0.26) == 0.3)
