@@ -12,13 +12,14 @@ import Foundation
 enum ShoeFormComparison {
 
     enum Metric: CaseIterable {
-        case contact, oscillation
+        case contact, oscillation, stride
 
         /// 말할 만한 차이 — 하루 사이 자연 변동보다 큰 값으로 정함(통제 연구 없음)
         var noticeable: Double {
             switch self {
             case .contact:     return 8      // ms
             case .oscillation: return 0.3    // cm
+            case .stride:      return 0.03   // m
             }
         }
 
@@ -27,6 +28,7 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return 4
             case .oscillation: return 0.15
+            case .stride:      return 0.015
             }
         }
 
@@ -35,6 +37,7 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return v.rounded()
             case .oscillation: return (v * 10).rounded() / 10
+            case .stride:      return (v * 100).rounded() / 100
             }
         }
 
@@ -42,6 +45,7 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return s.contact
             case .oscillation: return s.oscillation
+            case .stride:      return s.stride
             }
         }
     }
@@ -52,6 +56,8 @@ enum ShoeFormComparison {
         let paceSecPerKm: Double
         let contact: Double?
         let oscillation: Double?
+        /// 보폭(m) — 같은 페이스로 보정하면 케이던스의 거울(속도 = 케이던스 × 보폭)이라 하나만 쓴다(2026-10-08)
+        var stride: Double? = nil
         /// nil = 신발 기록 없음(기준·흐름에만 쓰인다)
         let shoeID: String?
 
@@ -63,7 +69,7 @@ enum ShoeFormComparison {
         inputs.map {
             Sample(date: $0.date, distanceM: $0.distanceM, paceSecPerKm: $0.paceSecPerKm,
                    contact: $0.avgGroundContactTime, oscillation: $0.avgVerticalOscillation,
-                   shoeID: shoeOf($0.activityID))
+                   stride: $0.avgStrideLength, shoeID: shoeOf($0.activityID))
         }
     }
 

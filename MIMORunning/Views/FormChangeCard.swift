@@ -66,9 +66,13 @@ struct FormChangeCard: View {
                          ja: "同じペース・距離で補正し靴の影響を除いた値 · 白い線 = 4週移動平均 · ▲山 ▼谷 = 線の向きが変わった所 · 点線0 = いつもの値"))
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
-                Text(metric == .contact
-                     ? L.s("아래 = 같은 조건에서 접지가 짧음", "Lower = shorter contact at the same pace", ja: "下 = 同じ条件で接地が短い")
-                     : L.s("아래 = 같은 조건에서 덜 튐", "Lower = less bounce at the same pace", ja: "下 = 同じ条件で上下動が小さい"))
+                Text({
+                    switch metric {
+                    case .contact:     return L.s("아래 = 같은 조건에서 접지가 짧음", "Lower = shorter contact at the same pace", ja: "下 = 同じ条件で接地が短い")
+                    case .oscillation: return L.s("아래 = 같은 조건에서 덜 튐", "Lower = less bounce at the same pace", ja: "下 = 同じ条件で上下動が小さい")
+                    case .stride:      return L.s("위 = 같은 페이스에서 보폭이 김(그만큼 케이던스는 낮음)", "Higher = longer stride at the same pace (cadence lower by as much)", ja: "上 = 同じペースでストライドが長い(その分ケイデンスは低い)")
+                    }
+                }())
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
             }
         }
@@ -99,13 +103,21 @@ struct FormChangeCard: View {
     // MARK: - 표기
 
     private func metricName(_ m: C.Metric) -> String {
-        m == .contact ? L.s("지면접촉", "Ground contact", ja: "接地時間") : L.s("수직진폭", "Vertical oscillation", ja: "上下動")
+        switch m {
+        case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
+        case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
+        case .stride:      return L.s("보폭", "Stride", ja: "ストライド")
+        }
     }
 
     private func fmt(_ v: Double) -> String {
         let r = metric.rounded(v)
         let sign = r >= 0 ? "+" : "−"
-        return metric == .contact ? "\(sign)\(Int(abs(r)))ms" : "\(sign)\(String(format: "%.1f", abs(r)))cm"
+        switch metric {
+        case .contact:     return "\(sign)\(Int(abs(r)))ms"
+        case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
+        case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
+        }
     }
 
     private func day(_ d: Date) -> String {
@@ -131,6 +143,7 @@ struct FormChangeCard: View {
         switch metric {
         case .contact:     return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
         case .oscillation: return d > 0 ? L.s("커지는 중", "getting higher", ja: "大きくなっている") : L.s("작아지는 중", "getting lower", ja: "小さくなっている")
+        case .stride:      return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
         }
     }
 

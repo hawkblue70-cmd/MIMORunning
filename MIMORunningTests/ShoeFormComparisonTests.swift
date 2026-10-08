@@ -81,6 +81,22 @@ struct ShoeFormComparisonTests {
         }
     }
 
+    @Test func strideShoeEffectShowsUp() throws {
+        // 보폭 = 0.6 + 0.1·속도 + 신발 A +0.04m
+        let s = (0..<40).map { i -> C.Sample in
+            let pace = 300.0 + Double(i % 7) * 15, km = 5.0 + Double(i % 5) * 3
+            let a = i % 2 == 0
+            return C.Sample(date: day(-i), distanceM: km * 1000, paceSecPerKm: pace, contact: nil, oscillation: nil,
+                            stride: 0.6 + 0.1 * (1000 / pace) + (a ? 0.04 : 0) + Double(i % 3 - 1) * 0.005,
+                            shoeID: a ? "A" : "B")
+        }
+        let m = try #require(C.fit(.stride, samples: s, asOf: now))
+        let st = try #require(C.shoeStats(.stride, samples: s, model: m).first { $0.shoeID == "A" })
+        #expect(st.differs)
+        #expect(abs(st.mean - 0.04) < 0.005)
+        #expect(C.Metric.stride.rounded(0.034) == 0.03)
+    }
+
     @Test func roundingMatchesJudgement() {
         #expect(C.Metric.contact.rounded(7.6) == 8)
         #expect(C.Metric.oscillation.rounded(0.26) == 0.3)

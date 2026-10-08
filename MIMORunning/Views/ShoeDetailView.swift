@@ -86,18 +86,30 @@ struct ShoeDetailView: View {
     // MARK: - 표기
 
     private func metricName(_ m: C.Metric) -> String {
-        m == .contact ? L.s("지면접촉", "Ground contact", ja: "接地時間") : L.s("수직진폭", "Vertical oscillation", ja: "上下動")
+        switch m {
+        case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
+        case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
+        case .stride:      return L.s("보폭", "Stride", ja: "ストライド")
+        }
     }
 
     private func shortName(_ m: C.Metric) -> String {
-        m == .contact ? L.s("접지", "contact", ja: "接地") : L.s("진폭", "oscillation", ja: "上下動")
+        switch m {
+        case .contact:     return L.s("접지", "contact", ja: "接地")
+        case .oscillation: return L.s("진폭", "oscillation", ja: "上下動")
+        case .stride:      return L.s("보폭", "stride", ja: "ストライド")
+        }
     }
 
     /// 차이 표기(부호 포함) — 판정과 같은 반올림
     private func fmt(_ v: Double, _ m: C.Metric) -> String {
         let r = m.rounded(v)
         let sign = r >= 0 ? "+" : "−"
-        return m == .contact ? "\(sign)\(Int(abs(r)))ms" : "\(sign)\(String(format: "%.1f", abs(r)))cm"
+        switch m {
+        case .contact:     return "\(sign)\(Int(abs(r)))ms"
+        case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
+        case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
+        }
     }
 
     /// 반올림한 값이 문턱 이상인가
@@ -251,6 +263,10 @@ struct ShoeDetailView: View {
             return L.s("\(name): 수직진폭이 다른 신발보다 \(amount) \(longer ? "큽니다" : "작습니다")",
                        "\(name): vertical oscillation \(amount) \(longer ? "higher" : "lower") than other shoes",
                        ja: "\(name): 上下動が他の靴より\(amount)\(longer ? "大きいです" : "小さいです")")
+        case .stride:
+            return L.s("\(name): 보폭이 다른 신발보다 \(amount) \(longer ? "깁니다" : "짧습니다")",
+                       "\(name): stride \(amount) \(longer ? "longer" : "shorter") than other shoes",
+                       ja: "\(name): ストライドが他の靴より\(amount)\(longer ? "長いです" : "短いです")")
         }
     }
 }
