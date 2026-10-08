@@ -97,6 +97,30 @@ struct ShoeFormComparisonTests {
         #expect(C.Metric.stride.rounded(0.034) == 0.03)
     }
 
+    @Test func flightTimeIsStepTimeMinusContact() {
+        let s = C.Sample(date: now, distanceM: 8000, paceSecPerKm: 391, contact: 279, oscillation: nil, cadence: 171, shoeID: nil)
+        #expect(abs((s.flight ?? 0) - (60_000.0 / 171 - 279)) < 1e-9)   // ≈ 72ms
+        #expect(C.Sample(date: now, distanceM: 8000, paceSecPerKm: 391, contact: 279, oscillation: nil, shoeID: nil).flight == nil)
+    }
+
+    @Test func longerContactAtSameCadenceMeansShorterFlight() throws {
+        // 신발 A: 케이던스 같고 접지 +8ms → 공중 시간 −8ms
+        let s = (0..<40).map { i -> C.Sample in
+            let pace = 300.0 + Double(i % 7) * 15, km = 5.0 + Double(i % 5) * 3, a = i % 2 == 0
+            let cad = 150 + 25 * (1000 / pace) + Double(i % 3 - 1) * 0.5
+            let gct = 400 - 50 * (1000 / pace) + (a ? 8 : 0) + Double(i % 3 - 1)
+            return C.Sample(date: day(-i), distanceM: km * 1000, paceSecPerKm: pace, contact: gct, oscillation: nil,
+                            cadence: cad, shoeID: a ? "A" : "B")
+        }
+        func effect(_ m: C.Metric) throws -> C.ShoeStat {
+            let mod = try #require(C.fit(m, samples: s, asOf: now))
+            return try #require(C.shoeStats(m, samples: s, model: mod).first { $0.shoeID == "A" })
+        }
+        #expect(abs(try effect(.cadence).mean) < C.Metric.cadence.noticeable)
+        #expect(abs(try effect(.flight).mean - -8) < 1.5)
+        #expect(!C.Metric.shown.contains(.flight))
+    }
+
     @Test func roundingMatchesJudgement() {
         #expect(C.Metric.contact.rounded(7.6) == 8)
         #expect(C.Metric.oscillation.rounded(0.26) == 0.3)

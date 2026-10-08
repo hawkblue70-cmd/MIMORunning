@@ -90,6 +90,8 @@ struct ShoeDetailView: View {
         case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
         case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
         case .stride:      return L.s("보폭", "Stride", ja: "ストライド")
+        case .cadence:     return L.s("케이던스", "Cadence", ja: "ケイデンス")
+        case .flight:      return L.s("공중 시간", "Flight time", ja: "滞空時間")
         }
     }
 
@@ -98,6 +100,8 @@ struct ShoeDetailView: View {
         case .contact:     return L.s("접지", "contact", ja: "接地")
         case .oscillation: return L.s("진폭", "oscillation", ja: "上下動")
         case .stride:      return L.s("보폭", "stride", ja: "ストライド")
+        case .cadence:     return L.s("케이던스", "cadence", ja: "ケイデンス")
+        case .flight:      return L.s("공중 시간", "flight", ja: "滞空時間")
         }
     }
 
@@ -109,6 +113,8 @@ struct ShoeDetailView: View {
         case .contact:     return "\(sign)\(Int(abs(r)))ms"
         case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
         case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
+        case .cadence:     return "\(sign)\(Int(abs(r)))spm"
+        case .flight:      return "\(sign)\(Int(abs(r)))ms"
         }
     }
 
@@ -117,7 +123,7 @@ struct ShoeDetailView: View {
 
     private var metricChips: some View {
         HStack(spacing: 8) {
-            ForEach(C.Metric.allCases, id: \.self) { m in
+            ForEach(C.Metric.shown, id: \.self) { m in
                 let on = m == metric
                 Button { metric = m } label: {
                     Text(metricName(m))
@@ -147,6 +153,10 @@ struct ShoeDetailView: View {
                 Text(c).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let r = rhythmSentence() {
+                Text(r).font(.system(size: 13)).foregroundStyle(Theme.violetText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.horizontal, 16)
     }
@@ -155,7 +165,7 @@ struct ShoeDetailView: View {
     private func characterSentence() -> String? {
         var parts: [String] = []
         var runs = 0
-        for m in C.Metric.allCases {
+        for m in C.Metric.shown {
             guard let mod = model(m), let s = C.shoeStats(m, samples: samples, model: mod).first(where: { $0.shoeID == myID }) else { continue }
             runs = max(runs, s.n)
             guard s.n >= C.minShoeRuns else { continue }
@@ -172,6 +182,27 @@ struct ShoeDetailView: View {
         }
         return L.s("같은 시기 다른 신발 대비 ", "Vs other shoes in the same weeks: ", ja: "同じ時期の他の靴と比べて ")
             + parts.joined(separator: " · ")
+    }
+
+    /// 접지 차이가 있을 때 — 그게 리듬(케이던스) 때문인지 공중 시간 때문인지, 같은 시기 기준으로 계산한 값으로
+    /// "같은 리듬(케이던스 +0spm)에서 공중 시간이 8ms 짧은 신발입니다"
+    private func rhythmSentence() -> String? {
+        func effect(_ m: C.Metric) -> C.ShoeStat? {
+            guard let mod = model(m) else { return nil }
+            return C.shoeStats(m, samples: samples, model: mod).first { $0.shoeID == myID && $0.n >= C.minShoeRuns }
+        }
+        guard let g = effect(.contact), g.differs, notable(g.mean, .contact),
+              let c = effect(.cadence), let f = effect(.flight) else { return nil }
+        let cad = fmt(c.mean, .cadence), fl = String(fmt(abs(f.mean), .flight).dropFirst())
+        let shorterFlight = f.mean < 0
+        if !notable(c.mean, .cadence) {
+            return L.s("같은 리듬(케이던스 \(cad))에서 공중 시간이 \(fl) \(shorterFlight ? "짧은" : "긴") 신발입니다.",
+                       "Same rhythm (cadence \(cad)) with \(fl) \(shorterFlight ? "less" : "more") time in the air.",
+                       ja: "同じリズム(ケイデンス \(cad))で滞空時間が\(fl)\(shorterFlight ? "短い" : "長い")靴です。")
+        }
+        return L.s("케이던스 \(cad), 공중 시간 \(fmt(f.mean, .flight)) — 리듬이 달라진 신발입니다.",
+                   "Cadence \(cad), flight time \(fmt(f.mean, .flight)) — this shoe changes your rhythm.",
+                   ja: "ケイデンス \(cad)、滞空時間 \(fmt(f.mean, .flight)) — リズムが変わる靴です。")
     }
 
     // MARK: - 신발 비교 — 같은 시기 대비
@@ -267,6 +298,9 @@ struct ShoeDetailView: View {
             return L.s("\(name): 보폭이 다른 신발보다 \(amount) \(longer ? "깁니다" : "짧습니다")",
                        "\(name): stride \(amount) \(longer ? "longer" : "shorter") than other shoes",
                        ja: "\(name): ストライドが他の靴より\(amount)\(longer ? "長いです" : "短いです")")
+        case .cadence, .flight:
+            // 칩에는 없는 문장 전용 지표 — 이 화면에서 고를 수 없다
+            return L.s("\(name): \(mn) \(fmt(s.mean, metric))", "\(name): \(mn) \(fmt(s.mean, metric))", ja: "\(name): \(mn) \(fmt(s.mean, metric))")
         }
     }
 }

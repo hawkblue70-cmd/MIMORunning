@@ -37,7 +37,7 @@ struct FormChangeCard: View {
                 }
             }
             HStack(spacing: 8) {
-                ForEach(C.Metric.allCases, id: \.self) { m in
+                ForEach(C.Metric.shown, id: \.self) { m in
                     chip(metricName(m), on: metric == m) { metric = m }
                 }
             }
@@ -55,6 +55,10 @@ struct FormChangeCard: View {
                     Text(conclusion(seg))
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
+                    if metric == .contact, abs(seg.change) >= metric.turnThreshold, let r = rhythmNote(from: seg.from, to: now) {
+                        Text(r).font(.system(size: 12)).foregroundStyle(Theme.violetText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 chart(pts: pts, line: line, turns: turns, from: from, to: now)
                 ForEach(Array(turnLines(line: line, turns: turns).enumerated()), id: \.offset) { _, t in
@@ -71,6 +75,7 @@ struct FormChangeCard: View {
                     case .contact:     return L.s("아래 = 같은 조건에서 접지가 짧음", "Lower = shorter contact at the same pace", ja: "下 = 同じ条件で接地が短い")
                     case .oscillation: return L.s("아래 = 같은 조건에서 덜 튐", "Lower = less bounce at the same pace", ja: "下 = 同じ条件で上下動が小さい")
                     case .stride:      return L.s("위 = 같은 페이스에서 보폭이 김(그만큼 케이던스는 낮음)", "Higher = longer stride at the same pace (cadence lower by as much)", ja: "上 = 同じペースでストライドが長い(その分ケイデンスは低い)")
+                    case .cadence, .flight: return ""   // 칩에 없음
                     }
                 }())
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
@@ -107,16 +112,22 @@ struct FormChangeCard: View {
         case .contact:     return L.s("지면접촉", "Ground contact", ja: "接地時間")
         case .oscillation: return L.s("수직진폭", "Vertical oscillation", ja: "上下動")
         case .stride:      return L.s("보폭", "Stride", ja: "ストライド")
+        case .cadence:     return L.s("케이던스", "Cadence", ja: "ケイデンス")
+        case .flight:      return L.s("공중 시간", "Flight time", ja: "滞空時間")
         }
     }
 
-    private func fmt(_ v: Double) -> String {
-        let r = metric.rounded(v)
+    private func fmt(_ v: Double) -> String { fmt(v, metric) }
+
+    private func fmt(_ v: Double, _ m: C.Metric) -> String {
+        let r = m.rounded(v)
         let sign = r >= 0 ? "+" : "−"
-        switch metric {
+        switch m {
         case .contact:     return "\(sign)\(Int(abs(r)))ms"
         case .oscillation: return "\(sign)\(String(format: "%.1f", abs(r)))cm"
         case .stride:      return "\(sign)\(String(format: "%.2f", abs(r)))m"
+        case .cadence:     return "\(sign)\(Int(abs(r)))spm"
+        case .flight:      return "\(sign)\(Int(abs(r)))ms"
         }
     }
 
@@ -143,7 +154,8 @@ struct FormChangeCard: View {
         switch metric {
         case .contact:     return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
         case .oscillation: return d > 0 ? L.s("커지는 중", "getting higher", ja: "大きくなっている") : L.s("작아지는 중", "getting lower", ja: "小さくなっている")
-        case .stride:      return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
+        case .stride, .flight: return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
+        case .cadence:     return d > 0 ? L.s("높아지는 중", "getting higher", ja: "高くなっている") : L.s("낮아지는 중", "getting lower", ja: "低くなっている")
         }
     }
 
@@ -180,6 +192,29 @@ struct FormChangeCard: View {
             return L.s("\(name) 시작 \(day(s.date))", "\(name) first run \(day(s.date))", ja: "\(name) 使い始め \(day(s.date))")
         }
         return out
+    }
+
+    /// 지면접촉이 움직인 같은 기간 — 케이던스·공중 시간(같은 보정·신발 효과 뺌) 흐름선의 변화로
+    /// "케이던스는 그대로(+1spm) — 공중 시간이 12ms 줄었습니다"
+    private func rhythmNote(from: Date, to: Date) -> String? {
+        func change(_ m: C.Metric) -> Double? {
+            guard let mod = C.fit(m, samples: samples, asOf: to) else { return nil }
+            let start = Calendar.current.date(byAdding: .month, value: -months, to: to)!
+            let line = C.trend(C.formPoints(m, samples: samples, model: mod, from: start), from: start, to: to)
+            guard let a = line.first(where: { $0.date >= from }), let b = line.last, b.date > a.date else { return nil }
+            return b.value - a.value
+        }
+        guard let c = change(.cadence), let f = change(.flight) else { return nil }
+        let flightWord = f < 0 ? L.s("줄었습니다", "less", ja: "減りました") : L.s("늘었습니다", "more", ja: "増えました")
+        let fl = String(fmt(abs(f), .flight).dropFirst())
+        if abs(C.Metric.cadence.rounded(c)) < C.Metric.cadence.noticeable {
+            return L.s("케이던스는 그대로(\(fmt(c, .cadence))) — 공중 시간이 \(fl) \(flightWord).",
+                       "Cadence unchanged (\(fmt(c, .cadence))) — \(fl) \(flightWord) time in the air.",
+                       ja: "ケイデンスはそのまま(\(fmt(c, .cadence))) — 滞空時間が\(fl)\(flightWord)。")
+        }
+        return L.s("같은 기간 케이던스 \(fmt(c, .cadence)), 공중 시간 \(fmt(f, .flight)).",
+                   "Same period: cadence \(fmt(c, .cadence)), flight time \(fmt(f, .flight)).",
+                   ja: "同じ期間のケイデンス \(fmt(c, .cadence))、滞空時間 \(fmt(f, .flight))。")
     }
 
     // MARK: - 차트
