@@ -75,9 +75,9 @@ enum FormChangeStyle {
     }
 
     static var footnote: String {
-        L.s("같은 페이스·거리로 보정하고 신발 효과를 뺀 값 · 색 선 = 4주 이동평균 · ▲정점 ▼바닥 = 선이 방향을 바꾼 곳 · 점선 0 = 내 평소",
-            "Adjusted for pace and distance, shoe effect removed · colored line = 4-week average · ▲peak ▼low = where the line turned · dashed 0 = usual",
-            ja: "同じペース・距離で補正し靴の影響を除いた値 · 色の線 = 4週移動平均 · ▲山 ▼谷 = 線の向きが変わった所 · 点線0 = いつもの値")
+        L.s("같은 페이스·거리로 보정하고 신발 효과를 뺀 값 · 색 선 = 4주 이동평균 · ▲정점 ▼바닥 = 선이 방향을 바꾼 곳 · 점선 0 = 최근 1년 같은 페이스·거리 평균",
+            "Adjusted for pace and distance, shoe effect removed · colored line = 4-week average · ▲peak ▼low = where the line turned · dashed 0 = last-year average at the same pace and distance",
+            ja: "同じペース・距離で補正し靴の影響を除いた値 · 色の線 = 4週移動平均 · ▲山 ▼谷 = 線の向きが変わった所 · 点線0 = 直近1年の同じペース・距離の平均")
     }
 
     /// 차트 위·아래 뜻 — 공유 칸에는 짧게
