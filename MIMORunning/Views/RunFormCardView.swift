@@ -1723,56 +1723,26 @@ struct RunFormCardView: View {
         let other = pool.filter { shoeByDate[$0.date].map { $0 != shoe } ?? false }
         guard same.count >= 3, other.count >= 3 else { return nil }
         func mean(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.reduce(0, +) / Double(v.count) }
-        func part(_ g: Double?, _ v: Double?) -> String {
-            [g.map { L.s("지면접촉 \(Int($0.rounded()))ms", "contact \(Int($0.rounded()))ms", ja: "接地 \(Int($0.rounded()))ms") },
-             v.map { L.s("수직진폭 \(String(format: "%.1f", $0))cm", "oscillation \(String(format: "%.1f", $0))cm", ja: "上下動 \(String(format: "%.1f", $0))cm") }]
-                .compactMap { $0 }.joined(separator: " · ")
-        }
-        let sameG = mean(same.compactMap(\.groundContactTime)), sameV = mean(same.compactMap(\.verticalOscillation))
-        let otherG = mean(other.compactMap(\.groundContactTime)), otherV = mean(other.compactMap(\.verticalOscillation))
-        // 1줄 — 숫자는 짧게
-        var out = L.s("👟 같은 페이스 비교 · \(shoe) \(same.count)회 \(part(sameG, sameV)) / 다른 신발 \(other.count)회 \(part(otherG, otherV))",
-                      "👟 Same-pace comparison · \(shoe) (\(same.count)) \(part(sameG, sameV)) / other shoes (\(other.count)) \(part(otherG, otherV))",
-                      ja: "👟 同じペースの比較 · \(shoe) \(same.count)回 \(part(sameG, sameV)) / 他の靴 \(other.count)回 \(part(otherG, otherV))")
-        // 2줄 — 해석: ① 신발 자체의 차이 ② 오늘 값이 신발 탓인지 오늘 몸 상태 탓인지 ③ 다음에 볼 것
-        //   문턱(지면접촉 8ms · 수직진폭 0.3cm)은 하루 사이 자연 변동보다 큰 차이로 정함 — 통제 연구 없음(2026-10-08)
-        var notes: [String] = []
-        if let sg = sameG, let og = otherG {
-            let d = Int((sg - og).rounded())
-            notes.append(abs(d) < 8
-                ? L.s("신발에 따른 지면접촉 차이는 작습니다(\(d >= 0 ? "+" : "")\(d)ms).",
-                      "The shoe barely changes contact time (\(d >= 0 ? "+" : "")\(d)ms).",
-                      ja: "靴による接地時間の差は小さいです(\(d >= 0 ? "+" : "")\(d)ms)。")
-                : L.s("이 신발은 다른 신발보다 지면접촉이 \(abs(d))ms \(d > 0 ? "길게" : "짧게") 나옵니다.",
-                      "This shoe runs \(abs(d))ms \(d > 0 ? "longer" : "shorter") contact than your other shoes.",
-                      ja: "この靴は他の靴より接地時間が\(abs(d))ms\(d > 0 ? "長く" : "短く")出ます。"))
-        }
-        if let sv = sameV, let ov = otherV, abs(sv - ov) >= 0.3 {
-            let d = sv - ov
-            notes.append(L.s("수직진폭은 이 신발에서 \(String(format: "%.1f", abs(d)))cm \(d > 0 ? "높게" : "낮게") 나옵니다.",
-                             "Vertical oscillation runs \(String(format: "%.1f", abs(d)))cm \(d > 0 ? "higher" : "lower") in this shoe.",
-                             ja: "上下動はこの靴で\(String(format: "%.1f", abs(d)))cm\(d > 0 ? "高く" : "低く")出ます。"))
-        }
+        // 결론 한 문장만(2026-10-08) — 신발별 숫자·차트는 나 › 신발 › 신발 상세(ShoeDetailView)로 옮겼다
         let sameGs = same.compactMap(\.groundContactTime)
-        if let today = avgGroundContactTime, let sg = sameG, let lo = sameGs.min(), let hi = sameGs.max() {
-            let diff = Int((today - sg).rounded())
-            let avgStr = "\(Int(sg.rounded()))ms"
-            if today > hi + 0.5 {
-                notes.append(L.s("오늘 \(Int(today.rounded()))ms는 이 신발 평균보다 \(diff)ms 길어, 신발보다 오늘 다리 상태(피로·노면) 쪽입니다. 다음 1~2회에 \(avgStr) 근처로 돌아오면 일시적인 변화입니다.",
-                                 "Today's \(Int(today.rounded()))ms is \(diff)ms above this shoe's average — more about your legs today (fatigue, surface) than the shoe. If the next run or two come back near \(avgStr), it was temporary.",
-                                 ja: "今日の\(Int(today.rounded()))msはこの靴の平均より\(diff)ms長く、靴より今日の脚の状態(疲労・路面)によるものです。次の1~2回で\(avgStr)付近に戻れば一時的な変化です。"))
-            } else if today < lo - 0.5 {
-                notes.append(L.s("오늘은 이 신발 평균보다 \(-diff)ms 짧게 디뎠습니다. 페이스가 같다면 발이 더 빨리 땅을 떠난 것입니다.",
-                                 "Today's contact was \(-diff)ms shorter than this shoe's average — at the same pace, your feet left the ground quicker.",
-                                 ja: "今日はこの靴の平均より\(-diff)ms短く接地しました。ペースが同じなら足が早く地面を離れたということです。"))
-            } else {
-                notes.append(L.s("오늘 지면접촉은 이 신발로는 평소 수준입니다 — 평소 범위와의 차이는 신발 때문으로 보면 됩니다.",
-                                 "Today's contact is normal for this shoe — the gap from your usual range comes from the shoe.",
-                                 ja: "今日の接地時間はこの靴ではいつもの水準です — いつもの範囲との差は靴によるものです。"))
-            }
+        guard let today = avgGroundContactTime, let lo = sameGs.min(), let hi = sameGs.max(),
+              let sg = mean(sameGs) else { return nil }
+        let avgStr = "\(Int(sg.rounded()))ms"
+        let diff = Int((today - sg).rounded())
+        let more = L.s(" 신발별 비교: 나 › 신발", " Compare shoes: Me › Shoes", ja: " 靴ごとの比較: マイ › シューズ")
+        if today > hi + 0.5 {
+            return L.s("👟 오늘 접지가 긴 건 신발 때문이 아닙니다(이 신발 평균 \(avgStr), 오늘 +\(diff)ms). 다음 1~2회에 돌아오는지 보세요.",
+                       "👟 Today's longer contact isn't the shoe (this shoe averages \(avgStr), today +\(diff)ms). See if the next run or two come back.",
+                       ja: "👟 今日の接地が長いのは靴のせいではありません(この靴の平均 \(avgStr)、今日 +\(diff)ms)。次の1~2回で戻るか見てください。") + more
+        } else if today < lo - 0.5 {
+            return L.s("👟 오늘은 이 신발 평균(\(avgStr))보다 \(-diff)ms 짧게 디뎠습니다.",
+                       "👟 Today's contact was \(-diff)ms shorter than this shoe's average (\(avgStr)).",
+                       ja: "👟 今日はこの靴の平均(\(avgStr))より\(-diff)ms短く接地しました。") + more
+        } else {
+            return L.s("👟 오늘 접지는 이 신발로는 평소 수준입니다(평균 \(avgStr)) — 평소 범위와의 차이는 신발 때문입니다.",
+                       "👟 Today's contact is normal for this shoe (avg \(avgStr)) — the gap from your usual range is the shoe.",
+                       ja: "👟 今日の接地はこの靴ではいつもの水準です(平均 \(avgStr)) — いつもの範囲との差は靴によるものです。") + more
         }
-        if !notes.isEmpty { out += "\n" + notes.joined(separator: " ") }
-        return out
     }
 
     // MARK: - Narrative

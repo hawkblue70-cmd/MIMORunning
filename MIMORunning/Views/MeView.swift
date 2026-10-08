@@ -32,6 +32,8 @@ struct MeView: View {
     @State private var selectedSummaryStats: SelectedSummaryStats? = nil
     @State private var showRaceSearch = false
     @State private var showAddShoe = false
+    /// 신발 상세(신발별 폼·심박 효율 비교) — 신발 줄을 누르면 연다
+    @State private var detailShoe: Shoe? = nil
     @State private var shoeToDelete: Shoe?
     @State private var raceToDelete: MyPlannedRace?
     /// 나 탭 내비게이션 경로 — 참가 대회 기록 행이 러닝 상세(`Activity`)를 넣는다.
@@ -1300,6 +1302,8 @@ struct MeView: View {
                     ForEach(Array(shoes.enumerated()), id: \.element.id) { idx, shoe in
                         if idx > 0 { thinDivider }
                         HStack(spacing: 12) {
+                          Button { detailShoe = shoe } label: {
+                           HStack(spacing: 12) {
                             ZStack {
                                 Circle()
                                     .fill(Theme.violet.opacity(0.15))
@@ -1327,6 +1331,13 @@ struct MeView: View {
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                           }
+                           .contentShape(Rectangle())
+                          }
+                          .buttonStyle(.plain)
                             Button {
                                 shoeToDelete = shoe
                             } label: {
@@ -1348,6 +1359,9 @@ struct MeView: View {
         }
         .sheet(isPresented: $showAddShoe) {
             AddShoeSheet()
+        }
+        .sheet(item: $detailShoe) { s in
+            ShoeDetailView(shoe: s, manager: manager)
         }
         .alert(AppLanguage.shared.s("대회 삭제", "Remove Race", ja: "レースを削除"), isPresented: .init(
             get: { raceToDelete != nil },
