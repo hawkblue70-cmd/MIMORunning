@@ -41,6 +41,9 @@ enum ShoeFormComparison {
             }
         }
 
+        /// 기울기 — 흐름이 한쪽으로 기운 정도. 꺾임 문턱의 절반(2026-10-08 사용자 결정: 문턱 안이라도 차트 흐름으로 의견을 말한다)
+        var leanThreshold: Double { turnThreshold / 2 }
+
         /// 표시·판정에 같은 반올림 — "+8ms인데 같음"이 나오지 않게
         func rounded(_ v: Double) -> Double {
             switch self {
@@ -284,25 +287,38 @@ enum ShoeFormComparison {
         return now.reduce(0, +) / Double(now.count) - then.reduce(0, +) / Double(then.count)
     }
 
-    /// 폼 요약 패턴 — 케이던스·접지·진폭 변화의 방향(꺾임 문턱 기준)으로. 방향 사실만 말한다(효율·힘은 말하지 않음).
+    /// 폼 요약 패턴 — 케이던스·접지·진폭 변화의 방향(기울기 문턱 = 꺾임 문턱의 절반)으로. 방향 사실만 말한다(효율·힘은 말하지 않음).
+    /// "폼 변화 없음"으로 끝내지 않는다 — 작은 변화라도 흐름이 기운 쪽을 말하고, 크기는 `isClear`로 구분한다(2026-10-08).
     enum Pattern: Equatable {
         case quickSteps     // 케이던스↑ + (접지↓ 또는 진폭↓) — 잔걸음(총총)
         case longStride     // 케이던스↓ + (진폭↑ 또는 접지↑) — 큰 걸음
         case lowGlide       // 케이던스 그대로 + 진폭↓ — 같은 리듬에서 낮게
         case bouncier       // 케이던스 그대로 + 진폭↑ — 같은 리듬에서 더 튐
-        case unchanged      // 셋 다 문턱 안
-        case mixed
+        case steady         // 셋 다 기울기 문턱 안 — 같은 폼 유지
+        case mixed          // 한 방향으로 묶이지 않음 — 가장 크게 움직인 지표로 말한다
     }
 
     static func pattern(cadence: Double, contact: Double, oscillation: Double) -> Pattern {
-        func dir(_ v: Double, _ m: Metric) -> Int { abs(v) < m.turnThreshold ? 0 : (v > 0 ? 1 : -1) }
+        func dir(_ v: Double, _ m: Metric) -> Int { abs(v) < m.leanThreshold ? 0 : (v > 0 ? 1 : -1) }
         let c = dir(cadence, .cadence), g = dir(contact, .contact), o = dir(oscillation, .oscillation)
-        if c == 0 && g == 0 && o == 0 { return .unchanged }
+        if c == 0 && g == 0 && o == 0 { return .steady }
         if c > 0 && (g < 0 || o < 0) && g <= 0 && o <= 0 { return .quickSteps }
         if c < 0 && (o > 0 || g > 0) && g >= 0 && o >= 0 { return .longStride }
-        if c == 0 && o < 0 { return .lowGlide }
-        if c == 0 && o > 0 { return .bouncier }
+        if c == 0 && o < 0 && g <= 0 { return .lowGlide }
+        if c == 0 && o > 0 && g >= 0 { return .bouncier }
         return .mixed
+    }
+
+    /// 꺾임 문턱을 넘은 지표가 하나라도 있으면 "바뀌는 중", 아니면 "조금씩 기우는 중"
+    static func isClear(cadence: Double, contact: Double, oscillation: Double) -> Bool {
+        abs(cadence) >= Metric.cadence.turnThreshold || abs(contact) >= Metric.contact.turnThreshold
+            || abs(oscillation) >= Metric.oscillation.turnThreshold
+    }
+
+    /// 한 방향으로 묶이지 않을 때 — 문턱 대비 가장 크게 움직인 지표
+    static func biggestMover(cadence: Double, contact: Double, oscillation: Double) -> (metric: Metric, change: Double) {
+        [(Metric.cadence, cadence), (.contact, contact), (.oscillation, oscillation)]
+            .max { abs($0.1) / $0.0.turnThreshold < abs($1.1) / $1.0.turnThreshold }!
     }
 
     /// 마지막 꺾임(없으면 선 시작) 이후 변화 — 결론 한 줄용

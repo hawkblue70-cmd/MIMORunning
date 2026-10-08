@@ -124,11 +124,20 @@ struct ShoeFormComparisonTests {
     @Test func patternFromCadenceContactOscillation() {
         #expect(C.pattern(cadence: 3, contact: -6, oscillation: -0.2) == .quickSteps)
         #expect(C.pattern(cadence: -3, contact: 2, oscillation: 0.2) == .longStride)
-        #expect(C.pattern(cadence: 0.5, contact: 6, oscillation: -0.2) == .lowGlide)
+        #expect(C.pattern(cadence: 0.3, contact: -1, oscillation: -0.2) == .lowGlide)
         #expect(C.pattern(cadence: 0, contact: 0, oscillation: 0.2) == .bouncier)
-        #expect(C.pattern(cadence: 0.5, contact: 2, oscillation: 0.1) == .unchanged)
+        #expect(C.pattern(cadence: 0.3, contact: 1, oscillation: 0.05) == .steady)
         #expect(C.pattern(cadence: 3, contact: 6, oscillation: -0.2) == .mixed)   // 케이던스↑인데 접지↑ — 한 방향 아님
         #expect(C.Metric.shown.contains(.cadence))
+    }
+
+    @Test func smallButConsistentDriftIsALeanNotNoChange() {
+        // 화면 사례(10/08): 케이던스 +0.6 · 접지 −3ms · 진폭 −0.1cm — 꺾임 문턱 안이지만 셋 다 총총 쪽으로 기움
+        #expect(C.pattern(cadence: 0.6, contact: -3, oscillation: -0.1) == .quickSteps)
+        #expect(!C.isClear(cadence: 0.6, contact: -3, oscillation: -0.1))
+        #expect(C.isClear(cadence: 0.6, contact: -5, oscillation: -0.1))
+        let big = C.biggestMover(cadence: 0.2, contact: 3, oscillation: -0.14)   // 진폭 0.93 > 접지 0.75
+        #expect(big.metric == .oscillation)
     }
 
     @Test func roundingMatchesJudgement() {

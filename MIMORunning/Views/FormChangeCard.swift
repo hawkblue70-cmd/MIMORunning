@@ -164,9 +164,12 @@ struct FormChangeCard: View {
     }
 
     /// 방향은 사실로만 — 좋다·나쁘다로 단정하지 않는다
-    private func direction(_ d: Double) -> String {
-        if abs(d) < metric.turnThreshold { return L.s("평탄", "flat", ja: "横ばい") }
-        switch metric {
+    private func direction(_ d: Double) -> String { direction(d, metric) }
+
+    /// `lean` = 기울기 문턱(꺾임 문턱의 절반)으로 평탄 여부를 본다 — 폼 요약용
+    private func direction(_ d: Double, _ m: C.Metric, lean: Bool = false) -> String {
+        if abs(d) < (lean ? m.leanThreshold : m.turnThreshold) { return L.s("평탄", "flat", ja: "横ばい") }
+        switch m {
         case .contact:     return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
         case .oscillation: return d > 0 ? L.s("커지는 중", "getting higher", ja: "大きくなっている") : L.s("작아지는 중", "getting lower", ja: "小さくなっている")
         case .stride, .flight: return d > 0 ? L.s("길어지는 중", "getting longer", ja: "長くなっている") : L.s("짧아지는 중", "getting shorter", ja: "短くなっている")
@@ -209,7 +212,7 @@ struct FormChangeCard: View {
         return out
     }
 
-    /// 폼 요약 — 최근 4주 vs 3개월 전(같은 페이스·거리 보정, 신발 효과 뺌)의 케이던스·접지·진폭·공중 시간과 패턴 한 줄
+    /// 폼 요약 — 최근 4주 vs 3개월 전(같은 페이스·거리 보정, 신발 효과 뺌)의 케이던스·접지·진폭·공중 시간과 흐름 의견 한 줄
     private func summary(now: Date) -> (values: String, pattern: String)? {
         func change(_ m: C.Metric) -> Double? {
             guard let mod = C.fit(m, samples: samples, asOf: now) else { return nil }
@@ -223,20 +226,33 @@ struct FormChangeCard: View {
                     L.s("진폭", "oscillation", ja: "上下動") + " " + fmt(o, .oscillation)]
         if let f { vals.append(L.s("공중 시간", "flight", ja: "滞空") + " " + fmt(f, .flight)) }
         let head = L.s("폼 요약 · 최근 4주 vs 3개월 전 — ", "Form summary · last 4 weeks vs 3 months ago — ", ja: "フォーム要約 · 直近4週 vs 3か月前 — ")
+        // 꺾임 문턱을 넘었으면 "바뀌는 중", 문턱 안이면 "조금씩 ~쪽으로" — 작아도 흐름이 기운 쪽을 말한다(2026-10-08)
+        let clear = C.isClear(cadence: c, contact: g, oscillation: o)
         let text: String
         switch C.pattern(cadence: c, contact: g, oscillation: o) {
         case .quickSteps:
-            text = L.s("잔걸음(총총)으로 바뀌는 중 — 발을 빨리 굴리고 덜 튑니다", "Shifting to quicker, shorter steps — faster turnover, less bounce", ja: "小刻みな走りに変わりつつあります — 速く回し、上下動が小さい")
+            text = clear
+                ? L.s("잔걸음(총총)으로 바뀌는 중입니다 — 발을 빨리 굴리고 덜 튑니다", "Shifting to quicker, shorter steps — faster turnover, less bounce", ja: "小刻みな走りに変わりつつあります — 速く回し、上下動が小さい")
+                : L.s("조금씩 잔걸음(총총) 쪽으로 가는 중입니다 — 아직 작은 변화입니다", "Drifting toward quicker, shorter steps — still a small change", ja: "少しずつ小刻みな走りの方向へ — まだ小さな変化です")
         case .longStride:
-            text = L.s("큰 걸음으로 바뀌는 중 — 한 걸음을 길게, 더 튑니다", "Shifting to longer strides — longer steps, more bounce", ja: "大きな歩幅に変わりつつあります — 一歩が長く、上下動が大きい")
+            text = clear
+                ? L.s("큰 걸음으로 바뀌는 중입니다 — 한 걸음을 길게, 더 튑니다", "Shifting to longer strides — longer steps, more bounce", ja: "大きな歩幅に変わりつつあります — 一歩が長く、上下動が大きい")
+                : L.s("조금씩 큰 걸음 쪽으로 가는 중입니다 — 아직 작은 변화입니다", "Drifting toward longer strides — still a small change", ja: "少しずつ大きな歩幅の方向へ — まだ小さな変化です")
         case .lowGlide:
-            text = L.s("같은 리듬에서 낮게 깔려 달리는 쪽 — 덜 튑니다", "Same rhythm, running lower — less bounce", ja: "同じリズムで低く走る方向 — 上下動が小さい")
+            text = clear
+                ? L.s("같은 리듬에서 낮게 깔려 달리는 쪽으로 가는 중입니다 — 덜 튑니다", "Same rhythm, running lower — less bounce", ja: "同じリズムで低く走る方向です — 上下動が小さい")
+                : L.s("같은 리듬에서 조금씩 낮게 깔리는 중입니다 — 아직 작은 변화입니다", "Same rhythm, slowly running lower — still a small change", ja: "同じリズムで少しずつ低く — まだ小さな変化です")
         case .bouncier:
-            text = L.s("같은 리듬에서 더 튀는 쪽입니다", "Same rhythm, more bounce", ja: "同じリズムで上下動が大きい方向です")
-        case .unchanged:
-            text = L.s("폼 변화 없음 — 세 지표 모두 평소 흔들림 안입니다", "No form change — all three within usual variation", ja: "フォームの変化なし — 3指標ともいつもの揺れの範囲内です")
+            text = clear
+                ? L.s("같은 리듬에서 더 튀는 쪽으로 가는 중입니다", "Same rhythm, more bounce", ja: "同じリズムで上下動が大きい方向です")
+                : L.s("같은 리듬에서 조금씩 더 튀는 중입니다 — 아직 작은 변화입니다", "Same rhythm, slowly bouncing more — still a small change", ja: "同じリズムで少しずつ上下動が大きく — まだ小さな変化です")
+        case .steady:
+            text = L.s("3개월째 같은 폼을 유지하는 중입니다 — 케이던스·접지·진폭 모두 그대로입니다", "Holding the same form for 3 months — cadence, contact and bounce all steady", ja: "3か月同じフォームを保っています — ケイデンス・接地・上下動ともそのままです")
         case .mixed:
-            text = L.s("뚜렷한 한 방향은 없습니다", "No single clear direction", ja: "はっきりした一つの方向はありません")
+            let big = C.biggestMover(cadence: c, contact: g, oscillation: o)
+            let dir = direction(big.change, big.metric, lean: true)
+            text = L.s("가장 크게 움직인 건 \(metricName(big.metric)) — \(dir)입니다", "Biggest mover: \(metricName(big.metric)) — \(dir)", ja: "いちばん動いたのは\(metricName(big.metric)) — \(dir)です")
+                + (clear ? "" : L.s(" (아직 작은 변화)", " (still small)", ja: "(まだ小さな変化)"))
         }
         return (head + vals.joined(separator: " · "), text)
     }
