@@ -250,16 +250,17 @@ enum ShoeFormComparison {
             switch dir {
             case 0:
                 // 시작 뒤 문턱 안에서 먼저 내려갔다(올라갔다) 돌아서면 그 극값도 꺾임 — 시작값 대신 최저·최고에서 잰다.
+                // 시작값과 기울기 문턱(꺾임의 절반) 이상 차이일 때만 — 그보다 얕으면 '▲ 4/29 정점 +0spm'처럼 뜻 없는 꺾임이 된다.
                 // 예전엔 시작값에서만 재서, 5월에 살짝 내려갔다 7월에 오른 보폭 혹이 꺾임 없이 '평탄'으로 나왔다(2026-10-08).
                 if p.value < lo.value { lo = p }
                 if p.value > hi.value { hi = p }
                 if p.value - lo.value >= threshold {
-                    if lo.date != first.date && first.value - lo.value >= threshold / 4 {
+                    if lo.date != first.date && first.value - lo.value >= threshold / 2 {
                         append(Turn(date: lo.date, value: lo.value, isPeak: false), to: &out)
                     }
                     dir = 1; ext = p
                 } else if hi.value - p.value >= threshold {
-                    if hi.date != first.date && hi.value - first.value >= threshold / 4 {
+                    if hi.date != first.date && hi.value - first.value >= threshold / 2 {
                         append(Turn(date: hi.date, value: hi.value, isPeak: true), to: &out)
                     }
                     dir = -1; ext = p

@@ -73,8 +73,8 @@ struct ShoeFormComparisonTests {
     }
 
     @Test func smallDipBeforeTheFirstHumpCountsAsALow() {
-        // 화면 사례(10/08 보폭): +0.003 → −0.002(5월) → +0.010(7월) → −0.001 — 시작값에서는 문턱(0.01)을 못 넘지만 혹은 꺾임 둘
-        let vals: [Double] = [0.003, 0.001, -0.002, -0.001, 0.002, 0.006, 0.010, 0.009, 0.005, 0.001, -0.001, -0.001, 0.0]
+        // 화면 사례(10/08 보폭): +0.004 → −0.002(5월) → +0.010(7월) → −0.001 — 시작값에서는 문턱(0.01)을 못 넘지만 혹은 꺾임 둘
+        let vals: [Double] = [0.004, 0.001, -0.002, -0.001, 0.002, 0.006, 0.010, 0.009, 0.005, 0.001, -0.001, -0.001, 0.0]
         let line = vals.enumerated().map { (date: day($0.offset * 14 - 180), value: $0.element) }
         let t = C.turns(line, threshold: C.Metric.stride.turnThreshold)
         #expect(t.count == 2)
@@ -83,6 +83,10 @@ struct ShoeFormComparisonTests {
         // 시작부터 오르기만 하면 바닥 표시 없음
         let up = [0.0, 0.004, 0.008, 0.012, 0.016].enumerated().map { (date: day($0.offset * 14), value: $0.element) }
         #expect(C.turns(up, threshold: 0.01).isEmpty)
+        // 화면 사례(10/08 케이던스): 시작 0 → +0.4(4/29) → −1.4(7/1) → +0.4 — +0.4 혹은 얕아서 꺾임 아님, 7/1 바닥만
+        let cad = [0, 0.2, 0.4, 0.2, 0, -0.6, -1.2, -1.4, -0.8, 0, 0.4, 0.2].enumerated().map { (date: day($0.offset * 14 - 180), value: $0.element) }
+        let ct = C.turns(cad, threshold: C.Metric.cadence.turnThreshold)
+        #expect(ct.count == 1 && ct.first?.isPeak == false && ct.first?.value == -1.4)
     }
 
     @Test func turnsCloserThanFourWeeksAreDropped() {
