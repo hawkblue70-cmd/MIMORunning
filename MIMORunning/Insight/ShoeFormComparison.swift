@@ -2,45 +2,46 @@ import Foundation
 
 /// 내 폼 변화 · 신발 성격(2026-10-08 사용자 결정).
 ///
-/// 1) 보정 — 최근 1년 모든 러닝(신발 기록 없는 러닝 포함)으로 "이 속도·거리(·기온)면 내 값은 보통 얼마"를 회귀로 만들고,
+/// 1) 보정 — 최근 1년 모든 러닝(신발 기록 없는 러닝 포함)으로 "이 속도·거리면 내 값은 보통 얼마"를 회귀로 만들고,
 ///    러닝마다 기준과의 차이(잔차) 하나만 본다. 러닝 종류로 쪼개면 칸마다 1~2회라 우연이 크다.
-/// 2) 내 폼의 흐름 — 잔차의 날짜별 이동평균. 신발과 상관없이 같은 조건에서 접지가 짧아지는지 등.
-/// 3) 신발 성격 — 신발 러닝의 잔차에서 **같은 시기(앞뒤 14일) 다른 신발 러닝**의 잔차 평균을 뺀다.
-///    1년 평균을 기준으로 하면 여름에 신은 신발과 가을에 신은 신발이 계절·체력 차이를 떠안는다.
-/// 신발 수명(닳음)은 다루지 않는다 — 몸이 쿠션 변화를 보상해 워치의 몸통 지표(접지·진폭)에는 거의 드러나지 않는다.
+/// 2) 신발 성격 — 신발 러닝의 잔차에서 **같은 시기(앞뒤 14일) 다른 신발 러닝**의 잔차 평균을 뺀다(계절·체력 제거).
+/// 3) 내 폼의 흐름 — 잔차에서 신발 효과를 빼고 4주 이동평균. 보스턴12(+8ms)를 자주 신기 시작한 시점이 폼 변화로 보이지 않게.
+///    선이 방향을 바꾼 곳(정점·바닥)을 지그재그 규칙으로 찾는다 — 충분히 움직였다가 돌아설 때만, 4주 간격 이상.
+/// 신발 수명(닳음)·심박 효율은 다루지 않는다 — 쿠션 변화는 몸이 보상해 워치 지표에 거의 안 나타나고,
+/// 심박 효율은 폼·신발보다 체력·날씨를 보여 준다.
 enum ShoeFormComparison {
 
     enum Metric: CaseIterable {
-        case contact, oscillation, efficiency
-
-        /// 좋은 쪽 — 지면접촉·수직진폭은 낮게, 심박 효율은 높게
-        var higherIsBetter: Bool { self == .efficiency }
+        case contact, oscillation
 
         /// 말할 만한 차이 — 하루 사이 자연 변동보다 큰 값으로 정함(통제 연구 없음)
         var noticeable: Double {
             switch self {
             case .contact:     return 8      // ms
             case .oscillation: return 0.3    // cm
-            case .efficiency:  return 3      // %
+            }
+        }
+
+        /// 흐름선이 꺾였다고 볼 움직임 — 말할 만한 차이의 절반
+        var turnThreshold: Double {
+            switch self {
+            case .contact:     return 4
+            case .oscillation: return 0.15
             }
         }
 
         /// 표시·판정에 같은 반올림 — "+8ms인데 같음"이 나오지 않게
         func rounded(_ v: Double) -> Double {
             switch self {
-            case .contact:                  return v.rounded()
-            case .oscillation, .efficiency: return (v * 10).rounded() / 10
+            case .contact:     return v.rounded()
+            case .oscillation: return (v * 10).rounded() / 10
             }
         }
-
-        /// 기온을 보정에 넣는가 — 심박 효율만(더위에 심박이 오른다). 접지·진폭은 기온 영향이 작다.
-        var usesTemperature: Bool { self == .efficiency }
 
         func raw(_ s: Sample) -> Double? {
             switch self {
             case .contact:     return s.contact
             case .oscillation: return s.oscillation
-            case .efficiency:  return s.efficiency
             }
         }
     }
@@ -49,78 +50,48 @@ enum ShoeFormComparison {
         let date: Date
         let distanceM: Double
         let paceSecPerKm: Double
-        let avgHeartRate: Int?
         let contact: Double?
         let oscillation: Double?
-        let temperatureC: Double?
         /// nil = 신발 기록 없음(기준·흐름에만 쓰인다)
         let shoeID: String?
 
         var speed: Double { paceSecPerKm > 0 ? 1000 / paceSecPerKm : 0 }   // m/s
         var km: Double { distanceM / 1000 }
-        /// 심박 효율 — 심박 1회에 가는 거리(m). 속도(m/분) ÷ 평균 심박
-        var efficiency: Double? {
-            guard let hr = avgHeartRate, hr > 0, paceSecPerKm > 0 else { return nil }
-            return (60_000 / paceSecPerKm) / Double(hr)
-        }
     }
 
-    static func samples(inputs: [FormInput], shoeOf: (UUID) -> String?, temperatureOf: (UUID) -> Double?) -> [Sample] {
+    static func samples(inputs: [FormInput], shoeOf: (UUID) -> String?) -> [Sample] {
         inputs.map {
             Sample(date: $0.date, distanceM: $0.distanceM, paceSecPerKm: $0.paceSecPerKm,
-                   avgHeartRate: $0.avgHeartRate, contact: $0.avgGroundContactTime,
-                   oscillation: $0.avgVerticalOscillation, temperatureC: temperatureOf($0.activityID),
+                   contact: $0.avgGroundContactTime, oscillation: $0.avgVerticalOscillation,
                    shoeID: shoeOf($0.activityID))
         }
     }
 
-    // MARK: - 기준(이 속도·거리·기온이면 보통 얼마)
+    // MARK: - 기준(이 속도·거리면 보통 얼마)
 
-    /// 보정 변수 — 절편은 항상
-    enum Feature: CaseIterable { case speed, distance, temperature }
-
-    /// 값 = c0 + Σ cᵢ·변수ᵢ (쓰는 변수만)
+    /// 값 = c0 + c1·속도 [+ c2·거리]
     struct Model {
-        let features: [Feature]
-        let coef: [Double]           // [절편] + features 순서
-        let meanTemperature: Double
+        let coef: [Double]
         let n: Int
-        var usesTemperature: Bool { features.contains(.temperature) }
-        func coefficient(_ f: Feature) -> Double? { features.firstIndex(of: f).map { coef[$0 + 1] } }
-        func value(_ f: Feature, _ s: Sample) -> Double {
-            switch f {
-            case .speed:       return s.speed
-            case .distance:    return s.km
-            case .temperature: return s.temperatureC ?? meanTemperature
-            }
-        }
         func expected(_ s: Sample) -> Double {
-            coef[0] + zip(features, coef.dropFirst()).reduce(0) { $0 + $1.1 * value($1.0, s) }
+            let f = [1, s.speed, s.km]
+            return zip(coef, f).reduce(0) { $0 + $1.0 * $1.1 }
         }
     }
 
     static let minModelRuns = 20
     static let modelWindowDays = 365
 
-    /// 최근 1년, 값 있는 러닝 20회 이상일 때만. 풀리지 않으면 변수를 하나씩 빼고, 끝내 안 되면 평균.
+    /// 최근 1년, 값 있는 러닝 20회 이상일 때만. 풀리지 않으면 거리 → 속도 순으로 빼고, 끝내 안 되면 평균.
     static func fit(_ m: Metric, samples: [Sample], asOf: Date) -> Model? {
         let since = Calendar.current.date(byAdding: .day, value: -modelWindowDays, to: asOf) ?? .distantPast
         let pts = samples.filter { $0.date >= since && $0.date <= asOf && $0.speed > 0 && m.raw($0) != nil }
         guard pts.count >= minModelRuns else { return nil }
-        let temps = pts.compactMap(\.temperatureC)
-        let meanT = temps.isEmpty ? 15 : temps.reduce(0, +) / Double(temps.count)
         let ys = pts.map { m.raw($0)! }
-        // 기온은 기록이 충분할 때만(없는 러닝은 평균 기온으로 채운다)
-        let tryTemp = m.usesTemperature && temps.count >= minModelRuns
-        // 풀리는 조합을 차례로 — 거리가 다 같으면 거리만 빼고 기온은 살린다
-        let candidates: [[Feature]] = (tryTemp
-            ? [[.speed, .distance, .temperature], [.speed, .temperature]]
-            : []) + [[.speed, .distance], [.speed], []]
-        for feats in candidates {
-            let probe = Model(features: feats, coef: [], meanTemperature: meanT, n: 0)
-            let rows = pts.map { s in [1.0] + feats.map { probe.value($0, s) } }
+        for k in [3, 2, 1] {
+            let rows = pts.map { Array([1, $0.speed, $0.km].prefix(k)) }
             if let c = leastSquares(rows, ys) {
-                return Model(features: feats, coef: c, meanTemperature: meanT, n: pts.count)
+                return Model(coef: Array((c + [0, 0, 0]).prefix(3)), n: pts.count)
             }
         }
         return nil
@@ -151,15 +122,10 @@ enum ShoeFormComparison {
         return sol.allSatisfy(\.isFinite) ? sol : nil
     }
 
-    /// 기준과의 차이 — 지면접촉 ms·수직진폭 cm, 심박 효율은 %
     static func residual(_ m: Metric, _ s: Sample, model: Model) -> Double? {
         guard let y = m.raw(s), s.speed > 0 else { return nil }
-        let e = model.expected(s)
-        if m == .efficiency { return e > 0 ? (y - e) / e * 100 : nil }
-        return y - e
+        return y - model.expected(s)
     }
-
-    // MARK: - 내 폼의 흐름
 
     struct Point {
         let date: Date
@@ -167,40 +133,7 @@ enum ShoeFormComparison {
         let shoeID: String?
     }
 
-    static func points(_ m: Metric, samples: [Sample], model: Model, from: Date) -> [Point] {
-        samples.filter { $0.date >= from }.compactMap { s in
-            residual(m, s, model: model).map { Point(date: s.date, value: $0, shoeID: s.shoeID) }
-        }.sorted { $0.date < $1.date }
-    }
-
-    static let trendHalfWindowDays = 14
-
-    /// 4주 이동평균(앞뒤 14일, 3회 이상) — 7일 간격으로. 모든 러닝(신발 무관)
-    static func trend(_ pts: [Point], from: Date, to: Date) -> [(date: Date, value: Double)] {
-        let cal = Calendar.current
-        var out: [(Date, Double)] = []
-        var d = from
-        while d <= to {
-            let lo = cal.date(byAdding: .day, value: -trendHalfWindowDays, to: d)!
-            let hi = cal.date(byAdding: .day, value: trendHalfWindowDays, to: d)!
-            let w = pts.filter { $0.date >= lo && $0.date <= hi }.map(\.value)
-            if w.count >= 3 { out.append((d, w.reduce(0, +) / Double(w.count))) }
-            d = cal.date(byAdding: .day, value: 7, to: d)!
-        }
-        return out
-    }
-
-    /// 최근 4주 vs 3개월 전 4주(76~104일 전) 평균 — 양쪽 3회 이상
-    static func recentChange(_ pts: [Point], asOf: Date) -> (then: Double, now: Double)? {
-        let cal = Calendar.current
-        func win(_ a: Int, _ b: Int) -> [Double] {
-            let lo = cal.date(byAdding: .day, value: -b, to: asOf)!, hi = cal.date(byAdding: .day, value: -a, to: asOf)!
-            return pts.filter { $0.date >= lo && $0.date <= hi }.map(\.value)
-        }
-        let now = win(0, 28), then = win(76, 104)
-        guard now.count >= 3, then.count >= 3 else { return nil }
-        return (then.reduce(0, +) / Double(then.count), now.reduce(0, +) / Double(now.count))
-    }
+    static let windowHalfDays = 14
 
     // MARK: - 신발 성격 — 같은 시기 다른 신발 대비
 
@@ -223,8 +156,8 @@ enum ShoeFormComparison {
         var by: [String: [Double]] = [:]
         for p in all {
             guard let id = p.shoeID else { continue }
-            let lo = cal.date(byAdding: .day, value: -trendHalfWindowDays, to: p.date)!
-            let hi = cal.date(byAdding: .day, value: trendHalfWindowDays, to: p.date)!
+            let lo = cal.date(byAdding: .day, value: -windowHalfDays, to: p.date)!
+            let hi = cal.date(byAdding: .day, value: windowHalfDays, to: p.date)!
             let others = all.filter { $0.shoeID != id && $0.date >= lo && $0.date <= hi }.map(\.value)
             guard others.count >= 2 else { continue }
             by[id, default: []].append(p.value - others.reduce(0, +) / Double(others.count))
@@ -236,5 +169,88 @@ enum ShoeFormComparison {
                 : nil
             return ShoeStat(shoeID: id, n: v.count, mean: mean, half: half)
         }.sorted { $0.n > $1.n }
+    }
+
+    // MARK: - 내 폼의 흐름 — 신발 효과를 뺀 잔차
+
+    /// 신발 효과를 뺀 점 — 5회 이상 비교된 신발만 뺀다(그보다 적으면 효과 추정이 우연에 좌우된다)
+    static func formPoints(_ m: Metric, samples: [Sample], model: Model, from: Date) -> [Point] {
+        let effect = Dictionary(shoeStats(m, samples: samples, model: model)
+            .filter { $0.n >= minShoeRuns }.map { ($0.shoeID, $0.mean) }, uniquingKeysWith: { a, _ in a })
+        return samples.filter { $0.date >= from }.compactMap { s in
+            residual(m, s, model: model).map {
+                Point(date: s.date, value: $0 - (s.shoeID.flatMap { effect[$0] } ?? 0), shoeID: s.shoeID)
+            }
+        }.sorted { $0.date < $1.date }
+    }
+
+    /// 4주 이동평균(앞뒤 14일, 3회 이상) — 7일 간격. `to`보다 14일 안쪽 끝은 앞쪽 데이터가 없어 흔들린다(진행 중).
+    static func trend(_ pts: [Point], from: Date, to: Date) -> [(date: Date, value: Double)] {
+        let cal = Calendar.current
+        var out: [(Date, Double)] = []
+        var d = from
+        while d <= to {
+            let lo = cal.date(byAdding: .day, value: -windowHalfDays, to: d)!
+            let hi = cal.date(byAdding: .day, value: windowHalfDays, to: d)!
+            let w = pts.filter { $0.date >= lo && $0.date <= hi }.map(\.value)
+            if w.count >= 3 { out.append((d, w.reduce(0, +) / Double(w.count))) }
+            d = cal.date(byAdding: .day, value: 7, to: d)!
+        }
+        return out
+    }
+
+    struct Turn {
+        let date: Date
+        let value: Double
+        /// true = 정점(위로 갔다 내려옴), false = 바닥
+        let isPeak: Bool
+    }
+
+    static let minTurnGapDays = 28
+
+    /// 흐름선이 방향을 바꾼 곳 — 지그재그: 직전 꺾임 이후 `threshold` 이상 움직인 극값에서
+    /// 반대로 다시 `threshold` 이상 돌아서면 그 극값을 꺾임으로 확정. 직전 꺾임과 4주 미만이면 버린다.
+    static func turns(_ line: [(date: Date, value: Double)], threshold: Double) -> [Turn] {
+        guard let first = line.first else { return [] }
+        var out: [Turn] = []
+        var anchor = first.value                // 직전 꺾임(또는 시작) 값
+        var ext = first                          // 지금 방향의 극값
+        var dir = 0                              // +1 오르는 중, −1 내리는 중, 0 미정
+        for p in line.dropFirst() {
+            switch dir {
+            case 0:
+                if p.value - anchor >= threshold { dir = 1; ext = p }
+                else if anchor - p.value >= threshold { dir = -1; ext = p }
+            case 1:
+                if p.value > ext.value { ext = p }
+                else if ext.value - p.value >= threshold {
+                    append(Turn(date: ext.date, value: ext.value, isPeak: true), to: &out)
+                    anchor = ext.value; dir = -1; ext = p
+                }
+            default:
+                if p.value < ext.value { ext = p }
+                else if p.value - ext.value >= threshold {
+                    append(Turn(date: ext.date, value: ext.value, isPeak: false), to: &out)
+                    anchor = ext.value; dir = 1; ext = p
+                }
+            }
+        }
+        return out
+    }
+
+    private static func append(_ t: Turn, to out: inout [Turn]) {
+        if let last = out.last,
+           (Calendar.current.dateComponents([.day], from: last.date, to: t.date).day ?? 0) < minTurnGapDays {
+            return
+        }
+        out.append(t)
+    }
+
+    /// 마지막 꺾임(없으면 선 시작) 이후 변화 — 결론 한 줄용
+    static func lastSegment(_ line: [(date: Date, value: Double)], turns: [Turn]) -> (from: Date, change: Double)? {
+        guard let end = line.last, let start = line.first else { return nil }
+        let startDate = turns.last?.date ?? start.date
+        let startValue = turns.last?.value ?? start.value
+        return (startDate, end.value - startValue)
     }
 }

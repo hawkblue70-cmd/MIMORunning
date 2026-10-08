@@ -247,6 +247,8 @@ struct GrowthView: View {
                                 EffortTypeBaselineCard(rows: effortTypeRowsCache)
                             }
                             LateRunDurabilityCard(points: lateRunPointsCache)
+                            // 폼 변화 — 페이스·거리 보정 + 신발 효과 뺀 접지·진폭 흐름과 꺾이는 시점(2026-10-08)
+                            FormChangeCard(manager: manager)
                             // 역치 페이스 추세 — 중수 이상·강한 러닝 점 3개 이상일 때만(설계 2026-10-01-threshold-estimate)
                             if manager.userLevel.bucket >= .intermediate, let t = engine.thresholdTrend, t.points.count >= 3 {
                                 ThresholdTrendCard(trend: t)
