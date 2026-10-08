@@ -24,7 +24,8 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return 8      // ms
             case .oscillation: return 0.3    // cm
-            case .stride:      return 0.03   // m
+            // 보폭은 같은 페이스에서 케이던스의 거울 — 1spm(≈0.6%) ≈ 0.6cm라 케이던스와 맞춘다(2026-10-08, 예전 0.03·0.015는 케이던스의 2배 넘게 둔했음)
+            case .stride:      return 0.02   // m
             case .cadence:     return 2      // spm
             case .flight:      return 8      // ms
             }
@@ -35,7 +36,7 @@ enum ShoeFormComparison {
             switch self {
             case .contact:     return 4
             case .oscillation: return 0.15
-            case .stride:      return 0.015
+            case .stride:      return 0.01
             case .cadence:     return 1
             case .flight:      return 4
             }
@@ -242,25 +243,38 @@ enum ShoeFormComparison {
     static func turns(_ line: [(date: Date, value: Double)], threshold: Double) -> [Turn] {
         guard let first = line.first else { return [] }
         var out: [Turn] = []
-        var anchor = first.value                // 직전 꺾임(또는 시작) 값
         var ext = first                          // 지금 방향의 극값
         var dir = 0                              // +1 오르는 중, −1 내리는 중, 0 미정
+        var lo = first, hi = first               // 방향이 정해지기 전 최저·최고
         for p in line.dropFirst() {
             switch dir {
             case 0:
-                if p.value - anchor >= threshold { dir = 1; ext = p }
-                else if anchor - p.value >= threshold { dir = -1; ext = p }
+                // 시작 뒤 문턱 안에서 먼저 내려갔다(올라갔다) 돌아서면 그 극값도 꺾임 — 시작값 대신 최저·최고에서 잰다.
+                // 예전엔 시작값에서만 재서, 5월에 살짝 내려갔다 7월에 오른 보폭 혹이 꺾임 없이 '평탄'으로 나왔다(2026-10-08).
+                if p.value < lo.value { lo = p }
+                if p.value > hi.value { hi = p }
+                if p.value - lo.value >= threshold {
+                    if lo.date != first.date && first.value - lo.value >= threshold / 4 {
+                        append(Turn(date: lo.date, value: lo.value, isPeak: false), to: &out)
+                    }
+                    dir = 1; ext = p
+                } else if hi.value - p.value >= threshold {
+                    if hi.date != first.date && hi.value - first.value >= threshold / 4 {
+                        append(Turn(date: hi.date, value: hi.value, isPeak: true), to: &out)
+                    }
+                    dir = -1; ext = p
+                }
             case 1:
                 if p.value > ext.value { ext = p }
                 else if ext.value - p.value >= threshold {
                     append(Turn(date: ext.date, value: ext.value, isPeak: true), to: &out)
-                    anchor = ext.value; dir = -1; ext = p
+                    dir = -1; ext = p
                 }
             default:
                 if p.value < ext.value { ext = p }
                 else if p.value - ext.value >= threshold {
                     append(Turn(date: ext.date, value: ext.value, isPeak: false), to: &out)
-                    anchor = ext.value; dir = 1; ext = p
+                    dir = 1; ext = p
                 }
             }
         }

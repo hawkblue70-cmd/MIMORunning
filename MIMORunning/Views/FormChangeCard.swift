@@ -37,9 +37,23 @@ struct FormChangeCard: View {
                 }
             }
             if let sum = summary(now: now) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(sum.values).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
-                        .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L.s("폼 요약 · 최근 4주 vs 3개월 전", "Form summary · last 4 weeks vs 3 months ago", ja: "フォーム要約 · 直近4週 vs 3か月前"))
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                    // 2×2 — 글머리 점은 지표 색(공중 시간은 계산값이라 회색)
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                        ForEach(Array(stride(from: 0, to: sum.values.count, by: 2)), id: \.self) { i in
+                            GridRow {
+                                ForEach(sum.values[i..<min(i + 2, sum.values.count)], id: \.label) { v in
+                                    HStack(spacing: 6) {
+                                        Circle().fill(v.tint).frame(width: 6, height: 6)
+                                        Text(v.label).font(.system(size: 12)).foregroundStyle(.white.opacity(0.75))
+                                        Text(v.value).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Text(sum.pattern).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -226,7 +240,7 @@ struct FormChangeCard: View {
     }
 
     /// 폼 요약 — 최근 4주 vs 3개월 전(같은 페이스·거리 보정, 신발 효과 뺌)의 케이던스·접지·진폭·공중 시간과 흐름 의견 한 줄
-    private func summary(now: Date) -> (values: String, pattern: String)? {
+    private func summary(now: Date) -> (values: [(label: String, value: String, tint: Color)], pattern: String)? {
         func change(_ m: C.Metric) -> Double? {
             guard let mod = C.fit(m, samples: samples, asOf: now) else { return nil }
             let from = Calendar.current.date(byAdding: .day, value: -110, to: now)!
@@ -234,11 +248,11 @@ struct FormChangeCard: View {
         }
         guard let c = change(.cadence), let g = change(.contact), let o = change(.oscillation) else { return nil }
         let f = change(.flight)
-        var vals = [L.s("케이던스", "cadence", ja: "ケイデンス") + " " + fmt(c, .cadence),
-                    L.s("접지", "contact", ja: "接地") + " " + fmt(g, .contact),
-                    L.s("진폭", "oscillation", ja: "上下動") + " " + fmt(o, .oscillation)]
-        if let f { vals.append(L.s("공중 시간", "flight", ja: "滞空") + " " + fmt(f, .flight)) }
-        let head = L.s("폼 요약 · 최근 4주 vs 3개월 전 — ", "Form summary · last 4 weeks vs 3 months ago — ", ja: "フォーム要約 · 直近4週 vs 3か月前 — ")
+        var vals: [(label: String, value: String, tint: Color)] = [
+            (L.s("케이던스", "Cadence", ja: "ケイデンス"), fmt(c, .cadence), tint(.cadence)),
+            (L.s("접지", "Contact", ja: "接地"), fmt(g, .contact), tint(.contact)),
+            (L.s("진폭", "Oscillation", ja: "上下動"), fmt(o, .oscillation), tint(.oscillation))]
+        if let f { vals.append((L.s("공중 시간", "Flight", ja: "滞空"), fmt(f, .flight), Color.white.opacity(0.45))) }
         // 꺾임 문턱을 넘었으면 "바뀌는 중", 문턱 안이면 "조금씩 ~쪽으로" — 작아도 흐름이 기운 쪽을 말한다(2026-10-08)
         let clear = C.isClear(cadence: c, contact: g, oscillation: o)
         let text: String
@@ -267,7 +281,7 @@ struct FormChangeCard: View {
             text = L.s("가장 크게 움직인 건 \(metricName(big.metric)) — \(dir)입니다", "Biggest mover: \(metricName(big.metric)) — \(dir)", ja: "いちばん動いたのは\(metricName(big.metric)) — \(dir)です")
                 + (clear ? "" : L.s(" (아직 작은 변화)", " (still small)", ja: "(まだ小さな変化)"))
         }
-        return (head + vals.joined(separator: " · "), text)
+        return (vals, text)
     }
 
     /// 지면접촉이 움직인 같은 기간 — 케이던스·공중 시간(같은 보정·신발 효과 뺌) 흐름선의 변화로

@@ -72,6 +72,19 @@ struct ShoeFormComparisonTests {
         #expect(seg?.change == -8)
     }
 
+    @Test func smallDipBeforeTheFirstHumpCountsAsALow() {
+        // 화면 사례(10/08 보폭): +0.003 → −0.002(5월) → +0.010(7월) → −0.001 — 시작값에서는 문턱(0.01)을 못 넘지만 혹은 꺾임 둘
+        let vals: [Double] = [0.003, 0.001, -0.002, -0.001, 0.002, 0.006, 0.010, 0.009, 0.005, 0.001, -0.001, -0.001, 0.0]
+        let line = vals.enumerated().map { (date: day($0.offset * 14 - 180), value: $0.element) }
+        let t = C.turns(line, threshold: C.Metric.stride.turnThreshold)
+        #expect(t.count == 2)
+        #expect(t.first?.isPeak == false && t.first?.value == -0.002)
+        #expect(t.last?.isPeak == true && t.last?.value == 0.010)
+        // 시작부터 오르기만 하면 바닥 표시 없음
+        let up = [0.0, 0.004, 0.008, 0.012, 0.016].enumerated().map { (date: day($0.offset * 14), value: $0.element) }
+        #expect(C.turns(up, threshold: 0.01).isEmpty)
+    }
+
     @Test func turnsCloserThanFourWeeksAreDropped() {
         let vals: [Double] = [0, -6, 0, -6, 0, -6, 0]   // 매주 뒤집힘
         let line = vals.enumerated().map { (date: day($0.offset * 7), value: $0.element) }
