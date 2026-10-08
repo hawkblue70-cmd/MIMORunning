@@ -41,8 +41,6 @@ struct RunFormCardView: View {
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
-    /// 러닝 날짜(Activity.date) → 신발 이름. 범례 아래 "신발별 비교" 한 줄용(2026-10-08). 비면 줄을 숨긴다.
-    var shoeByDate: [Date: String] = [:]
 
     /// 내보내기(촘촘 모드)면 섹션 간격 14→9 · 상하 여백 16→12 · 문장 줄 간격 −1
     @Environment(\.insightCompact) private var compact
@@ -1691,58 +1689,7 @@ struct RunFormCardView: View {
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용입니다.", "\nLimited samples — treat as reference only.", ja: "\n比較対象が少ないため参考用です。")
             : ""
-        return line1 + dotLine + colorLine + caveat + (shoeCompareLine().map { "\n" + $0 } ?? "")
-    }
-
-    /// 러닝 기록 → 날짜별 신발 이름 표. 러닝 일기(WorkoutStory.shoeID)에 신발을 고른 러닝만 들어간다.
-    static func shoeNames(history: [Activity], stories: [WorkoutStory], shoes: [Shoe]) -> [Date: String] {
-        let nameByID = Dictionary(shoes.map { ($0.id.uuidString, $0.displayName) }, uniquingKeysWith: { a, _ in a })
-        let shoeByWorkout = Dictionary(stories.compactMap { s in s.shoeID.map { (s.workoutID, $0) } },
-                                       uniquingKeysWith: { a, _ in a })
-        var out: [Date: String] = [:]
-        for a in history where a.type == .running {
-            if let sid = shoeByWorkout[a.id.uuidString], let n = nameByID[sid] { out[a.date] = n }
-        }
-        return out
-    }
-
-    /// 신발별 비교 한 줄 — 오늘과 같은 페이스 구간·12개월 안 러닝을 오늘 신발 / 다른 신발로 나눠 지면접촉·수직진폭 평균.
-    /// 양쪽 다 3회 이상일 때만(그보다 적으면 우연에 좌우된다). 오늘 지면접촉이 같은 신발 러닝 범위 안인지 끝에 붙인다.
-    private func shoeCompareLine() -> String? {
-        let L = AppLanguage.shared
-        guard let shoe = shoeByDate[activity.date], let base = baseline, let pace = activity.paceSecPerKm else { return nil }
-        let band = base.cutoffs.band(of: pace)
-        let since = Calendar.current.date(byAdding: .year, value: -1, to: activity.date) ?? .distantPast
-        let pool = base.allFormSamples.filter { s in
-            s.date < activity.date && s.date >= since
-                && !Calendar.current.isDate(s.date, inSameDayAs: activity.date)
-                && base.cutoffs.band(of: s.paceSecPerKm) == band
-                && (s.groundContactTime != nil || s.verticalOscillation != nil)
-        }
-        let same  = pool.filter { shoeByDate[$0.date] == shoe }
-        let other = pool.filter { shoeByDate[$0.date].map { $0 != shoe } ?? false }
-        guard same.count >= 3, other.count >= 3 else { return nil }
-        func mean(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.reduce(0, +) / Double(v.count) }
-        // 결론 한 문장만(2026-10-08) — 신발별 숫자·차트는 나 › 신발 › 신발 상세(ShoeDetailView)로 옮겼다
-        let sameGs = same.compactMap(\.groundContactTime)
-        guard let today = avgGroundContactTime, let lo = sameGs.min(), let hi = sameGs.max(),
-              let sg = mean(sameGs) else { return nil }
-        let avgStr = "\(Int(sg.rounded()))ms"
-        let diff = Int((today - sg).rounded())
-        let more = L.s(" 신발별 비교: 나 › 신발", " Compare shoes: Me › Shoes", ja: " 靴ごとの比較: マイ › シューズ")
-        if today > hi + 0.5 {
-            return L.s("👟 오늘 접지가 긴 건 신발 때문이 아닙니다(이 신발 평균 \(avgStr), 오늘 +\(diff)ms). 다음 1~2회에 돌아오는지 보세요.",
-                       "👟 Today's longer contact isn't the shoe (this shoe averages \(avgStr), today +\(diff)ms). See if the next run or two come back.",
-                       ja: "👟 今日の接地が長いのは靴のせいではありません(この靴の平均 \(avgStr)、今日 +\(diff)ms)。次の1~2回で戻るか見てください。") + more
-        } else if today < lo - 0.5 {
-            return L.s("👟 오늘은 이 신발 평균(\(avgStr))보다 \(-diff)ms 짧게 디뎠습니다.",
-                       "👟 Today's contact was \(-diff)ms shorter than this shoe's average (\(avgStr)).",
-                       ja: "👟 今日はこの靴の平均(\(avgStr))より\(-diff)ms短く接地しました。") + more
-        } else {
-            return L.s("👟 오늘 접지는 이 신발로는 평소 수준입니다(평균 \(avgStr)) — 평소 범위와의 차이는 신발 때문입니다.",
-                       "👟 Today's contact is normal for this shoe (avg \(avgStr)) — the gap from your usual range is the shoe.",
-                       ja: "👟 今日の接地はこの靴ではいつもの水準です(平均 \(avgStr)) — いつもの範囲との差は靴によるものです。") + more
-        }
+        return line1 + dotLine + colorLine + caveat
     }
 
     // MARK: - Narrative

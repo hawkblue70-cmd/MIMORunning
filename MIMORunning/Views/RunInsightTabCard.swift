@@ -781,9 +781,6 @@ private func heroMonthlyLoadKm(activity: Activity, history: [Activity]) -> Doubl
 // MARK: - RunInsightTabCard (entry point)
 
 struct RunInsightTabCard: View {
-    /// 폼 카드 신발별 비교 한 줄용 — 러닝 일기(신발 선택)·신발 목록
-    @Query private var formStories: [WorkoutStory]
-    @Query private var formShoes: [Shoe]
     let activity: Activity
     var detail: ActivityDetail? = nil
     var history: [Activity] = []
@@ -1049,8 +1046,7 @@ struct RunInsightTabCard: View {
                 runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: hasFormGap,
                 weatherSnapshot: weatherSnapshot,
-                historicalTemperatures: history.compactMap { $0.temperatureC },
-                shoeByDate: RunFormCardView.shoeNames(history: history, stories: formStories, shoes: formShoes)
+                historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
             PerformanceInsightCard(
@@ -6272,8 +6268,7 @@ struct InsightExportSheet: View {
                 runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: exportFormHasGap,
                 weatherSnapshot: weatherSnapshot,
-                historicalTemperatures: history.compactMap { $0.temperatureC },
-                shoeByDate: RunFormCardView.shoeNames(history: history, stories: allStories, shoes: allShoes)
+                historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
             PerformanceInsightCard(
