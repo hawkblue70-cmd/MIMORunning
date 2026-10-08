@@ -23,7 +23,9 @@ struct ShoeCompareChart: View {
     var body: some View {
         let domain = Self.domain(rows.map(\.stat), metric)
         let ticks = Self.ticks(domain, metric, maxCount: compact ? 3 : 5)
+        let inset = compact ? Self.compactInset : Self.nameColumn + 8
         VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
             ForEach(rows, id: \.id) { r in
                 if compact {
                     VStack(alignment: .leading, spacing: 0) {
@@ -41,6 +43,17 @@ struct ShoeCompareChart: View {
                     }
                     .frame(height: 34)
                 }
+            }
+            }
+            // 0 점선 — 줄마다 그리면 이름 줄에서 끊겨 잘 안 보였다. 모든 줄을 관통하는 한 줄로, 더 진하게(2026-10-08)
+            .background(alignment: .topLeading) {   // 점·막대 아래에 깔리게
+                GeometryReader { g in
+                    let w = g.size.width - inset
+                    let x = inset + w * (0 - domain.lowerBound) / (domain.upperBound - domain.lowerBound)
+                    Path { p in p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: g.size.height)) }
+                        .stroke(Color.white.opacity(0.7), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2.5]))
+                }
+                .allowsHitTesting(false)
             }
             HStack(spacing: 8) {
                 // 막대와 같은 왼쪽 들여쓰기 — 눈금이 막대와 맞게
@@ -96,9 +109,6 @@ struct ShoeCompareChart: View {
     private func bar(_ r: Row, domain: ClosedRange<Double>, ticks: [Double]) -> some View {
         let tint = r.mine ? FormChangeStyle.tint(metric) : Color.white
         return Chart {
-            RuleMark(x: .value("0", 0))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                .foregroundStyle(Color.white.opacity(0.35))
             if let h = r.stat.half {
                 RuleMark(xStart: .value("lo", max(domain.lowerBound, r.stat.mean - h)),
                          xEnd: .value("hi", min(domain.upperBound, r.stat.mean + h)), y: .value("y", 0))
@@ -114,7 +124,7 @@ struct ShoeCompareChart: View {
         .chartYAxis(.hidden)
         .chartXAxis {
             AxisMarks(values: ticks) { _ in
-                AxisGridLine().foregroundStyle(Color.white.opacity(0.06))
+                AxisGridLine().foregroundStyle(Color.white.opacity(0.1))
             }
         }
     }
