@@ -500,6 +500,10 @@ final class MREngineStore: ObservableObject {
         #endif
         if hrvStale { Task { await self.reloadHRV(reason: "시작") } }
         #if DEBUG
+        // 캐시를 쓰는 날도 활력 징후 로그를 남긴다 — 재조회 때만 찍으면 같은 날 두 번째 실행부터 안 나온다
+        if !hrvStale { logVitals(now: now) }
+        #endif
+        #if DEBUG
         if let t = mrHRVTrend(nights: hrvNights, asOf: now) {
             let stateStr: String = {
                 switch t.state { case .above: return "위"; case .within: return "범위 안"; case .below: return "아래" }
