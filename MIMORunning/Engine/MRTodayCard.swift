@@ -115,7 +115,9 @@ func mrTodayCard(runs: [MRWorkout],
                  rhythm: MRRhythmContext? = nil,
                  easyTarget: MREasyTarget? = nil,
                  grayZone: MRGrayZoneWeek? = nil,
-                 restingHR: [(date: Date, value: Double)] = []) -> MRTodayCard? {
+                 restingHR: [(date: Date, value: Double)] = [],
+                 respNights: [(date: Date, value: Double)] = [],
+                 tempNights: [(date: Date, value: Double)] = []) -> MRTodayCard? {
 
     guard let last = runs.last else { return nil }
     let cal = Calendar.current
@@ -185,7 +187,8 @@ func mrTodayCard(runs: [MRWorkout],
     let readiness = mrReadiness(runs: runs, phys: phys, heatHR: heatHR, hrvNights: hrvNights,
                                 planPhase: planPhase, asOf: asOf, hardRunStarts: hardRunStarts, planWeek: planWeek,
                                 pointRunTypes: pointRunTypes, rhythm: rhythm,
-                                easyTarget: easyTarget, grayZone: grayZone, restingHR: restingHR)
+                                easyTarget: easyTarget, grayZone: grayZone, restingHR: restingHR,
+                                respNights: respNights, tempNights: tempNights)
 
     return MRTodayCard(streakLine: streakLine, distanceCells: distanceCells,
                        sessionLine: sessionLine, linkLine: linkLine,

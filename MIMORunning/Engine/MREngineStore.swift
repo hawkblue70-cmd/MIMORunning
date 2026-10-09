@@ -67,6 +67,11 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var streakWeeks: Int = 0
     /// 수면 HRV 밤별 중앙값(60일). 총평·조언이 `mrHRVTrend(nights:asOf:)`로 러닝 날짜 기준 추세를 만든다.
     @Published private(set) var hrvNights: [(date: Date, value: Double)] = []
+    /// 밤 활력 징후 — 호흡수(회/분)·손목 온도(°C) 밤 값. 아침 제안 이상 징후 규칙만 쓴다(화면 없음). HRV와 같이 읽는다.
+    private var respNights: [(date: Date, value: Double)] = []
+    private var tempNights: [(date: Date, value: Double)] = []
+    /// 활력 징후 캐시를 한 번이라도 읽었나 — 업데이트 직후엔 HRV 캐시가 신선해도 활력 징후가 없어 재조회해야 한다
+    private var vitalsLoaded = false
     /// 앱 쪽 고강도 판정(분류 유형·체감 강도·존 분포)으로 고강도인 러닝의 시작 시각. 홈이 주입한다(`updateHardRunStarts`).
     /// 엔진의 `isInterval`은 WorkoutKit 구조화 운동만 잡아 "인터벌"로 분류된 일반 러닝을 놓친다 — 아침 제안·hrvReady가 이걸 합쳐 본다.
     @Published private(set) var hardRunStarts: Set<Date> = []
@@ -157,6 +162,27 @@ final class MREngineStore: ObservableObject {
         }
         guard !nights.isEmpty else { return nil }
         return (Date(timeIntervalSince1970: ts), nights)
+    }
+
+    // 활력 징후 캐시 — HRV 캐시와 같은 시점에 저장·복원. 빈 배열도 '읽음'으로 남긴다(워치 없이 자는 사람이 매번 재조회하지 않게).
+    private static let vitalRespKey = "mimo.vitalCache.resp.v1"
+    private static let vitalTempKey = "mimo.vitalCache.temp.v1"
+
+    private func loadPersistedVitals() -> (resp: [(date: Date, value: Double)], temp: [(date: Date, value: Double)])? {
+        let ud = UserDefaults.standard
+        guard ud.integer(forKey: Self.hrvCacheRuleKey) == Self.hrvNightRuleVersion,
+              let r = ud.array(forKey: Self.vitalRespKey) as? [[Double]],
+              let t = ud.array(forKey: Self.vitalTempKey) as? [[Double]] else { return nil }
+        func decode(_ a: [[Double]]) -> [(date: Date, value: Double)] {
+            a.compactMap { $0.count == 2 ? (Date(timeIntervalSince1970: $0[0]), $0[1]) : nil }
+        }
+        return (decode(r), decode(t))
+    }
+
+    private func persistVitals(resp: [(date: Date, value: Double)], temp: [(date: Date, value: Double)]) {
+        let ud = UserDefaults.standard
+        ud.set(resp.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.vitalRespKey)
+        ud.set(temp.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.vitalTempKey)
     }
 
     private func persistHRV(fetchedAt: Date, nights: [(date: Date, value: Double)]) {
@@ -450,6 +476,11 @@ final class MREngineStore: ObservableObject {
             hrvNights = persisted.nights
             hrvLastFetchedAt = persisted.fetchedAt
         }
+        if !vitalsLoaded, let v = loadPersistedVitals() {
+            respNights = v.resp
+            tempNights = v.temp
+            vitalsLoaded = true
+        }
         let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         // 오늘 키의 밤이 없으면(워치가 아침에 동기화) 24시간 안이어도 다시 읽는다 — 아침 제안이 어젯밤을 봐야 한다
         let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
@@ -463,7 +494,7 @@ final class MREngineStore: ObservableObject {
         let fetchedToday = hrvLastFetchedAt.map { cal.isDateInToday($0) } ?? false
         let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
         let fetchedBeforeWake = hrvLastFetchedAt.map { $0 < noon && hrvAge >= 3600 } ?? true
-        let hrvStale = hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight || !fetchedToday || fetchedBeforeWake
+        let hrvStale = hrvNights.isEmpty || hrvAge >= 24 * 3600 || !hasTonight || !fetchedToday || fetchedBeforeWake || !vitalsLoaded
         #if DEBUG
         print("[HRV] 캐시 \(hrvNights.count)밤 · 오늘 밤 \(hasTonight ? "있음" : "없음") · \(hrvStale ? "뒤에서 재조회" : "캐시 사용")")
         #endif
@@ -1229,7 +1260,8 @@ final class MREngineStore: ObservableObject {
                                               intenseStarts: intenseRunsInjected ? Set(intenseRuns.keys) : hardRunStarts,
                                               asOf: now)
                            },
-                           restingHR: rhrSamples)
+                           restingHR: rhrSamples,
+                           respNights: respNights, tempNights: tempNights)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
@@ -1399,8 +1431,23 @@ final class MREngineStore: ObservableObject {
         print(String(format: "[⏱ HRV 잠든 구간] %.2fs · %d개%@", CFAbsoluteTimeGetCurrent() - t0, asleep.count,
                      mrHRVUseSleepIntervals ? "" : " (꺼짐 — 창 규칙)"))
         #endif
+        // 밤 활력 징후 — 같은 잠든 구간으로 묶는다. 권한이 없거나 워치를 안 차고 자면 빈 배열(규칙이 조용히 빠진다).
+        let respRaw = (try? await hk.fetchRespiratoryRate()) ?? []
+        let tempRaw = (try? await hk.fetchWristTemperature()) ?? []
         let t1 = CFAbsoluteTimeGetCurrent()
         let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
+        // 호흡수는 HRV와 같은 밤 묶기(수면 세션 안 값만). 바닥값 4회/분 아래는 측정 잡음.
+        let resp = await Task.detached(priority: .userInitiated) {
+            mrHRVNightMedians(samples: respRaw, asleep: asleep, noiseFloor: 4)
+        }.value
+        let temp = mrWristTempNights(samples: tempRaw)
+        respNights = resp
+        tempNights = temp
+        vitalsLoaded = true
+        persistVitals(resp: resp, temp: temp)
+        #if DEBUG
+        logVitals(now: Date())
+        #endif
         #if DEBUG
         print(String(format: "[⏱ HRV 밤 묶기] %.3fs · %d밤", CFAbsoluteTimeGetCurrent() - t1, nights.count))
         #endif
@@ -1431,6 +1478,41 @@ final class MREngineStore: ObservableObject {
         }
         #endif
     }
+
+    #if DEBUG
+    /// 활력 징후 로그 — 최근 7밤 값과 판정. 임계값 후보별 1년 집계는 하루 한 번(뒤에서 400일 조회).
+    private func logVitals(now: Date) {
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        let cal = Calendar.current, today = cal.startOfDay(for: now)
+        func recent(_ n: [(date: Date, value: Double)], _ fmt: String) -> String {
+            n.filter { (cal.dateComponents([.day], from: $0.date, to: today).day ?? 99) <= 6 }
+             .map { "\(df.string(from: $0.date)) \(String(format: fmt, $0.value))" }.joined(separator: " · ")
+        }
+        print("[활력] 호흡수 \(respNights.count)밤 · 7일: " + recent(respNights, "%.1f"))
+        print("[활력] 손목 온도 \(tempNights.count)밤 · 7일: " + recent(tempNights, "%.2f"))
+        if let v = mrVitalSignal(respNights: respNights, tempNights: tempNights, asOf: now) {
+            print("[활력] 판정 \(v.isRest ? "휴식" : "이지") · " + v.pieces.joined(separator: " · "))
+        } else {
+            print("[활력] 판정 없음(평소 범위·어젯밤 값 없음·4주 14밤 미만)")
+        }
+        let key = "mimo.vitalReport.day"
+        let dayStamp = Int(today.timeIntervalSince1970)
+        guard UserDefaults.standard.integer(forKey: key) != dayStamp else { return }
+        UserDefaults.standard.set(dayStamp, forKey: key)
+        let hk = self.hk
+        Task.detached(priority: .utility) {
+            let respRaw = (try? await hk.fetchRespiratoryRate(days: 400)) ?? []
+            let tempRaw = (try? await hk.fetchWristTemperature(days: 400)) ?? []
+            let asleep = (try? await hk.fetchAsleepIntervals(days: 400)) ?? []
+            let resp = mrHRVNightMedians(samples: respRaw, asleep: asleep, noiseFloor: 4)
+            let temp = mrWristTempNights(samples: tempRaw)
+            print("[활력] 1년 집계 — 호흡수 \(resp.count)밤 · 손목 온도 \(temp.count)밤")
+            for line in mrVitalThresholdReport(respNights: resp, tempNights: temp, asOf: now) {
+                print("[활력]   " + line)
+            }
+        }
+    }
+    #endif
 
     /// 이 러닝 직전(시작 −1초)·직후(끝) 기준 역치 추정 — 오늘의 인사이트 "역치를 밀어올린 러닝"·템포 역치 대비용.
     /// as-of 파이프라인을 두 번 돌리므로 러닝 시작 시각별로 메모한다. 러닝 목록이 아직 없으면 메모하지 않고 nil.

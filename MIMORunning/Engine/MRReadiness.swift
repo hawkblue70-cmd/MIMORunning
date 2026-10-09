@@ -326,6 +326,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  easyTarget: MREasyTarget? = nil,
                  grayZone: MRGrayZoneWeek? = nil,
                  restingHR: [(date: Date, value: Double)] = [],
+                 respNights: [(date: Date, value: Double)] = [],
+                 tempNights: [(date: Date, value: Double)] = [],
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -379,6 +381,9 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         }
     }
     if let e = rhrHigh { data.append(rhrPiece(e)) }
+    // 밤 활력 징후 — 벗어난 날에만 조각이 붙는다(평소 범위면 아무 말 없음)
+    let vital = mrVitalSignal(respNights: respNights, tempNights: tempNights, asOf: asOf, calendar: calendar)
+    if let v = vital { data.append(contentsOf: v.pieces) }
     if let p = lastHardPiece() { data.append(p) }
     if consecutive >= 2 { data.append(L.s("\(consecutive)일 연속", "\(consecutive) days in a row", ja: "\(consecutive)日連続")) }
     // 이지 확인 — 지난 7일 애매하게 빠른 러닝이 2회 이상일 때만(한 번은 그날 사정일 수 있다)
@@ -419,6 +424,11 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         return r
     }
 
+    // 규칙 0-2 — 밤 활력 징후(호흡수·손목 온도)가 평소보다 높음(2026-10-09). 맨 앞 — 몸이 이상한 날은 계획보다 몸이 먼저다.
+    // 하나·한 밤 = 이지런(손목 온도 하나는 술·더운 방으로도 오른다), 둘 다 또는 2밤 연속 = 휴식. 진단하지 않는다.
+    if let v = vital {
+        return make(v.isRest ? .rest : .easy, [v.tag], why: v.why)
+    }
     // 규칙 1 — 대회 계획의 회복·테이퍼 주
     if planPhase == "회복" {
         return make(.easy, [L.s("대회 계획 회복 주", "race plan: recovery week", ja: "レース計画: 回復週")],

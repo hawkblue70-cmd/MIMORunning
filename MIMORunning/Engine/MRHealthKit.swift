@@ -21,6 +21,7 @@ struct MRHealthKit {
             .runningPower, .runningSpeed, .runningStrideLength,
             .runningVerticalOscillation, .runningGroundContactTime,
             .bodyMass, .bodyFatPercentage,
+            .respiratoryRate, .appleSleepingWristTemperature,   // 밤 활력 징후 — 아침 제안 이상 징후(2026-10-09)
         ]
         q.forEach { if let t = HKQuantityType.quantityType(forIdentifier: $0) { s.insert(t) } }
         let c: [HKCharacteristicTypeIdentifier] = [.dateOfBirth, .biologicalSex]
@@ -295,6 +296,39 @@ struct MRHealthKit {
             store.execute(q)
         }
         return samples.map { ($0.startDate, $0.quantity.doubleValue(for: unit)) }
+    }
+
+    // MARK: 밤 활력 징후 (호흡수 · 손목 온도)
+
+    /// 호흡수 원본 샘플(회/분). 밤 묶기는 HRV와 같은 `mrHRVNightMedians`(수면 세션 안 값만)가 한다.
+    func fetchRespiratoryRate(days: Int = 60) async throws -> [(Date, Double)] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .respiratoryRate) else { return [] }
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let samples = try await fetchQuantitySamples(type, days: days)
+        return samples.map { ($0.startDate, $0.quantity.doubleValue(for: unit)) }
+    }
+
+    /// 수면 중 손목 온도(°C, 절댓값). 한 밤에 샘플 하나라 끝 시각(기상)으로 밤 키를 잡는다 — `mrWristTempNights`.
+    /// Series 8 이후·Ultra만 기록한다. 없으면 빈 배열.
+    func fetchWristTemperature(days: Int = 60) async throws -> [(end: Date, value: Double)] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .appleSleepingWristTemperature) else { return [] }
+        let samples = try await fetchQuantitySamples(type, days: days)
+        return samples.map { ($0.endDate, $0.quantity.doubleValue(for: .degreeCelsius())) }
+    }
+
+    private func fetchQuantitySamples(_ type: HKQuantityType, days: Int) async throws -> [HKQuantitySample] {
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let from = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let pred = HKQuery.predicateForSamples(withStart: from, end: nil, options: .strictStartDate)
+        return try await withCheckedThrowingContinuation { cont in
+            let q = HKSampleQuery(sampleType: type, predicate: pred,
+                                  limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: [sort]) { _, s, e in
+                if let e { cont.resume(throwing: e); return }
+                cont.resume(returning: (s as? [HKQuantitySample]) ?? [])
+            }
+            store.execute(q)
+        }
     }
 
     // MARK: 일별 걸음 수

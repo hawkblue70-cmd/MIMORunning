@@ -301,6 +301,8 @@ class HealthKitManager {
             HKCategoryType(.sleepAnalysis),
             HKQuantityType(.bodyMass),
             HKQuantityType(.bodyFatPercentage),
+            HKQuantityType(.respiratoryRate),                 // 밤 활력 징후 — 아침 제안 이상 징후(2026-10-09)
+            HKQuantityType(.appleSleepingWristTemperature),
         ]
         return base.union(effortReadTypes)
     }()
