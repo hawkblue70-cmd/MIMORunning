@@ -12,10 +12,13 @@ import Foundation
 // 기준은 본인 4주(어젯밤 전 28일) 중앙값. 한 밤만 벗어나면 이지런(손목 온도 하나는 술·더운 방으로도 오른다),
 // 둘 다 벗어나거나 하나가 2밤 연속이면 휴식. 워치를 차고 자지 않았거나(SE는 온도 없음) 4주 14밤 미만이면 조용히 빠진다.
 
-/// 호흡수 — 어젯밤이 평소(4주 중앙값)보다 이만큼(회/분) 이상 높으면 벗어남. 임시값 — 실기기 1년 로그로 확정한다.
-let MR_VITAL_RESP_RISE: Double = 1.5
-/// 손목 온도 — 평소보다 이만큼(°C) 이상 높으면 벗어남. 임시값 — 실기기 1년 로그로 확정한다.
-let MR_VITAL_TEMP_RISE: Double = 0.5
+/// 호흡수 — 어젯밤이 평소(4주 중앙값)보다 이만큼(회/분) 이상 높으면 벗어남.
+/// 임계값은 실기기 1년 로그로 정했다(2026-10-09, 자료 있는 밤 365):
+///   +1.0/+0.4 → 이지 52·휴식 23밤 · +1.5/+0.5 → 이지 26·휴식 13밤 · **+2.0/+0.7 → 이지 13·휴식 3밤**.
+///   울림 대부분이 손목 온도 단독(+0.5에서 30밤)이라 온도 문턱이 관건. 휴식이 분기 1회꼴인 +2.0/+0.7 채택(안정시 심박 규칙과 같은 빈도).
+let MR_VITAL_RESP_RISE: Double = 2.0
+/// 손목 온도 — 평소보다 이만큼(°C) 이상 높으면 벗어남. 근거는 위.
+let MR_VITAL_TEMP_RISE: Double = 0.7
 /// 평소 범위를 잡는 최소 밤 수(28일 중)
 let MR_VITAL_MIN_BASELINE_NIGHTS = 14
 
@@ -177,6 +180,21 @@ func mrVitalThresholdReport(respNights: [(date: Date, value: Double)],
         out.append(String(format: "호흡 +%.1f · 온도 +%.1f → 이지 %d밤 · 휴식 %d밤 (호흡만 %d · 온도만 %d) / 자료 있는 밤 %d",
                           rr, tt, easy, rest, respOnly, tempOnly, evaluated))
     }
+    // 채택한 임계값으로 울린 날짜 — 그 무렵 몸 상태(감기·과음·대회 전날 등)와 맞춰 보는 용도
+    let df = DateFormatter(); df.dateFormat = "yy/M/d"
+    var hits: [String] = []
+    for back in (0..<days).reversed() {
+        guard let day = cal.date(byAdding: .day, value: -back, to: today),
+              let s = mrVitalSignal(respNights: respNights, tempNights: tempNights, asOf: day, calendar: cal) else { continue }
+        let what = s.elevations.map { e -> String in
+            switch e.kind {
+            case .respiratory: return String(format: "호흡 %.1f(평소 %.1f)", e.latest, e.usual)
+            case .wristTemp:   return String(format: "온도 %+.2f", e.rise)
+            }
+        }.joined(separator: "·")
+        hits.append("\(df.string(from: day)) \(s.isRest ? "휴식" : "이지") \(what)")
+    }
+    out.append("채택 +\(MR_VITAL_RESP_RISE)/+\(MR_VITAL_TEMP_RISE) 울린 날: " + (hits.isEmpty ? "없음" : hits.joined(separator: " | ")))
     return out
 }
 #endif

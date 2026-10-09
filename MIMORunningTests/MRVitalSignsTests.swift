@@ -39,20 +39,20 @@ struct MRVitalSignsTests {
     }
 
     @Test func oneNightOneMetricIsEasy() {
-        let resp = series(base: 14.5, jitter: 0.3, recent: [16.5])
+        let resp = series(base: 14.5, jitter: 0.3, recent: [17.0])
         let s = mrVitalSignal(respNights: resp, tempNights: [], asOf: now)
         #expect(s?.elevations.count == 1)
         #expect(s?.isRest == false)
     }
 
     @Test func bothMetricsIsRest() {
-        let resp = series(base: 14.5, jitter: 0.3, recent: [16.5])
-        let temp = series(base: 34.5, jitter: 0.1, recent: [35.2])
+        let resp = series(base: 14.5, jitter: 0.3, recent: [17.0])
+        let temp = series(base: 34.5, jitter: 0.1, recent: [35.4])
         #expect(mrVitalSignal(respNights: resp, tempNights: temp, asOf: now)?.isRest == true)
     }
 
     @Test func twoNightsInARowIsRest() {
-        let temp = series(base: 34.5, jitter: 0.1, recent: [35.2, 35.3])
+        let temp = series(base: 34.5, jitter: 0.1, recent: [35.4, 35.5])
         let s = mrVitalSignal(respNights: [], tempNights: temp, asOf: now)
         #expect(s?.elevations.first?.nights == 2)
         #expect(s?.isRest == true)
@@ -81,7 +81,7 @@ struct MRVitalSignsTests {
     // MARK: 아침 제안 — 맨 앞 규칙
 
     @Test func readinessEasyOnOneElevation() {
-        let resp = series(base: 14.5, jitter: 0.3, recent: [16.5])
+        let resp = series(base: 14.5, jitter: 0.3, recent: [17.0])
         let r = mrReadiness(runs: steadyRuns(), phys: MRPhysiology(), heatHR: MRHeatHRModel(), hrvNights: [],
                             planPhase: nil, asOf: now, respNights: resp)
         #expect(r?.level == .easy)
@@ -89,8 +89,8 @@ struct MRVitalSignsTests {
 
     @Test func readinessRestBeatsRecoveryWeek() {
         // 대회 계획 회복 주(이지)보다 앞 — 둘 다 벗어나면 휴식
-        let resp = series(base: 14.5, jitter: 0.3, recent: [16.5])
-        let temp = series(base: 34.5, jitter: 0.1, recent: [35.2])
+        let resp = series(base: 14.5, jitter: 0.3, recent: [17.0])
+        let temp = series(base: 34.5, jitter: 0.1, recent: [35.4])
         let r = mrReadiness(runs: steadyRuns(), phys: MRPhysiology(), heatHR: MRHeatHRModel(), hrvNights: [],
                             planPhase: "회복", asOf: now, respNights: resp, tempNights: temp)
         #expect(r?.level == .rest)

@@ -1495,7 +1495,7 @@ final class MREngineStore: ObservableObject {
         } else {
             print("[활력] 판정 없음(평소 범위·어젯밤 값 없음·4주 14밤 미만)")
         }
-        let key = "mimo.vitalReport.day"
+        let key = "mimo.vitalReport.day.v2"   // v2 — 임계값 확정 뒤 울린 날짜 목록 추가
         let dayStamp = Int(today.timeIntervalSince1970)
         guard UserDefaults.standard.integer(forKey: key) != dayStamp else { return }
         UserDefaults.standard.set(dayStamp, forKey: key)
