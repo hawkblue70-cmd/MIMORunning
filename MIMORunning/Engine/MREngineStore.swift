@@ -1291,8 +1291,12 @@ final class MREngineStore: ObservableObject {
             return n >= 1 && n < MRRhythmContext.postRaceEasyDays(distanceM: distanceM)
         }
         // 끝난 대회는 나 탭이 예정 목록에서 지우므로(deletePastRaces) 끝난 대회 목록도 함께 본다 — 이름이 '대회'로만 나오지 않게
+        // 대회 날 그 거리의 러닝 기록이 있어야 뛴 대회로 본다(대회 기록 보관과 같은 `mrFindRaceDayRun`) —
+        // 등록만 하고 DNF·불참한 대회가 "대회 뒤 회복"을 띄우지 않게(2026-10-09, 다른 사용자 10/4 대회 DNF)
         let registered = (userInput.races + storedFinishedRaces)
-            .filter { withinRecovery($0.date, distanceM: $0.distanceM) }.max { $0.date < $1.date }
+            .filter { withinRecovery($0.date, distanceM: $0.distanceM)
+                && mrFindRaceDayRun(runs: runs, raceDate: $0.date, distanceM: $0.distanceM) != nil }
+            .max { $0.date < $1.date }
         func runDistanceM(_ start: Date) -> Double? { runs.first { $0.start == start }?.distanceKm.map { $0 * 1000 } }
         let typed = pointRunTypes.filter { $0.value == .race && withinRecovery($0.key, distanceM: runDistanceM($0.key)) }.keys.max()
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
