@@ -50,10 +50,13 @@ struct MRMonthlyPlanCard: View {
     }
 
     /// 대회 계획 기간(첫 계획 주 월요일 ~ 대회일)과 겹치는가. 계획 없는 등록 대회는 대회일만.
+    /// 이번 달은 **오늘부터 남은 날**만 본다 — 대회가 이미 끝났으면 그 달 남은 기간에 월간 계획을 세울 수 있다
+    /// (2026-10-09 사용자 결정: 10/4 대회 뒤 10월 목표를 넣고 싶은데 "다음 달 1일부터"만 나왔다).
     private func overlapsRace(_ start: Date) -> Bool {
         if force { return false }   // 디버그 확인용 카드 — 대회 달도 보여 준다
         let cal = Calendar.current
-        let r = monthRange(start)
+        var r = monthRange(start)
+        if start == currentMonthStart { r.start = max(r.start, cal.startOfDay(for: Date())) }
         let byPlan = raceSnapshots.contains { snap in
             guard let first = snap.planWeeks.map(\.monday).min(),
                   let planEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: snap.raceDate)) else { return false }
@@ -90,7 +93,9 @@ struct MRMonthlyPlanCard: View {
     /// 강도 훈련 입력 — `before` 이전 기록만 본다(지난 주 계획을 그 주 월요일 기준으로 다시 낼 때).
     private func pointInput(before: Date) -> MRMonthlyPlanner.PointInput {
         let pointTypes = engine.pointRunTypes.filter { MRPlanPoint.pointWorkoutTypes.contains($0.value) }
-        let lastPoint = (Array(pointTypes.keys) + Array(engine.intenseRuns.keys)).filter { $0 < before }.max()
+        // 끝난 대회도 강도 훈련으로 센다 — 대회 계획의 "대회 뒤 강도 훈련 없음"처럼, 대회 직후 주에 강도 훈련이 바로 오지 않게
+        let raceDays = raceSnapshots.map(\.raceDate)
+        let lastPoint = (Array(pointTypes.keys) + Array(engine.intenseRuns.keys) + raceDays).filter { $0 < before }.max()
         return MRMonthlyPlanner.PointInput(
             habitEveryWeeks: engine.monthlyPlanPointHabit,
             paces: mrPointPaces(halfEquivMin: engine.halfEquivMin,
