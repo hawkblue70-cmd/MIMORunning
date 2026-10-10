@@ -52,7 +52,7 @@ struct LateRunDurabilityCard: View {
         let L = AppLanguage.shared
         if points.count >= 2 {
             VStack(alignment: .leading, spacing: 14) {
-                Text(L.s("후반 내구성", "Late-Run Durability", ja: "後半の耐久力"))
+                Text(L.s("장거리 후반 내구성", "Long-Run Late Durability", ja: "長距離の後半耐久力"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.mrInk1)
 
