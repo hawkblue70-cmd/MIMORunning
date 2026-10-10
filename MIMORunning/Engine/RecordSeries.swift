@@ -17,6 +17,8 @@ struct RecordBar: Identifiable, Equatable {
     let avgHR: Double?      // 심박 있는 러닝의 시간 가중 평균 심박(bpm). 없으면 nil
     let runCount: Int
     let ratedCount: Int
+    /// 그 버킷 안 VO2max(유산소 피트니스) 측정값 평균(mL/kg·min). 러닝과 별개 HealthKit 표본이라 나중에 붙인다(`attachingVO2`).
+    var vo2: Double? = nil
 }
 
 /// 거리·시간·부하·페이스를 하나의 x축(버킷) 위에 올리기 위한 순수 집계기.
@@ -131,6 +133,18 @@ enum RecordSeries {
                 runCount: acc.runCount,
                 ratedCount: acc.ratedCount
             )
+        }
+    }
+
+    // MARK: - VO2max 붙이기
+
+    /// 버킷마다 그 안에 찍힌 VO2max 측정값의 평균을 붙인다. 측정이 없는 버킷은 nil(선이 건너뛴다).
+    static func attachingVO2(_ bars: [RecordBar], points: [(date: Date, value: Double)]) -> [RecordBar] {
+        bars.map { bar in
+            let vals = points.filter { $0.date >= bar.id && $0.date < bar.end && $0.value > 0 }.map(\.value)
+            var b = bar
+            b.vo2 = vals.isEmpty ? nil : vals.reduce(0, +) / Double(vals.count)
+            return b
         }
     }
 

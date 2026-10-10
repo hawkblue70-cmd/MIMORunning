@@ -39,6 +39,9 @@ struct RecordBarChart: View {
     /// 차트 아래 흐름 문장 — 상태 한 줄 + 방향 한 줄(`RecordFlowInsight`).
     /// 앱 화면 전용: compact·내보내기 모드에서는 그리지 않는다.
     var flowComment: RecordFlowInsight.Result? = nil
+    /// 차트 아래 평균 심박 · 유산소(VO2max) 줄 — 같은 날짜축에 각자 실제 축으로 얇게 붙인다.
+    /// 앱 화면(성장 탭) 전용: compact·내보내기 모드에서는 그리지 않는다. (§5.8 — 파라미터로만)
+    var showsTrendStrips: Bool = false
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
@@ -79,6 +82,12 @@ struct RecordBarChart: View {
         static let paceClipMinCount: Int = 4
         /// 축 끝 눈금 라벨이 플롯 위아래에서 잘리지 않도록 눈금을 안쪽으로 들이는 비율
         static let paceTickInset: Double = 0.1
+        /// 심박·유산소 줄을 올릴 때 플롯에 더하는 높이 — 거리·페이스 영역 높이는 그대로 두고 위로 띠를 늘린다
+        static let stripExtraHeight: CGFloat = 64
+        /// 띠 위치(kmTop 배수). 거리·페이스는 0…1, 그 위로 심박 띠 · 유산소 띠 — 축 없이 값은 선 끝에 적는다
+        static let hrBand: ClosedRange<Double> = 1.07...1.19
+        static let vo2Band: ClosedRange<Double> = 1.27...1.39
+        static let stripDomainTop: Double = 1.46
     }
 
     // MARK: - 파생 값
@@ -218,7 +227,8 @@ struct RecordBarChart: View {
 
     private var plotHeight: CGFloat {
         compact ? Metrics.compactPlotHeight
-                : (exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight)
+                : (exportMode ? Metrics.exportPlotHeight
+                              : Metrics.plotHeight + (stripsVisible ? Metrics.stripExtraHeight : 0))
     }
 
     private var cardPadding: CGFloat {
@@ -242,6 +252,7 @@ struct RecordBarChart: View {
                 if !compact { effortLegend }
                 if !compact { axisHeader }
                 chart
+                if stripsVisible { trendStripLegend }
                 if compact { effortLegend }          // 압축 모드: 범례를 날짜 축 아래로 — 위쪽 공간 절약
                 if !compact { footnote }
                 if !compact, let flow = flowComment { flowCommentView(flow) }   // 공유 카드(export)에도 붙인다
@@ -357,6 +368,7 @@ struct RecordBarChart: View {
                 .cornerRadius(2)
             }
             paceMarks
+            if stripsVisible { stripMarks }
             if let sel = selectedBar {
                 RuleMark(x: .value(periodName, sel.id, unit: xUnit))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -365,13 +377,14 @@ struct RecordBarChart: View {
         }
         .frame(height: plotHeight)
         .chartXScale(domain: start...end)
-        .chartYScale(domain: 0...kmTop)
+        .chartYScale(domain: 0...(stripsVisible ? kmTop * Metrics.stripDomainTop : kmTop))
         .chartLegend(.hidden)
         .modifier(TapSelection(enabled: !isExport, selected: $selected))
         .modifier(DualYAxis(paceTickYs: paceTickYs,
                             paceLabel: { paceText(paceForY($0)) },
                             kmLabel: kmAxisLabel,
                             gutter: gutter,
+                            kmTicks: stripsVisible ? kmTicks : nil,
                             font: axisFont))
         .chartOverlay { proxy in
             // 축선 3개 — 페이스 라벨 오른쪽(플롯 왼쪽 변) · km 라벨 왼쪽(플롯 오른쪽 변) · 날짜 위(플롯 아래 변)
@@ -424,19 +437,24 @@ struct RecordBarChart: View {
         let paceLabel: (Double) -> String
         let kmLabel: (Double) -> String
         let gutter: CGFloat
+        /// km 눈금 직접 지정 — 심박·유산소 띠가 위에 붙으면 자동 눈금이 띠 높이까지 올라가므로 kmTop 아래만 찍는다.
+        /// nil이면 자동(기존 동작)
+        let kmTicks: [Double]?
         let font: Font
 
         func body(content: Content) -> some View {
             if paceTickYs.isEmpty {
                 content.chartYAxis {
-                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                        AxisValueLabel {
-                            Text(kmLabel(value.as(Double.self) ?? 0))
-                                .font(font)
-                                .foregroundStyle(RecordBarChart.axisLabelColor)
-                                .frame(width: gutter, alignment: .trailing)
+                    if let ticks = kmTicks {
+                        AxisMarks(position: .leading, values: ticks) { value in
+                            AxisValueLabel { kmText(value, width: gutter) }
+                            AxisGridLine()
                         }
-                        AxisGridLine()
+                    } else {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                            AxisValueLabel { kmText(value, width: gutter) }
+                            AxisGridLine()
+                        }
                     }
                 }
             } else {
@@ -452,15 +470,24 @@ struct RecordBarChart: View {
                         AxisGridLine()
                             .foregroundStyle(Color.secondary.opacity(0.20))
                     }
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                        AxisValueLabel {
-                            Text(kmLabel(value.as(Double.self) ?? 0))
-                                .font(font)
-                                .foregroundStyle(RecordBarChart.axisLabelColor)
+                    if let ticks = kmTicks {
+                        AxisMarks(position: .trailing, values: ticks) { value in
+                            AxisValueLabel { kmText(value, width: nil) }
+                        }
+                    } else {
+                        AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+                            AxisValueLabel { kmText(value, width: nil) }
                         }
                     }
                 }
             }
+        }
+
+        private func kmText(_ value: AxisValue, width: CGFloat?) -> some View {
+            Text(kmLabel(value.as(Double.self) ?? 0))
+                .font(font)
+                .foregroundStyle(RecordBarChart.axisLabelColor)
+                .frame(width: width, alignment: .trailing)
         }
     }
 
@@ -512,10 +539,137 @@ struct RecordBarChart: View {
         }
     }
 
+    // MARK: - 평균 심박 · 유산소 줄 (같은 날짜축, 각자 실제 축)
+
+    private var stripsVisible: Bool {
+        showsTrendStrips && !isExport && bars.contains { $0.avgHR != nil || $0.vo2 != nil }
+    }
+
+    private struct Strip {
+        let title: String
+        let unit: String
+        let color: Color
+        let decimals: Int
+        let band: ClosedRange<Double>
+        let value: (RecordBar) -> Double?
+    }
+
+    private var strips: [Strip] {
+        var out: [Strip] = []
+        if bars.contains(where: { $0.avgHR != nil }) {
+            out.append(Strip(title: L.s("평균 심박", "Avg HR", ja: "平均心拍"), unit: "bpm",
+                             color: Theme.heartRate, decimals: 0, band: Metrics.hrBand) { $0.avgHR })
+        }
+        if bars.contains(where: { $0.vo2 != nil }) {
+            out.append(Strip(title: L.s("유산소", "Cardio Fitness", ja: "有酸素"), unit: "VO2max",
+                             color: TrendMetric.vo2Max.sparkColor, decimals: 1, band: Metrics.vo2Band) { $0.vo2 })
+        }
+        return out
+    }
+
+    /// 값 → 그 줄의 띠 안 높이. 창 안 최저가 띠 바닥, 최고가 띠 꼭대기(값이 하나뿐이면 가운데).
+    private func yInBand(_ v: Double, strip: Strip) -> Double {
+        let vals = bars.compactMap(strip.value)
+        let lo = vals.min() ?? v, hi = vals.max() ?? v
+        let t = hi - lo > 0 ? (v - lo) / (hi - lo) : 0.5
+        return kmTop * (strip.band.lowerBound + t * (strip.band.upperBound - strip.band.lowerBound))
+    }
+
+    private func stripText(_ v: Double, _ decimals: Int) -> String {
+        String(format: "%.\(decimals)f", v)
+    }
+
+    /// 거리 km 눈금 — kmTop 아래만(띠 영역에는 찍지 않는다). 1·2·5 단계로 3개 안팎.
+    private var kmTicks: [Double] {
+        let raw = kmTop / 3
+        let mag = pow(10, floor(log10(max(raw, 0.1))))
+        let step = [1.0, 2.0, 5.0, 10.0].map { $0 * mag }.first { $0 >= raw } ?? raw
+        return stride(from: 0, through: kmTop / 1.08, by: step).map { $0 }
+    }
+
+    /// 심박·유산소 — 거리·페이스 위 띠에 축 없이 선으로. 처음·마지막 값만 선 끝에 적는다.
+    @ChartContentBuilder
+    private var stripMarks: some ChartContent {
+        // 거리·페이스 영역과 띠 영역 경계
+        RuleMark(y: .value(L.s("경계", "Divider", ja: "境界"), kmTop * 1.01))
+            .lineStyle(StrokeStyle(lineWidth: 0.5))
+            .foregroundStyle(Color.white.opacity(0.18))
+        ForEach(Array(strips.enumerated()), id: \.offset) { si, strip in
+            let segs = segments(strip.value)
+            let pts = segs.flatMap(\.points)
+            ForEach(segs) { seg in
+                ForEach(seg.points) { p in
+                    LineMark(
+                        x: .value(periodName, p.id, unit: xUnit),
+                        y: .value(strip.title, yInBand(p.y, strip: strip)),
+                        series: .value(L.s("구간", "Segment", ja: "区間"), "\(si)-\(seg.id)")
+                    )
+                    .foregroundStyle(strip.color.opacity(Metrics.lineOpacity * bucketOpacity(p.id)))
+                    .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.monotone)
+                }
+            }
+            ForEach(pts) { p in
+                let isEnd = p.id == pts.first?.id || p.id == pts.last?.id
+                PointMark(
+                    x: .value(periodName, p.id, unit: xUnit),
+                    y: .value(strip.title, yInBand(p.y, strip: strip))
+                )
+                .symbolSize(isEnd ? Metrics.symbolSize : Metrics.symbolSize * 0.5)
+                .foregroundStyle(strip.color)
+                .opacity(bucketOpacity(p.id))
+                .annotation(position: .top, spacing: 1) {
+                    if isEnd {
+                        Text(stripText(p.y, strip.decimals))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(strip.color)
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+    }
+
+    /// 앞 절반 · 뒤 절반 평균. 절반 경계는 버킷 순서(날짜) 기준이고, 한쪽이라도 값이 없으면 nil.
+    private func halfMeans(_ value: (RecordBar) -> Double?) -> (front: Double, back: Double)? {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+        let past = bars.filter { $0.id < tomorrow }   // 이번 달 남은 날(미래 빈 버킷)은 절반 경계에서 뺀다
+        guard past.count >= 2 else { return nil }
+        let mid = past.count / 2
+        let front = past[..<mid].compactMap(value), back = past[mid...].compactMap(value)
+        guard !front.isEmpty, !back.isEmpty else { return nil }
+        return (front.reduce(0, +) / Double(front.count), back.reduce(0, +) / Double(back.count))
+    }
+
+    /// 띠 범례 + 앞 절반 · 뒤 절반 평균 — "앞 절반 152 → 뒤 절반 156"으로 사실만 싣는다(판정어 없음).
+    private var trendStripLegend: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(strips.enumerated()), id: \.offset) { _, strip in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 1).fill(strip.color).frame(width: 10, height: 2)
+                    Text(strip.title).font(.system(size: 9, weight: .semibold)).foregroundStyle(strip.color)
+                    Text(strip.unit).font(.system(size: 9)).foregroundStyle(Color.primary.opacity(0.7))
+                    Spacer(minLength: 4)
+                    if let h = halfMeans(strip.value) {
+                        let f = stripText(h.front, strip.decimals), b = stripText(h.back, strip.decimals)
+                        Text(L.s("앞 절반 \(f) → 뒤 절반 \(b)", "first half \(f) → second half \(b)", ja: "前半 \(f) → 後半 \(b)"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                }
+            }
+        }
+    }
+
     private var footnote: some View {
         // 축 설명(위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km)은 뺐다 — 축 눈금 자체가 페이스·km라 되풀이였다(2026-09-30)
-        Text(L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
-                 "Bars = distance (color = effort) · line = pace", ja: "棒 = 距離(色 = 強度) · 線 = ペース"))
+        Text(stripsVisible
+             ? L.s("막대 = 거리(색 = 강도) · 선 = 페이스 · 위 띠 = 평균 심박 · 유산소(기간 안 최저~최고, 끝 값 표기)",
+                   "Bars = distance (color = effort) · line = pace · top bands = avg HR · cardio fitness (period low–high, end values labeled)",
+                   ja: "棒 = 距離(色 = 強度) · 線 = ペース · 上の帯 = 平均心拍 · 有酸素(期間内の最低〜最高、端の値を表記)")
+             : L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
+                   "Bars = distance (color = effort) · line = pace", ja: "棒 = 距離(色 = 強度) · 線 = ペース"))
             .font(.system(size: 8.5))
             .foregroundStyle(Color.primary)
             .fixedSize(horizontal: false, vertical: true)
@@ -641,6 +795,7 @@ struct RecordBarChart: View {
             if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))", ja: "平均 \(paceText(p))"), Theme.pace)) }
         }
         if let hr = bar.avgHR { segs.append(("\(Int(hr.rounded())) bpm", Theme.heartRate)) }
+        if showsTrendStrips, let v = bar.vo2 { segs.append(("VO2 \(String(format: "%.1f", v))", TrendMetric.vo2Max.sparkColor)) }
         return segs
     }
 
@@ -666,6 +821,7 @@ struct RecordBarChart: View {
             }
         }
         if let hr = bar.avgHR { parts.append("\(Int(hr.rounded())) bpm") }
+        if showsTrendStrips, let v = bar.vo2 { parts.append("VO2max \(String(format: "%.1f", v))") }
         return parts.joined(separator: " · ")
     }
 

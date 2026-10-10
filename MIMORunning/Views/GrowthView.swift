@@ -78,6 +78,8 @@ struct GrowthView: View {
     @State private var dailyMonth: Date = Date()
     /// 러닝 흐름 카드가 그리는 버킷(일/주).
     @State private var recordBarsCache: [RecordBar] = []
+    /// 러닝 흐름 유산소 띠용 VO2max 이력(최근 1년) — 지표 갱신 때 한 번 받아 두고 버킷에 붙인다.
+    @State private var recordVO2Points: [(date: Date, value: Double)] = []
     @State private var selectedTrend: TrendMetric? = nil
     @State private var showBodyMass = false
     @State private var showBodyFat = false
@@ -508,10 +510,13 @@ struct GrowthView: View {
         let period = recordPeriod
         let win = recordWindow(for: period)
         let effortOf: (UUID) -> Int? = { [manager] id in manager.effortIndex.resolve(id)?.value }
-        recordBarsCache = RecordSeries.bars(
-            activities: runsCache,
-            effortOf: effortOf,
-            start: win.start, end: win.end, period: period
+        recordBarsCache = RecordSeries.attachingVO2(
+            RecordSeries.bars(
+                activities: runsCache,
+                effortOf: effortOf,
+                start: win.start, end: win.end, period: period
+            ),
+            points: recordVO2Points
         )
     }
 
@@ -673,7 +678,8 @@ struct GrowthView: View {
             start: win.start,
             end: win.end,
             emptyMessage: recordEmptyMessage,
-            flowComment: recordFlowComment
+            flowComment: recordFlowComment,
+            showsTrendStrips: true
         )
     }
 
@@ -1138,6 +1144,10 @@ struct GrowthView: View {
         }
         metricAnalyses = results
         metricDataPoints = points
+        // 러닝 흐름 유산소 띠 — 같은 1년 캐시에서 걸러 받는다(추가 HealthKit 조회 없음)
+        let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+        recordVO2Points = await manager.fetchMetricHistory(.vo2Max, from: yearAgo)
+        refreshRecordBars()
 
         // Build weekly share card sparkData (display order, non-empty only)
         weeklySparkData = allWeeklyMetrics.compactMap { m in
