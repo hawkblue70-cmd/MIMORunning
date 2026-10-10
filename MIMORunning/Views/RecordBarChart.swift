@@ -82,12 +82,10 @@ struct RecordBarChart: View {
         static let paceClipMinCount: Int = 4
         /// 축 끝 눈금 라벨이 플롯 위아래에서 잘리지 않도록 눈금을 안쪽으로 들이는 비율
         static let paceTickInset: Double = 0.1
-        /// 심박·유산소 줄을 올릴 때 플롯에 더하는 높이 — 거리·페이스 영역 높이는 그대로 두고 위로 띠를 늘린다
-        static let stripExtraHeight: CGFloat = 64
-        /// 띠 위치(kmTop 배수). 거리·페이스는 0…1, 그 위로 심박 띠 · 유산소 띠 — 축 없이 값은 선 끝에 적는다
-        static let hrBand: ClosedRange<Double> = 1.07...1.19
-        static let vo2Band: ClosedRange<Double> = 1.27...1.39
-        static let stripDomainTop: Double = 1.46
+        /// 심박·유산소 띠 위치(kmTop 배수) — 막대 영역 안 위쪽. 축 없이 값은 선 끝에 적는다.
+        /// 띠 높이(0.2)가 출렁임 폭 — 기간 안 최저가 띠 바닥, 최고가 띠 꼭대기.
+        static let hrBand: ClosedRange<Double> = 0.52...0.72
+        static let vo2Band: ClosedRange<Double> = 0.76...0.96
     }
 
     // MARK: - 파생 값
@@ -227,8 +225,7 @@ struct RecordBarChart: View {
 
     private var plotHeight: CGFloat {
         compact ? Metrics.compactPlotHeight
-                : (exportMode ? Metrics.exportPlotHeight
-                              : Metrics.plotHeight + (stripsVisible ? Metrics.stripExtraHeight : 0))
+                : (exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight)
     }
 
     private var cardPadding: CGFloat {
@@ -377,14 +374,13 @@ struct RecordBarChart: View {
         }
         .frame(height: plotHeight)
         .chartXScale(domain: start...end)
-        .chartYScale(domain: 0...(stripsVisible ? kmTop * Metrics.stripDomainTop : kmTop))
+        .chartYScale(domain: 0...kmTop)
         .chartLegend(.hidden)
         .modifier(TapSelection(enabled: !isExport, selected: $selected))
         .modifier(DualYAxis(paceTickYs: paceTickYs,
                             paceLabel: { paceText(paceForY($0)) },
                             kmLabel: kmAxisLabel,
                             gutter: gutter,
-                            kmTicks: stripsVisible ? kmTicks : nil,
                             font: axisFont))
         .chartOverlay { proxy in
             // 축선 3개 — 페이스 라벨 오른쪽(플롯 왼쪽 변) · km 라벨 왼쪽(플롯 오른쪽 변) · 날짜 위(플롯 아래 변)
@@ -437,24 +433,19 @@ struct RecordBarChart: View {
         let paceLabel: (Double) -> String
         let kmLabel: (Double) -> String
         let gutter: CGFloat
-        /// km 눈금 직접 지정 — 심박·유산소 띠가 위에 붙으면 자동 눈금이 띠 높이까지 올라가므로 kmTop 아래만 찍는다.
-        /// nil이면 자동(기존 동작)
-        let kmTicks: [Double]?
         let font: Font
 
         func body(content: Content) -> some View {
             if paceTickYs.isEmpty {
                 content.chartYAxis {
-                    if let ticks = kmTicks {
-                        AxisMarks(position: .leading, values: ticks) { value in
-                            AxisValueLabel { kmText(value, width: gutter) }
-                            AxisGridLine()
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                        AxisValueLabel {
+                            Text(kmLabel(value.as(Double.self) ?? 0))
+                                .font(font)
+                                .foregroundStyle(RecordBarChart.axisLabelColor)
+                                .frame(width: gutter, alignment: .trailing)
                         }
-                    } else {
-                        AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                            AxisValueLabel { kmText(value, width: gutter) }
-                            AxisGridLine()
-                        }
+                        AxisGridLine()
                     }
                 }
             } else {
@@ -470,24 +461,15 @@ struct RecordBarChart: View {
                         AxisGridLine()
                             .foregroundStyle(Color.secondary.opacity(0.20))
                     }
-                    if let ticks = kmTicks {
-                        AxisMarks(position: .trailing, values: ticks) { value in
-                            AxisValueLabel { kmText(value, width: nil) }
-                        }
-                    } else {
-                        AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                            AxisValueLabel { kmText(value, width: nil) }
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+                        AxisValueLabel {
+                            Text(kmLabel(value.as(Double.self) ?? 0))
+                                .font(font)
+                                .foregroundStyle(RecordBarChart.axisLabelColor)
                         }
                     }
                 }
             }
-        }
-
-        private func kmText(_ value: AxisValue, width: CGFloat?) -> some View {
-            Text(kmLabel(value.as(Double.self) ?? 0))
-                .font(font)
-                .foregroundStyle(RecordBarChart.axisLabelColor)
-                .frame(width: width, alignment: .trailing)
         }
     }
 
@@ -579,21 +561,10 @@ struct RecordBarChart: View {
         String(format: "%.\(decimals)f", v)
     }
 
-    /// 거리 km 눈금 — kmTop 아래만(띠 영역에는 찍지 않는다). 1·2·5 단계로 3개 안팎.
-    private var kmTicks: [Double] {
-        let raw = kmTop / 3
-        let mag = pow(10, floor(log10(max(raw, 0.1))))
-        let step = [1.0, 2.0, 5.0, 10.0].map { $0 * mag }.first { $0 >= raw } ?? raw
-        return stride(from: 0, through: kmTop / 1.08, by: step).map { $0 }
-    }
-
-    /// 심박·유산소 — 거리·페이스 위 띠에 축 없이 선으로. 처음·마지막 값만 선 끝에 적는다.
+    /// 심박·유산소 — 막대 영역 안 위쪽 띠에 페이스와 같은 형식(선 + 어두운 테두리 점 + 색 점)으로. 축은 없고
+    /// 처음·마지막 값만 선 끝에 적는다.
     @ChartContentBuilder
     private var stripMarks: some ChartContent {
-        // 거리·페이스 영역과 띠 영역 경계
-        RuleMark(y: .value(L.s("경계", "Divider", ja: "境界"), kmTop * 1.01))
-            .lineStyle(StrokeStyle(lineWidth: 0.5))
-            .foregroundStyle(Color.white.opacity(0.18))
         ForEach(Array(strips.enumerated()), id: \.offset) { si, strip in
             let segs = segments(strip.value)
             let pts = segs.flatMap(\.points)
@@ -610,12 +581,21 @@ struct RecordBarChart: View {
                 }
             }
             ForEach(pts) { p in
+                PointMark(
+                    x: .value(periodName, p.id, unit: xUnit),
+                    y: .value(strip.title, yInBand(p.y, strip: strip))
+                )
+                .symbolSize(Metrics.symbolStrokeSize)
+                .foregroundStyle(Color.black.opacity(0.5))
+                .opacity(bucketOpacity(p.id))
+            }
+            ForEach(pts) { p in
                 let isEnd = p.id == pts.first?.id || p.id == pts.last?.id
                 PointMark(
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(strip.title, yInBand(p.y, strip: strip))
                 )
-                .symbolSize(isEnd ? Metrics.symbolSize : Metrics.symbolSize * 0.5)
+                .symbolSize(Metrics.symbolSize)
                 .foregroundStyle(strip.color)
                 .opacity(bucketOpacity(p.id))
                 .annotation(position: .top, spacing: 1) {
@@ -665,9 +645,9 @@ struct RecordBarChart: View {
     private var footnote: some View {
         // 축 설명(위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km)은 뺐다 — 축 눈금 자체가 페이스·km라 되풀이였다(2026-09-30)
         Text(stripsVisible
-             ? L.s("막대 = 거리(색 = 강도) · 선 = 페이스 · 위 띠 = 평균 심박 · 유산소(기간 안 최저~최고, 끝 값 표기)",
-                   "Bars = distance (color = effort) · line = pace · top bands = avg HR · cardio fitness (period low–high, end values labeled)",
-                   ja: "棒 = 距離(色 = 強度) · 線 = ペース · 上の帯 = 平均心拍 · 有酸素(期間内の最低〜最高、端の値を表記)")
+             ? L.s("막대 = 거리(색 = 강도) · 선 = 페이스 · 위쪽 선 = 평균 심박 · 유산소",
+                   "Bars = distance (color = effort) · line = pace · upper lines = avg HR · cardio fitness",
+                   ja: "棒 = 距離(色 = 強度) · 線 = ペース · 上の線 = 平均心拍 · 有酸素")
              : L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
                    "Bars = distance (color = effort) · line = pace", ja: "棒 = 距離(色 = 強度) · 線 = ペース"))
             .font(.system(size: 8.5))
