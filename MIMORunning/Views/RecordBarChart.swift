@@ -478,7 +478,7 @@ struct RecordBarChart: View {
         }
     }
 
-    /// 페이스 마크 묶음 — 평균 점선 + 이어진 구간 선 + 강도색 점(어두운 테두리).
+    /// 페이스 마크 묶음 — 평균 점선 + 이어진 구간 선 + 선과 같은 파랑 점(어두운 테두리).
     @ChartContentBuilder
     private var paceMarks: some ChartContent {
         let seriesName = L.s("페이스", "Pace", ja: "ペース")
@@ -520,7 +520,7 @@ struct RecordBarChart: View {
                     y: .value(seriesName, p.y)
                 )
                 .symbolSize(Metrics.symbolSize)
-                .foregroundStyle(p.color)
+                .foregroundStyle(Self.paceLineColor)   // 강도색 대신 선과 같은 파랑(2026-10-10) — 강도는 막대 색이 말한다
                 .opacity(bucketOpacity(p.id))
             }
         }
