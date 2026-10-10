@@ -1455,6 +1455,9 @@ final class MREngineStore: ObservableObject {
         #if DEBUG
         print(String(format: "[⏱ HRV 밤 묶기] %.3fs · %d밤", CFAbsoluteTimeGetCurrent() - t1, nights.count))
         #endif
+        #if DEBUG
+        logLastNightHRV(raw: raw, asleep: asleep, nights: nights)
+        #endif
         let fetchedAt = Date()
         hrvLastFetchedAt = fetchedAt
         // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
@@ -1485,6 +1488,30 @@ final class MREngineStore: ObservableObject {
 
     #if DEBUG
     /// 활력 징후 로그 — 최근 7밤 값과 판정. 임계값 후보별 1년 집계는 하루 한 번(뒤에서 400일 조회).
+    /// 어젯밤 HRV 대조용 — 최근 30시간 수면 세션과 샘플 하나하나(시각·값·세션 안/밖)를 찍는다.
+    /// 건강 앱 '심박 변이' 1일 화면은 자정에서 끊겨 전날 저녁 값이 안 보이므로, 앱 값과 다를 때 이 로그로 맞춘다.
+    private func logLastNightHRV(raw: [(Date, Double)], asleep: [(start: Date, end: Date)],
+                                 nights: [(date: Date, value: Double)]) {
+        let now = Date()
+        let from = now.addingTimeInterval(-30 * 3600)
+        let df = DateFormatter(); df.dateFormat = "M/d HH:mm"
+        let sessions = mrSleepSessions(asleep).filter { $0.end >= from }
+        print("[HRV 어젯밤] 수면 세션: " + (sessions.isEmpty ? "없음"
+            : sessions.map { "\(df.string(from: $0.start))~\(df.string(from: $0.end))" }.joined(separator: " · ")))
+        let margin: TimeInterval = 15 * 60
+        for (t, v) in raw where t >= from {
+            let inside = sessions.contains { t >= $0.start.addingTimeInterval(-margin) && t <= $0.end.addingTimeInterval(margin) }
+            let tag = v < 10 ? "제외(10ms 미만)" : (inside ? "세션 안" : "세션 밖")
+            print(String(format: "[HRV 어젯밤]   %@  %.0fms  %@", df.string(from: t), v, tag))
+        }
+        let cal = Calendar.current
+        if let n = nights.last(where: { cal.isDate($0.date, inSameDayAs: now) }) {
+            print(String(format: "[HRV 어젯밤] 오늘 키 밤 값(중앙값) %.1fms", n.value))
+        } else {
+            print("[HRV 어젯밤] 오늘 키 밤 값 없음")
+        }
+    }
+
     private func logVitals(now: Date) {
         let df = DateFormatter(); df.dateFormat = "M/d"
         let cal = Calendar.current, today = cal.startOfDay(for: now)
