@@ -777,9 +777,9 @@ struct MileageStreakShareCardScreen: View {
     @State private var cardTheme: ShareTheme = .dark
     @Environment(\.dismiss) private var dismiss
 
-    private let cardW: CGFloat = 300
-    // 높이는 고정하지 않는다 — 차트만 싣게 된 뒤(2026-10-10) 기간·범례 줄 수에 따라 내용 높이에 맞춘다.
-    // 미리보기와 출력이 같은 `.fixedSize(vertical:)`를 써서 둘이 어긋나지 않는다.
+    /// 4:5 고정(2026-10-10). 월 결산(일 보기)의 내용 높이 ≈414pt가 들어가도록 폭을 336으로 — 주 보기는 아래가 조금 남는다.
+    private let cardW: CGFloat = 336
+    private var cardH: CGFloat { cardW * 5 / 4 }
 
     var body: some View {
         NavigationStack {
@@ -797,8 +797,7 @@ struct MileageStreakShareCardScreen: View {
                         theme: cardTheme
                     )
                     .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-                    .frame(width: cardW)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: cardW, height: cardH)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
@@ -899,8 +898,7 @@ struct MileageStreakShareCardScreen: View {
                 theme: cardTheme
             )
             .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-            .frame(width: cardW)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: cardW, height: cardH)
         )
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }

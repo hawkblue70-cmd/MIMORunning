@@ -70,11 +70,8 @@ struct RecordBarChart: View {
         static let legendSwatch: CGFloat = 7
         static let compactLegendSwatch: CGFloat = 6
         static let symbolSize: CGFloat = 26
-        /// 색 점 아래 깔리는 어두운 테두리 점 (막대 위에서도 점이 보이게)
-        static let symbolStrokeSize: CGFloat = 46
-        /// 페이스 점 속(파랑) — 테두리는 `symbolSize`로 둬서, 막대 위에서 테두리까지 보이는 겉 크기가
-        /// 어두운 배경 위 심박·유산소 점(테두리가 묻혀 `symbolSize`만 보임)과 같아진다(2026-10-10)
-        static let paceCoreSize: CGFloat = 16
+        /// 페이스·심박·유산소 점 속 — 테두리(어두운 점)는 `symbolSize`, 색 점은 이 크기. 세 선이 같은 점을 쓴다(2026-10-10)
+        static let pointCoreSize: CGFloat = 16
         static let lineWidth: CGFloat = 2   // 페이스·심박·유산소 세 선 공통(2026-10-10 1.5→2)
         static let lineOpacity: Double = 0.9
         static let dimmed: Double = 0.55
@@ -522,7 +519,7 @@ struct RecordBarChart: View {
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(seriesName, p.y)
                 )
-                .symbolSize(Metrics.paceCoreSize)
+                .symbolSize(Metrics.pointCoreSize)
                 .foregroundStyle(Self.paceLineColor)   // 강도색 대신 선과 같은 파랑(2026-10-10) — 강도는 막대 색이 말한다
                 .opacity(bucketOpacity(p.id))
             }
@@ -593,7 +590,7 @@ struct RecordBarChart: View {
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(strip.title, yInBand(p.y, strip: strip))
                 )
-                .symbolSize(Metrics.symbolStrokeSize)
+                .symbolSize(Metrics.symbolSize)
                 .foregroundStyle(Color.black.opacity(0.5))
                 .opacity(bucketOpacity(p.id))
             }
@@ -603,7 +600,7 @@ struct RecordBarChart: View {
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(strip.title, yInBand(p.y, strip: strip))
                 )
-                .symbolSize(Metrics.symbolSize)
+                .symbolSize(Metrics.pointCoreSize)
                 .foregroundStyle(strip.color)
                 .opacity(bucketOpacity(p.id))
                 .annotation(position: .top, spacing: 1) {
