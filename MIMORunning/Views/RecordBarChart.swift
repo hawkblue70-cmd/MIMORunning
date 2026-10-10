@@ -610,18 +610,20 @@ struct RecordBarChart: View {
         }
     }
 
-    /// 앞 절반 · 뒤 절반 평균. 절반 경계는 버킷 순서(날짜) 기준이고, 한쪽이라도 값이 없으면 nil.
-    private func halfMeans(_ value: (RecordBar) -> Double?) -> (front: Double, back: Double)? {
+    /// 최근 구간 vs 그 전 평균 — 일 보기는 마지막 7일, 주 보기는 이번 주(마지막 버킷)가 "최근".
+    /// 미래 빈 버킷(이번 달 남은 날)은 빼고 세며, 한쪽이라도 값이 없으면 nil.
+    private func recentVsBefore(_ value: (RecordBar) -> Double?) -> (before: Double, recent: Double)? {
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
-        let past = bars.filter { $0.id < tomorrow }   // 이번 달 남은 날(미래 빈 버킷)은 절반 경계에서 뺀다
-        guard past.count >= 2 else { return nil }
-        let mid = past.count / 2
-        let front = past[..<mid].compactMap(value), back = past[mid...].compactMap(value)
-        guard !front.isEmpty, !back.isEmpty else { return nil }
-        return (front.reduce(0, +) / Double(front.count), back.reduce(0, +) / Double(back.count))
+        let past = bars.filter { $0.id < tomorrow }
+        let recentCount = period == .day ? 7 : 1
+        guard past.count > recentCount else { return nil }
+        let cut = past.count - recentCount
+        let before = past[..<cut].compactMap(value), recent = past[cut...].compactMap(value)
+        guard !before.isEmpty, !recent.isEmpty else { return nil }
+        return (before.reduce(0, +) / Double(before.count), recent.reduce(0, +) / Double(recent.count))
     }
 
-    /// 띠 범례 + 앞 절반 · 뒤 절반 평균 — "앞 절반 152 → 뒤 절반 156"으로 사실만 싣는다(판정어 없음).
+    /// 띠 범례 + "그 전 152 → 최근 7일 156" — 사실만 싣는다(판정어 없음).
     private var trendStripLegend: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(strips.enumerated()), id: \.offset) { _, strip in
@@ -630,9 +632,11 @@ struct RecordBarChart: View {
                     Text(strip.title).font(.system(size: 9, weight: .semibold)).foregroundStyle(strip.color)
                     Text(strip.unit).font(.system(size: 9)).foregroundStyle(Color.primary.opacity(0.7))
                     Spacer(minLength: 4)
-                    if let h = halfMeans(strip.value) {
-                        let f = stripText(h.front, strip.decimals), b = stripText(h.back, strip.decimals)
-                        Text(L.s("앞 절반 \(f) → 뒤 절반 \(b)", "first half \(f) → second half \(b)", ja: "前半 \(f) → 後半 \(b)"))
+                    if let h = recentVsBefore(strip.value) {
+                        let f = stripText(h.before, strip.decimals), r = stripText(h.recent, strip.decimals)
+                        Text(period == .day
+                             ? L.s("그 전 \(f) → 최근 7일 \(r)", "before \(f) → last 7 days \(r)", ja: "それ以前 \(f) → 直近7日 \(r)")
+                             : L.s("그 전 \(f) → 이번 주 \(r)", "before \(f) → this week \(r)", ja: "それ以前 \(f) → 今週 \(r)"))
                             .font(.system(size: 10))
                             .foregroundStyle(Color.primary)
                             .lineLimit(1).minimumScaleFactor(0.8)
