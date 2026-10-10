@@ -72,7 +72,7 @@ struct RecordBarChart: View {
         static let symbolSize: CGFloat = 26
         /// 색 점 아래 깔리는 어두운 테두리 점 (막대 위에서도 점이 보이게)
         static let symbolStrokeSize: CGFloat = 46
-        static let lineWidth: CGFloat = 1.5
+        static let lineWidth: CGFloat = 2   // 페이스·심박·유산소 세 선 공통(2026-10-10 1.5→2)
         static let lineOpacity: Double = 0.9
         static let dimmed: Double = 0.55
         /// `emphasisFrom` 앞 구간(맥락으로만 깔리는 부분)
