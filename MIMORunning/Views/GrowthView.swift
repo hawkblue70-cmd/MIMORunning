@@ -92,7 +92,6 @@ struct GrowthView: View {
     @State private var heatmapColumnsCache: [WeekColumn] = []
     @State private var metricAnalyses: [TrendMetric: (direction: TrendDirection, changeRatio: Double)] = [:]
     @State private var metricDataPoints: [TrendMetric: [(date: Date, value: Double)]] = [:]
-    @State private var weeklySparkData: [(metric: TrendMetric, points: [(date: Date, value: Double)])] = []
     @State private var paceAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
     @State private var hrAnalysisCache: (direction: TrendDirection, changeRatio: Double) = (.insufficient, 0)
     @State private var thisWeekLongestKmCache: Double = 0
@@ -117,7 +116,6 @@ struct GrowthView: View {
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
     @State private var thisWeekRunCountCache: Int = 0
     @State private var growthInsightBannerText: String? = nil
-    @State private var showWeeklyShareCard = false
     @State private var showMileageStreakShareCard = false
     @State private var displayGaps: [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)] = []
     @State private var isGapExpanded: Bool = false
@@ -379,20 +377,6 @@ struct GrowthView: View {
                 periodLabel: recordPeriodLabel,
                 flowComment: recordFlowComment,
                 screenTitle: mileageScreenTitle
-            )
-        }
-        .sheet(isPresented: $showWeeklyShareCard) {
-            let style = weeklyPatternCache.first.map { weeklyPatternStyle(for: $0.key) }
-            WeeklyGrowthShareCardScreen(
-                km: weeklyKmsCache.last?.km ?? 0,
-                mins: weeklyMinsCache.last?.mins ?? 0,
-                count: thisWeekRunCount,
-                streak: engine.streakWeeks,
-                insightText: weeklyCommentText.isEmpty ? nil : weeklyCommentText,
-                insightSymbol: style?.symbol,
-                insightColor: style?.color,
-                preloadedSparkData: weeklySparkData.isEmpty ? nil : weeklySparkData,
-                manager: manager
             )
         }
     }
@@ -788,12 +772,7 @@ struct GrowthView: View {
                         .foregroundStyle(Color(hex: "8A8A92"))
                 }
                 Spacer()
-                Button { showWeeklyShareCard = true } label: {
-                    Label(L.s("카드 내보내기", "Export Card", ja: "カードを書き出す"), systemImage: "square.and.arrow.up")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(Theme.violetText)
-                .padding(.top, 4)
+                // '카드 내보내기'(이번 주 러닝 데이터 공유)는 뺐다 — 러닝 흐름 내보내기와 겹쳤다(2026-10-11)
             }
 
             if km == 0 && mins == 0 && count == 0 {
@@ -1101,13 +1080,10 @@ struct GrowthView: View {
             .cadence, .power, .groundContactTime, .strideLength, .verticalOscillation, .vo2Max, .hrRecovery1,
             .easyEffortPace
         ]
-        // 체성분 2개도 함께 — 이번주 공유 카드용 sparkData 사전 구성
-        let allWeeklyMetrics: [TrendMetric] = runningMetrics + [.bodyMass, .bodyFatPercentage]
-
-        // Fetch all 8 metric histories concurrently — running cards + weekly share card
+        // 러닝 지표 이력을 동시에 받는다 (체성분은 checkBodyDataAvailability가 따로 받는다)
         var fetched: [(TrendMetric, [(date: Date, value: Double)])] = []
         await withTaskGroup(of: (TrendMetric, [(date: Date, value: Double)]).self) { group in
-            for metric in allWeeklyMetrics {
+            for metric in runningMetrics {
                 group.addTask {
                     let pts = await self.manager.fetchMetricHistory(metric, from: since)
                     return (metric, pts)
@@ -1134,12 +1110,6 @@ struct GrowthView: View {
         let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         recordVO2Points = await manager.fetchMetricHistory(.vo2Max, from: yearAgo)
         refreshRecordBars()
-
-        // Build weekly share card sparkData (display order, non-empty only)
-        weeklySparkData = allWeeklyMetrics.compactMap { m in
-            guard let pts = fetchedMap[m], !pts.isEmpty else { return nil }
-            return (metric: m, points: pts)
-        }
 
         // 폼 스타일 관찰 — 1년 데이터가 필요하므로 별도 fetch
         // engine.runs가 비어있으면 스킵 (computeFormObservation 내부 guard와 이중 방어)
