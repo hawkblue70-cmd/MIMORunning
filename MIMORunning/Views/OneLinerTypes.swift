@@ -138,32 +138,15 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
         }
     }
 
-    // 글자색에 자동 대비되는 테두리 색 (밝은 색→검정, 어두운·진한 색→흰색)
-    var borderSwiftColor: Color {
-        switch self {
-        case .white, .gold, .lime: return .black
-        case .violet, .blue:       return .white.opacity(0.60)
-        }
-    }
+    // 글자 테두리 색 — 모든 글자색이 검정(2026-10-11: 바이올렛·블루도 흰 테두리 → 검정, 사용자 요청)
+    var borderSwiftColor: Color { .black }
 
-    var borderUIColor: UIColor {
-        switch self {
-        case .white, .gold, .lime: return .black
-        case .violet, .blue:       return UIColor.white.withAlphaComponent(0.60)
-        }
-    }
+    var borderUIColor: UIColor { .black }
 
-    // fontSize 에 곱하는 오프셋 계수. 대+pen(20pt) 기준: 검정=1.1pt, 흰색=1.02pt.
-    // 흰색 테두리는 어두운 배경에서 광학적으로 번져 보이므로 더 낮게 설정.
     /// 테두리 두께 = 폰트 크기 × 이 값. 글자를 8방향으로 복제해 만들므로 실제로는 양쪽으로 퍼진다.
     /// 0.055는 40pt 글자에서 사방 2.2pt(= 글자가 4.4pt 두꺼워짐)로, 경로 영상처럼 글자가 커지면
-    /// 테두리가 글자 모양을 갉아먹었다. 두 값은 "같은 두께로 보이게" 맞춘 쌍이라 함께 줄인다.
-    var borderOffsetFactor: CGFloat {
-        switch self {
-        case .white, .gold, .lime: return 0.040   // 검정 테두리
-        case .violet, .blue:       return 0.037   // 흰색 테두리 — blooming 보정
-        }
-    }
+    /// 테두리가 글자 모양을 갉아먹었다. 흰 테두리용 번짐 보정값(0.037)은 흰 테두리가 없어져 뺐다.
+    var borderOffsetFactor: CGFloat { 0.040 }
 }
 
 // MARK: - TextSizeLevel
