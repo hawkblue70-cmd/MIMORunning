@@ -48,6 +48,10 @@ struct RecordBarChart: View {
 
     private var L: AppLanguage { AppLanguage.shared }
 
+    /// 이 차트의 페이스 선 색 — 위쪽 심박(빨강)·유산소(초록) 선과 갈리도록 청록 대신 파랑(2026-10-10).
+    /// 말풍선·각주의 페이스 글자도 이 색을 쓴다.
+    static let paceLineColor = Color(hex: "4D8DFF")
+
     // MARK: - 레이아웃 상수 (§5.8 — 값은 여기 한 곳에서만)
 
     private enum Metrics {
@@ -491,7 +495,7 @@ struct RecordBarChart: View {
                     y: .value(seriesName, p.y),
                     series: .value(L.s("구간", "Segment", ja: "区間"), seg.id)
                 )
-                .foregroundStyle(Theme.pace.opacity(Metrics.lineOpacity * bucketOpacity(p.id)))
+                .foregroundStyle(Self.paceLineColor.opacity(Metrics.lineOpacity * bucketOpacity(p.id)))
                 .lineStyle(StrokeStyle(lineWidth: Metrics.lineWidth, lineCap: .round, lineJoin: .round))
                 .interpolationMethod(.monotone)
             }
@@ -648,12 +652,18 @@ struct RecordBarChart: View {
 
     private var footnote: some View {
         // 축 설명(위가 빠름 · 왼쪽 축 페이스 · 오른쪽 축 km)은 뺐다 — 축 눈금 자체가 페이스·km라 되풀이였다(2026-09-30)
-        Text(stripsVisible
-             ? L.s("막대 = 거리(색 = 강도) · 선 = 페이스 · 위쪽 선 = 평균 심박 · 유산소",
-                   "Bars = distance (color = effort) · line = pace · upper lines = avg HR · cardio fitness",
-                   ja: "棒 = 距離(色 = 強度) · 線 = ペース · 上の線 = 平均心拍 · 有酸素")
-             : L.s("막대 = 거리(색 = 강도) · 선 = 페이스",
-                   "Bars = distance (color = effort) · line = pace", ja: "棒 = 距離(色 = 強度) · 線 = ペース"))
+        // 선 이름은 그 선 색으로 — 범례 역할
+        let pace = Text(L.s("선 = 페이스", "line = pace", ja: "線 = ペース")).foregroundStyle(Self.paceLineColor)
+        let bars = L.s("막대 = 거리(색 = 강도)", "Bars = distance (color = effort)", ja: "棒 = 距離(色 = 強度)")
+        let line: Text
+        if stripsVisible {
+            let hr = Text(L.s("평균 심박", "avg HR", ja: "平均心拍")).foregroundStyle(Theme.heartRate)
+            let vo2 = Text(L.s("유산소", "cardio fitness", ja: "有酸素")).foregroundStyle(TrendMetric.vo2Max.sparkColor)
+            line = Text("\(bars) · \(pace) · \(L.s("위쪽 선", "upper lines", ja: "上の線")) = \(hr) · \(vo2)")
+        } else {
+            line = Text("\(bars) · \(pace)")
+        }
+        return line
             .font(.system(size: 8.5))
             .foregroundStyle(Color.primary)
             .fixedSize(horizontal: false, vertical: true)
@@ -768,7 +778,7 @@ struct RecordBarChart: View {
                              EffortPalette.color(for: EffortResolver.clamp(e))))
             }
             if bar.au > 0 { segs.append(("\(Int(bar.au.rounded())) AU", Theme.violet)) }
-            if let p = bar.paceSec { segs.append((paceText(p), Theme.pace)) }
+            if let p = bar.paceSec { segs.append((paceText(p), Self.paceLineColor)) }
         } else {
             if bar.km > 0 { segs.append((kmText(bar.km), .white.opacity(0.9))) }
             if bar.runCount > 0 { segs.append((L.s("\(bar.runCount)회", "\(bar.runCount) runs", ja: "\(bar.runCount)回"), .white.opacity(0.9))) }
@@ -776,7 +786,7 @@ struct RecordBarChart: View {
                 let au = bar.au.rounded().formatted(.number.grouping(.automatic))
                 segs.append(("\(au) AU", Theme.violet))
             }
-            if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))", ja: "平均 \(paceText(p))"), Theme.pace)) }
+            if let p = bar.paceSec { segs.append((L.s("평균 \(paceText(p))", "avg \(paceText(p))", ja: "平均 \(paceText(p))"), Self.paceLineColor)) }
         }
         if let hr = bar.avgHR { segs.append(("\(Int(hr.rounded())) bpm", Theme.heartRate)) }
         if showsTrendStrips, let v = bar.vo2 { segs.append(("VO2 \(String(format: "%.1f", v))", TrendMetric.vo2Max.sparkColor)) }
