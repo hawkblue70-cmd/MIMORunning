@@ -751,7 +751,8 @@ struct GrowthView: View {
 
             RunHeatmap(columns: columns)
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2174,9 +2175,7 @@ private struct RunHeatmap: View {
             // Legend
             legend
         }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        // 안쪽 상자(패딩 14 + 같은 색 배경)는 뺐다 — 바깥 '연속 달리기' 카드 패딩과 겹쳐 위아래·왼쪽이 이중으로 비었다(2026-10-10)
     }
 
     // Top row: sparse week-start labels
@@ -2185,12 +2184,12 @@ private struct RunHeatmap: View {
             Color.clear.frame(width: labelW, height: 10)
             ForEach(0..<columns.count, id: \.self) { w in
                 if w == 0 || monthChanges(at: w) {
+                    // 글자를 먼저 고정 크기로 두고 칸 폭에 얹는다 — 칸 폭(12)을 먼저 주면 "6/8"이 "6/↵8"로 줄바꿈됐다
                     Text(shortDate(columns[w].id))
                         .font(.system(size: 7, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: cellSize, alignment: .leading)
                         .fixedSize()
-                        .allowsTightening(true)
+                        .frame(width: cellSize, alignment: .leading)
                 } else {
                     Color.clear.frame(width: cellSize, height: 10)
                 }

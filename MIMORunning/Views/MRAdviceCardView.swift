@@ -25,7 +25,8 @@ struct MRAdviceCardView: View {
                     row(a)
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(cardColor)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
