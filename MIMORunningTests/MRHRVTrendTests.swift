@@ -85,6 +85,16 @@ struct MRHRVTrendTests {
         #expect(nights.map(\.value) == [20, 30])
     }
 
+    @Test func eveningSamplesBeforeTonightsSleepIsRecordedAreNotANight() {
+        // 수면은 어젯밤까지만 기록됨 — 오늘 15:08 19 · 18:27 12(러닝 직후)는 내일 키지만, 내일 밤 수면이 아직 안 써졌으니
+        // 미리 밤 값을 만들지 않는다(2026-10-11: 이 둘로 16ms가 캐시됨)
+        let nights = mrHRVNightMedians(samples: [
+            (at(day: 0, hour: 3), 30), (at(day: 0, hour: 15, minute: 8), 19), (at(day: 0, hour: 18, minute: 27), 12),
+        ], asleep: lastNightAsleep)
+        #expect(nights.map(\.date) == [day(0)])
+        #expect(nights.map(\.value) == [30])
+    }
+
     @Test func eveningSleepBeforeMidnightKeysToWakeDay() {
         // 22:00에 잠든 구간 안 샘플은 기상일(오늘) 키
         let nights = mrHRVNightMedians(samples: [(at(day: -1, hour: 23, minute: 45), 33)], asleep: lastNightAsleep)

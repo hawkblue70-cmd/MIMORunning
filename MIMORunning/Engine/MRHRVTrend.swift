@@ -40,6 +40,8 @@ func mrSleepSessions(_ asleep: [(start: Date, end: Date)],
 ///   하나만 빠져도 중앙값이 크게 흔들린다(2026-10-09: 7:09 뒤척임 중 53ms가 빠져 22ms·'낮음'으로 판정, 넣으면 25.5ms·평소 범위).
 ///   마지막 기상 후 값은 버린다(러닝 직후 19ms가 어젯밤 값이 되던 2026-10-08 문제). 세션 경계 ±15분은 포함.
 /// - 수면 기록이 없는 밤은 창 규칙으로 폴백: **전날 15:00 ~ 당일 12:00** — 15시 이후 샘플은 다음 날 키, 12시 전은 그날 키, 12~15시는 버림.
+///   단 수면을 기록하는 사람의 **아직 기록되지 않은 밤**(마지막 수면 세션의 밤보다 뒤)은 폴백하지 않는다 — 워치는 수면을
+///   깬 뒤에 쓰므로, 저녁에 조회하면 오늘 밤 키가 잠들기 전 낮·러닝 직후 값(15:08 19 · 18:27 12)만으로 16ms가 돼 캐시됐다(2026-10-11).
 /// 10ms 미만은 측정 노이즈로 버린다. 반환은 날짜(자정) 오름차순.
 func mrHRVNightMedians(samples: [(Date, Double)],
                        asleep: [(start: Date, end: Date)] = [],
@@ -53,6 +55,7 @@ func mrHRVNightMedians(samples: [(Date, Double)],
         return (iv.start.timeIntervalSinceReferenceDate - margin, iv.end.timeIntervalSinceReferenceDate + margin, k)
     }.sorted { $0.start < $1.start }
     let nightsWithSleep = Set(keyed.map(\.key))
+    let latestSleepNight = nightsWithSleep.max()
     /// t를 품는 구간 — 시작이 t 이하인 마지막 구간부터 몇 개만 거슬러 본다(구간이 겹칠 수 있어 최대 8개).
     func containing(_ t: TimeInterval) -> Date? {
         var lo = 0, hi = keyed.count
@@ -74,6 +77,8 @@ func mrHRVNightMedians(samples: [(Date, Double)],
         guard let key = mrHRVNightKey(t, calendar: calendar) else { continue }
         // 그 밤에 수면 기록이 있는데 잠든 구간 밖이면(기상 후 낮 값) 버린다. 수면 기록이 없는 밤만 창 규칙.
         if nightsWithSleep.contains(key) { continue }
+        // 수면 기록이 아직 안 써진 밤(마지막 세션보다 뒤) — 잠들기 전 저녁 값으로 미리 만들지 않는다
+        if let latest = latestSleepNight, key > latest { continue }
         buckets[key, default: []].append(v)
     }
     return buckets.keys.sorted().map { ($0, mrMedian(buckets[$0]!)) }

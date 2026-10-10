@@ -1404,13 +1404,18 @@ final class MREngineStore: ObservableObject {
         todayCard = buildTodayCard(runs: runs, now: Date())
     }
 
-    /// 앱이 앞으로 올 때 — 오늘 키의 밤이 아직 없고 마지막 조회가 30분 이상 전이면 HRV만 다시 읽고 조언·오늘 카드를 다시 만든다.
-    /// HealthKit 전체 재읽기는 하지 않는다.
+    /// 앱이 앞으로 올 때 — 오늘 키의 밤이 아직 없거나, 있어도 오늘 기상 전에 만든 값이면(시작 경로의 `fetchedBeforeWake`와 같은 규칙)
+    /// 마지막 조회가 30분 이상 전일 때 HRV만 다시 읽고 조언·오늘 카드를 다시 만든다. HealthKit 전체 재읽기는 하지 않는다.
+    /// ⚠ '오늘 밤 있음'만 보면 어제 저녁에 만든 값(잠들기 전 표본)이 아침 내내 남았다(2026-10-11: 앱 16ms, 재조회하면 37.5ms).
     func refreshHRVIfStale() async {
         guard case .ready = state else { return }
-        let hasTonight = hrvNights.contains { Calendar.current.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
+        let cal = Calendar.current
+        let hasTonight = hrvNights.contains { cal.isDateInToday($0.date) }   // last가 아니라 검색 — 15시 이후 샘플은 내일 키로 묶인다
         let age = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        guard !hasTonight, age >= 30 * 60 else { return }
+        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        let fetchedToday = hrvLastFetchedAt.map { cal.isDateInToday($0) } ?? false
+        let fetchedBeforeWake = hrvLastFetchedAt.map { $0 < noon } ?? true
+        guard !hasTonight || !fetchedToday || fetchedBeforeWake, age >= 30 * 60 else { return }
         await reloadHRV(reason: "앞으로 옴")
     }
 
