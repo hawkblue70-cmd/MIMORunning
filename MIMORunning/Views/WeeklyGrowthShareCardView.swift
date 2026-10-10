@@ -605,19 +605,9 @@ struct WeeklyGrowthShareCardScreen: View {
 
 // MARK: - Heatmap share data types
 
-struct ShareHeatmapDay {
-    let km: Double
-    let isFuture: Bool
-}
+// MARK: - Running flow share card
 
-struct ShareHeatmapColumn: Identifiable {
-    let id: Date
-    let days: [ShareHeatmapDay]
-}
-
-// MARK: - Mileage + Streak combined share card
-
-/// 성장 탭 "러닝 흐름" 카드를 그대로 내보내는 공유 카드.
+/// 성장 탭 "러닝 흐름" 카드를 그대로 내보내는 공유 카드 — 차트만 싣는다(잔디는 2026-10-10 뺐다).
 /// §5.8 — 차트는 `RecordBarChart`(exportMode) **하나**를 재사용한다. 별도 레이아웃 금지.
 struct MileageStreakShareCard: View {
     let bars: [RecordBar]
@@ -628,10 +618,6 @@ struct MileageStreakShareCard: View {
     let periodLabel: String
     /// 차트 아래 ✦ 상태·방향 두 줄 — 성장 탭과 같은 문장을 공유 카드에도 싣는다
     var flowComment: RecordFlowInsight.Result? = nil
-    let heatmapColumns: [ShareHeatmapColumn]
-    let streak: Int
-    let activeDays: Int
-    let heatmapWeekCount: Int
     var theme: ShareTheme = .dark
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
@@ -672,17 +658,7 @@ struct MileageStreakShareCard: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 6)
 
-                divider.padding(.top, 9)
-
-                streakTitleBlock
-                    .padding(.horizontal, 20)
-                    .padding(.top, 9)
-
-                heatmapGrid
-                    .padding(.horizontal, 14)
-                    .padding(.top, 6)
-
-                Spacer(minLength: 10)
+                Spacer(minLength: 14)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)   // 넘치더라도 로고(위)가 아니라 아래가 잘리게
         }
@@ -781,121 +757,9 @@ struct MileageStreakShareCard: View {
         )
     }
 
-    // MARK: Streak section
-    private var streakTitleBlock: some View {
-        let L = AppLanguage.shared
-        let detail: String
-        if streak >= 2 {
-            detail = L.s("\(streak)주 연속 · \(heatmapWeekCount)주간 \(activeDays)일",
-                         "\(streak)wk · \(activeDays)d / \(heatmapWeekCount)wk", ja: "\(streak)週連続 · \(heatmapWeekCount)週間で\(activeDays)日")
-        } else if activeDays > 0 {
-            detail = L.s("\(heatmapWeekCount)주간 \(activeDays)일 러닝",
-                         "\(activeDays) days / \(heatmapWeekCount) wks", ja: "\(heatmapWeekCount)週間で\(activeDays)日ラン")
-        } else {
-            detail = L.s("\(heatmapWeekCount)주간 기록 없음", "No runs in \(heatmapWeekCount) wks", ja: "\(heatmapWeekCount)週間記録なし")
-        }
-        return HStack(alignment: .center) {
-            Text(L.s("연속 달리기", "Streak", ja: "連続ラン"))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(p.textPrimary)
-            Spacer()
-            Text(detail)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(p.textPrimary)
-        }
-    }
-
-    private var heatmapGrid: some View {
-        let cs  = Self.cellSize
-        let gap = Self.cellGap
-        let lw  = Self.labelW
-        return VStack(alignment: .leading, spacing: gap) {
-            // Week-start date header
-            HStack(spacing: gap) {
-                Color.clear.frame(width: lw, height: 8)
-                ForEach(Array(heatmapColumns.enumerated()), id: \.offset) { idx, col in
-                    if idx == 0 || heatmapMonthChanges(at: idx) {
-                        Text(heatmapShortDate(col.id))
-                            .font(.system(size: 6, weight: .medium))
-                            .foregroundStyle(p.textSecondary)
-                            .frame(width: cs, alignment: .leading)
-                            .fixedSize()
-                    } else {
-                        Color.clear.frame(width: cs, height: 8)
-                    }
-                }
-            }
-            // Day rows
-            ForEach(0..<7, id: \.self) { dayIdx in
-                HStack(spacing: gap) {
-                    Text(heatmapDayLabels[dayIdx])
-                        .font(.system(size: 7, weight: .medium))
-                        .foregroundStyle(p.textSecondary)
-                        .frame(width: lw, height: cs, alignment: .trailing)
-                    ForEach(heatmapColumns) { col in
-                        let cell = col.days[dayIdx]
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(cellColor(km: cell.km, isFuture: cell.isFuture))
-                            .frame(width: cs, height: cs)
-                    }
-                }
-            }
-            // Legend
-            HStack(spacing: 4) {
-                Spacer()
-                Text(AppLanguage.shared.s("적음", "Less", ja: "少"))
-                    .font(.system(size: 6))
-                    .foregroundStyle(p.textSecondary)
-                ForEach([0.0, 2.0, 5.0, 8.0, 12.0], id: \.self) { km in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(cellColor(km: km, isFuture: false))
-                        .frame(width: cs, height: cs)
-                }
-                Text(AppLanguage.shared.s("많음", "More", ja: "多"))
-                    .font(.system(size: 6))
-                    .foregroundStyle(p.textSecondary)
-            }
-        }
-        .padding(7)
-        .background(p.boxFill)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var heatmapDayLabels: [String] {
-        switch AppLanguage.shared.current {
-        case .ko: ["월", "", "수", "", "금", "토", "일"]
-        case .en: ["M", "", "W", "", "F", "Sa", "Su"]
-        case .ja: ["月", "", "水", "", "金", "土", "日"]
-        }
-    }
-
-    private func heatmapMonthChanges(at idx: Int) -> Bool {
-        guard idx > 0 else { return false }
-        let cal = Calendar.current
-        return cal.component(.month, from: heatmapColumns[idx - 1].id)
-            != cal.component(.month, from: heatmapColumns[idx].id)
-    }
-
-    private static let heatmapDateFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "M/d"; return f
-    }()
-
-    private func heatmapShortDate(_ date: Date) -> String {
-        Self.heatmapDateFmt.string(from: date)
-    }
-
-    private func cellColor(km: Double, isFuture: Bool) -> Color {
-        if isFuture { return theme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.04) }
-        if km == 0  { return p.heatEmpty }
-        if km < 3   { return p.heatLow }
-        if km < 6   { return p.heatMid }
-        if km < 10  { return p.heatHigh }
-        return p.heatFull
-    }
-
 }
 
-// MARK: - Mileage + Streak share screen
+// MARK: - Running flow share screen
 
 struct MileageStreakShareCardScreen: View {
     let bars: [RecordBar]
@@ -905,10 +769,6 @@ struct MileageStreakShareCardScreen: View {
     let periodLabel: String
     /// 차트 아래 ✦ 상태·방향 두 줄 — 성장 탭과 같은 문장을 공유 카드에도 싣는다
     var flowComment: RecordFlowInsight.Result? = nil
-    let heatmapColumns: [ShareHeatmapColumn]
-    let streak: Int
-    let activeDays: Int
-    let heatmapWeekCount: Int
     var screenTitle: String = AppLanguage.shared.s("러닝 흐름", "Running Flow", ja: "ランの流れ")
 
     @State private var previewImage: UIImage?
@@ -918,8 +778,8 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 심박·유산소 범례·각주(≈48) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
-    private let cardH: CGFloat = 608
+    // 높이는 고정하지 않는다 — 차트만 싣게 된 뒤(2026-10-10) 기간·범례 줄 수에 따라 내용 높이에 맞춘다.
+    // 미리보기와 출력이 같은 `.fixedSize(vertical:)`를 써서 둘이 어긋나지 않는다.
 
     var body: some View {
         NavigationStack {
@@ -934,14 +794,11 @@ struct MileageStreakShareCardScreen: View {
                         windowEnd: windowEnd,
                         periodLabel: periodLabel,
                         flowComment: flowComment,
-                        heatmapColumns: heatmapColumns,
-                        streak: streak,
-                        activeDays: activeDays,
-                        heatmapWeekCount: heatmapWeekCount,
                         theme: cardTheme
                     )
                     .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-                    .frame(width: cardW, height: cardH)
+                    .frame(width: cardW)
+                    .fixedSize(horizontal: false, vertical: true)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .shadow(color: Theme.violet.opacity(0.30), radius: 28, y: 10)
 
@@ -1039,14 +896,11 @@ struct MileageStreakShareCardScreen: View {
                 windowEnd: windowEnd,
                 periodLabel: periodLabel,
                 flowComment: flowComment,
-                heatmapColumns: heatmapColumns,
-                streak: streak,
-                activeDays: activeDays,
-                heatmapWeekCount: heatmapWeekCount,
                 theme: cardTheme
             )
             .environment(\.colorScheme, cardTheme == .dark ? .dark : .light)
-            .frame(width: cardW, height: cardH)
+            .frame(width: cardW)
+            .fixedSize(horizontal: false, vertical: true)
         )
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }

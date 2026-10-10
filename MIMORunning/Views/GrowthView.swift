@@ -378,10 +378,6 @@ struct GrowthView: View {
                 windowEnd: recordWindow(for: recordPeriod).end,
                 periodLabel: recordPeriodLabel,
                 flowComment: recordFlowComment,
-                heatmapColumns: shareHeatmapColumns,
-                streak: engine.streakWeeks,
-                activeDays: activeDaysInHeatmap(columns: heatmapColumnsCache),
-                heatmapWeekCount: Self.heatmapWeeks,
                 screenTitle: mileageScreenTitle
             )
         }
@@ -407,17 +403,6 @@ struct GrowthView: View {
         guard let comps = manager.userDateOfBirth,
               let year = comps.year else { return nil }
         return Calendar.current.component(.year, from: Date()) - year
-    }
-
-    // MARK: - Share card data helpers
-
-    private var shareHeatmapColumns: [ShareHeatmapColumn] {
-        heatmapColumnsCache.map { col in
-            ShareHeatmapColumn(
-                id: col.id,
-                days: col.days.map { ShareHeatmapDay(km: $0.km, isFuture: $0.isFuture) }
-            )
-        }
     }
 
     // MARK: - 폼 스타일 관찰
