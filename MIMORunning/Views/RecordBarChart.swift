@@ -72,6 +72,9 @@ struct RecordBarChart: View {
         static let symbolSize: CGFloat = 26
         /// 색 점 아래 깔리는 어두운 테두리 점 (막대 위에서도 점이 보이게)
         static let symbolStrokeSize: CGFloat = 46
+        /// 페이스 점 속(파랑) — 테두리는 `symbolSize`로 둬서, 막대 위에서 테두리까지 보이는 겉 크기가
+        /// 어두운 배경 위 심박·유산소 점(테두리가 묻혀 `symbolSize`만 보임)과 같아진다(2026-10-10)
+        static let paceCoreSize: CGFloat = 16
         static let lineWidth: CGFloat = 2   // 페이스·심박·유산소 세 선 공통(2026-10-10 1.5→2)
         static let lineOpacity: Double = 0.9
         static let dimmed: Double = 0.55
@@ -486,7 +489,7 @@ struct RecordBarChart: View {
             // 평균 점선 — 값 라벨은 축 머리("평균 6'18\"")에 있으므로 차트 안에는 두지 않는다(오른쪽 막대와 겹침)
             RuleMark(y: .value(seriesName, baseline))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                .foregroundStyle(Color.secondary.opacity(0.45))
+                .foregroundStyle(Self.paceLineColor.opacity(0.6))
         }
         let segs = segments { $0.paceSec.flatMap { yForPace($0) } }
         ForEach(segs) { seg in
@@ -508,7 +511,7 @@ struct RecordBarChart: View {
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(seriesName, p.y)
                 )
-                .symbolSize(Metrics.symbolStrokeSize)
+                .symbolSize(Metrics.symbolSize)
                 .foregroundStyle(Color.black.opacity(0.5))
                 .opacity(bucketOpacity(p.id))
             }
@@ -519,7 +522,7 @@ struct RecordBarChart: View {
                     x: .value(periodName, p.id, unit: xUnit),
                     y: .value(seriesName, p.y)
                 )
-                .symbolSize(Metrics.symbolSize)
+                .symbolSize(Metrics.paceCoreSize)
                 .foregroundStyle(Self.paceLineColor)   // 강도색 대신 선과 같은 파랑(2026-10-10) — 강도는 막대 색이 말한다
                 .opacity(bucketOpacity(p.id))
             }
