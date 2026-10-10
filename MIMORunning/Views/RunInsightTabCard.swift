@@ -803,6 +803,8 @@ struct RunInsightTabCard: View {
     var heatHRModel: MRHeatHRModel? = nil
     /// 수면 HRV 밤별 중앙값(엔진 스토어). 총평 HRV 결합 문장용.
     var hrvNights: [(date: Date, value: Double)] = []
+    /// VO2max 이력(최근 1년) — 퍼포먼스 카드 강도 부하 차트의 유산소 선(성장 탭 러닝 흐름과 같은 값)
+    var vo2Points: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -874,6 +876,7 @@ struct RunInsightTabCard: View {
                 heatModel: heatModel,
                 heatHRModel: heatHRModel,
                 hrvNights: hrvNights,
+                vo2Points: vo2Points,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,
@@ -1060,7 +1063,8 @@ struct RunInsightTabCard: View {
                 isClassifying: isClassifying,
                 effortIndex: effortIndex,
                 heatHRModel: heatHRModel,
-                hasIntensityDist: $performanceHasIntensity
+                hasIntensityDist: $performanceHasIntensity,
+                vo2Points: vo2Points
             )
         case .race:
             RaceInsightCard(
@@ -2958,6 +2962,8 @@ private struct PerformanceInsightCard: View {
     var heatHRModel: MRHeatHRModel? = nil
     /// 강도 분포 표시 여부를 부모에 알린다(각주 조건). 없으면 무시.
     var hasIntensityDist: Binding<Bool>? = nil
+    /// VO2max 이력(최근 1년) — 퍼포먼스 카드 강도 부하 차트의 유산소 선(성장 탭 러닝 흐름과 같은 값)
+    var vo2Points: [(date: Date, value: Double)] = []
 
     @Environment(\.insightCompact) private var compact
     @State private var heroBadge: AchievementBadgeKind? = nil
@@ -3002,11 +3008,13 @@ private struct PerformanceInsightCard: View {
         let runDay = cal.startOfDay(for: activity.date)
         let emphasisFrom = cal.date(byAdding: .day, value: -6, to: runDay) ?? runDay
         let chartStart = cal.date(byAdding: .day, value: -13, to: runDay) ?? runDay
-        let bars = RecordSeries.bars(activities: acts,
-                                     effortOf: { idx.resolve($0)?.value },
-                                     start: chartStart,
-                                     end: dayEnd,
-                                     period: .day)
+        let bars = RecordSeries.attachingVO2(
+            RecordSeries.bars(activities: acts,
+                              effortOf: { idx.resolve($0)?.value },
+                              start: chartStart,
+                              end: dayEnd,
+                              period: .day),
+            points: vo2Points)
         // 캡션 비교용 — 최근 7일 바로 앞 7일. 리듬 카드 총평과 같은 헬퍼(`sevenDayAU`)를 쓴다. 이미 만든 runs를 재사용.
         let prevSeven = sevenDayAU(runs: runs, asOf: activity.date)?.previous ?? 0
 
@@ -4888,7 +4896,8 @@ private struct PerformanceInsightCard: View {
                 exportMode: true,
                 compact: true,
                 cardBackground: .clear,
-                highlightDate: load.runDay      // 앞 7일도 같은 진하기 — 이전 7일 비교가 캡션에 있어 흐리게 할 이유가 없다
+                highlightDate: load.runDay,     // 앞 7일도 같은 진하기 — 이전 7일 비교가 캡션에 있어 흐리게 할 이유가 없다
+                showsTrendStrips: true           // 성장 탭 러닝 흐름과 같은 심박·유산소 선·범례
             )
             .environment(\.colorScheme, .dark)   // 카드가 어두운 배경 전용이라 차트의 secondary 색도 다크로
             // 한 줄: "7일 1,276 AU · 이전 7일 1,832 AU"
@@ -6010,6 +6019,8 @@ struct InsightExportSheet: View {
     var heatHRModel: MRHeatHRModel? = nil
     /// 수면 HRV 밤별 중앙값 — 내보낸 카드의 총평이 앱 화면과 같은 문장을 내게(§5.8)
     var hrvNights: [(date: Date, value: Double)] = []
+    /// VO2max 이력(최근 1년) — 퍼포먼스 카드 강도 부하 차트의 유산소 선(성장 탭 러닝 흐름과 같은 값)
+    var vo2Points: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용 (`mrFormRunResidual`)
     var formRunCadenceResidual: Double? = nil
@@ -6279,7 +6290,8 @@ struct InsightExportSheet: View {
                 hrZones: hrZones,
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
-                heatHRModel: heatHRModel
+                heatHRModel: heatHRModel,
+                vo2Points: vo2Points
             )
         case .race:
             RaceInsightCard(

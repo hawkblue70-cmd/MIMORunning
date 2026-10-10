@@ -40,7 +40,7 @@ struct RecordBarChart: View {
     /// 앱 화면 전용: compact·내보내기 모드에서는 그리지 않는다.
     var flowComment: RecordFlowInsight.Result? = nil
     /// 차트 아래 평균 심박 · 유산소(VO2max) 줄 — 같은 날짜축에 각자 실제 축으로 얇게 붙인다.
-    /// 성장 탭과 러닝 흐름 내보내기 카드에서 켠다. compact 모드에서는 그리지 않는다. (§5.8 — 파라미터로만)
+    /// 성장 탭 · 러닝 흐름 내보내기 · 퍼포먼스 카드 강도 부하(compact)에서 켠다. (§5.8 — 파라미터로만)
     var showsTrendStrips: Bool = false
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
@@ -529,7 +529,7 @@ struct RecordBarChart: View {
     // MARK: - 평균 심박 · 유산소 줄 (같은 날짜축, 각자 실제 축)
 
     private var stripsVisible: Bool {
-        showsTrendStrips && !compact && bars.contains { $0.avgHR != nil || $0.vo2 != nil }
+        showsTrendStrips && bars.contains { $0.avgHR != nil || $0.vo2 != nil }
     }
 
     private struct Strip {
@@ -606,7 +606,7 @@ struct RecordBarChart: View {
                 .annotation(position: .top, spacing: 1) {
                     if isEnd {
                         Text(stripText(p.y, strip.decimals))
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: compact ? 8 : 9, weight: .semibold))
                             .foregroundStyle(strip.color)
                             .fixedSize()
                     }
@@ -629,22 +629,27 @@ struct RecordBarChart: View {
     }
 
     /// 띠 범례 + "그 전 152 → 최근 7일 156" — 사실만 싣는다(판정어 없음).
+    /// compact(퍼포먼스 카드 좁은 열)는 글자를 한 단계 줄이고 단위를 뺀다 — 파라미터로만(§5.8).
     private var trendStripLegend: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let labelSize: CGFloat = compact ? 8 : 9
+        return VStack(alignment: .leading, spacing: compact ? 1 : 2) {
             ForEach(Array(strips.enumerated()), id: \.offset) { _, strip in
-                HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 1).fill(strip.color).frame(width: 10, height: 2)
-                    Text(strip.title).font(.system(size: 9, weight: .semibold)).foregroundStyle(strip.color)
-                    Text(strip.unit).font(.system(size: 9)).foregroundStyle(Color.primary.opacity(0.7))
+                HStack(spacing: compact ? 3 : 5) {
+                    RoundedRectangle(cornerRadius: 1).fill(strip.color).frame(width: compact ? 7 : 10, height: 2)
+                    Text(strip.title).font(.system(size: labelSize, weight: .semibold)).foregroundStyle(strip.color)
+                        .lineLimit(1).fixedSize()
+                    if !compact {
+                        Text(strip.unit).font(.system(size: labelSize)).foregroundStyle(Color.primary.opacity(0.7))
+                    }
                     Spacer(minLength: 4)
                     if let h = recentVsBefore(strip.value) {
                         let f = stripText(h.before, strip.decimals), r = stripText(h.recent, strip.decimals)
                         Text(period == .day
                              ? L.s("그 전 \(f) → 최근 7일 \(r)", "before \(f) → last 7 days \(r)", ja: "それ以前 \(f) → 直近7日 \(r)")
                              : L.s("그 전 \(f) → 이번 주 \(r)", "before \(f) → this week \(r)", ja: "それ以前 \(f) → 今週 \(r)"))
-                            .font(.system(size: 10))
+                            .font(.system(size: compact ? 8.5 : 10))
                             .foregroundStyle(Color.primary)
-                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .lineLimit(1).minimumScaleFactor(0.7)
                     }
                 }
             }

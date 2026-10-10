@@ -126,6 +126,8 @@ struct RunInsightSection: View {
     var heatHRModel: MRHeatHRModel? = nil
     /// 수면 HRV 밤별 중앙값(엔진 스토어). 총평 HRV 결합 문장용 — 그대로 `RunInsightTabCard`에 전달.
     var hrvNights: [(date: Date, value: Double)] = []
+    /// VO2max 이력(최근 1년) — 퍼포먼스 카드 강도 부하 차트의 유산소 선(성장 탭 러닝 흐름과 같은 값)
+    var vo2Points: [(date: Date, value: Double)] = []
     var formShifts: [MRFormShift] = []
     /// 이 러닝의 케이던스 잔차 — 폼 카드 추세 문단 마무리용
     var formRunCadenceResidual: Double? = nil
@@ -175,6 +177,7 @@ struct RunInsightSection: View {
                 heatModel: heatModel,
                 heatHRModel: heatHRModel,
                 hrvNights: hrvNights,
+                vo2Points: vo2Points,
                 formShifts: formShifts,
                 formRunCadenceResidual: formRunCadenceResidual,
                 weatherSnapshot: weatherSnapshot,

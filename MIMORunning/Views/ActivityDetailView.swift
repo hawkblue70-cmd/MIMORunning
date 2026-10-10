@@ -78,6 +78,8 @@ struct ActivityDetailView: View {
     /// 사용자가 칩을 닫아 선택 없음으로 돌린 뒤 다시 자동 선택되면 안 된다.
     @State private var didApplyDefaultPanel = false
     @State private var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
+    /// VO2max 이력(최근 1년) — 퍼포먼스 카드 강도 부하 차트의 유산소 선. 지표 캐시(1년)에서 걸러 받는다.
+    @State private var vo2Points: [(date: Date, value: Double)] = []
     @State private var hrFetchDone = false
     /// 운동 후 180초 심박 (종료 기준 오프셋) · 회복 결과. 자격 미달·샘플 없음이면 nil → 섹션 미표시.
     @State private var recoveryResult: MRRecoveryResult? = nil
@@ -425,6 +427,7 @@ struct ActivityDetailView: View {
                             heatModel: engine.heat,
                             heatHRModel: engine.heatHR,
                             hrvNights: engine.hrvNights,
+                            vo2Points: vo2Points,
                             formShifts: formShifts,
                             formRunCadenceResidual: formRunCadenceResidual,
                             weatherSnapshot: condition?.weather,
@@ -647,6 +650,11 @@ struct ActivityDetailView: View {
             guard !isLoadingDetail else { return }
             runInsights = []
             loadInsights()
+        }
+        .task {
+            guard activity.type == .running else { return }
+            let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
+            vo2Points = await manager.fetchMetricHistory(.vo2Max, from: yearAgo)
         }
         .task(id: raceComparisonKey) {
             guard activity.type == .running else { return }
