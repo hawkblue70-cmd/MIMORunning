@@ -89,8 +89,8 @@ struct RecordBarChart: View {
         /// 심박·유산소 띠 위치(kmTop 배수) — 막대 영역 안 위쪽. 축 없이 값은 선 끝에 적는다.
         /// 띠 높이(0.2)가 출렁임 폭 — 기간 안 최저가 띠 바닥, 최고가 띠 꼭대기.
         /// 심박이 맨 위, 유산소가 그 아래(2026-10-10)
-        static let hrBand: ClosedRange<Double> = 0.76...0.96
-        static let vo2Band: ClosedRange<Double> = 0.52...0.72
+        static let hrBand: ClosedRange<Double> = 0.66...0.86
+        static let vo2Band: ClosedRange<Double> = 0.42...0.62
     }
 
     // MARK: - 파생 값
