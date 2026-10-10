@@ -210,6 +210,12 @@ extension View {
 
 // MARK: - Stamp Color Mapping
 
+/// 스탬프 색 중 스와치와 렌더가 같이 쓰는 값(2026-10-11 추가) — 한 곳에서만 정의한다.
+enum StampSwatch {
+    static let yellow = Color(hex: "FFD60A")
+    static let blue   = Color(hex: "2E9BFF")
+}
+
 func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Color, outline: Color) {
     let violet = Theme.violet
     switch mode {
@@ -217,6 +223,8 @@ func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Col
     case .ink:   return (.black, .white)
     case .lime:  return (Color(hex: "C6FF00"), Color(hex: "14122B"))
     case .red:   return (Color(hex: "FF2E2E"), Color(hex: "14122B"))
+    case .yellow: return (StampSwatch.yellow, Color(hex: "14122B"))
+    case .blue:  return (StampSwatch.blue, Color(hex: "14122B"))
     case .auto:  return isBrightBackground ? (.black, violet) : (.white, violet)
     }
 }

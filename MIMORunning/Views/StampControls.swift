@@ -89,8 +89,8 @@ struct StampControlsView: View {
 
     private var stampStyleControls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 색상 스와치 + 음소거(영상)
-            HStack(spacing: 8) {
+            // 색상 스와치 + 음소거(영상) — 7색 + 음소거가 오른쪽 열(≈230pt) 한 줄에 들어가게 스와치 19pt·간격 4
+            HStack(spacing: 4) {
                 ForEach(StampColorMode.allCases, id: \.rawValue) { mode in
                     colorSwatch(mode)
                 }
@@ -401,9 +401,9 @@ struct StampControlsView: View {
             withAnimation(.easeInOut(duration: 0.15)) { vm.colorMode = mode }
         } label: {
             ZStack {
-                swatchCircle(mode).frame(width: 24, height: 24)
+                swatchCircle(mode).frame(width: 19, height: 19)
                 if mode == .auto {
-                    Text("A").font(.system(size: 9, weight: .black)).foregroundStyle(.white)
+                    Text("A").font(.system(size: 8, weight: .black)).foregroundStyle(.white)
                 }
             }
             .padding(2)
@@ -437,6 +437,14 @@ struct StampControlsView: View {
         case .red:
             // fill=red, outline=navy → 레드 원 + 남색 링
             Circle().fill(Color(hex: "FF2E2E"))
+                .padding(3)
+                .background(Circle().fill(Color(hex: "14122B")))
+        case .yellow:
+            Circle().fill(StampSwatch.yellow)
+                .padding(3)
+                .background(Circle().fill(Color(hex: "14122B")))
+        case .blue:
+            Circle().fill(StampSwatch.blue)
                 .padding(3)
                 .background(Circle().fill(Color(hex: "14122B")))
         }

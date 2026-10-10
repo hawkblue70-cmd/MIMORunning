@@ -224,6 +224,8 @@ enum StampColorMode: String, CaseIterable {
     case ink
     case lime
     case red
+    case yellow
+    case blue
 
     var displayName: String {
         switch self {
@@ -232,6 +234,8 @@ enum StampColorMode: String, CaseIterable {
         case .ink:   return "잉크"
         case .lime:  return "라임"
         case .red:   return "레드"
+        case .yellow: return "옐로"
+        case .blue:  return "블루"
         }
     }
 }
