@@ -40,7 +40,7 @@ struct RecordBarChart: View {
     /// 앱 화면 전용: compact·내보내기 모드에서는 그리지 않는다.
     var flowComment: RecordFlowInsight.Result? = nil
     /// 차트 아래 평균 심박 · 유산소(VO2max) 줄 — 같은 날짜축에 각자 실제 축으로 얇게 붙인다.
-    /// 앱 화면(성장 탭) 전용: compact·내보내기 모드에서는 그리지 않는다. (§5.8 — 파라미터로만)
+    /// 성장 탭과 러닝 흐름 내보내기 카드에서 켠다. compact 모드에서는 그리지 않는다. (§5.8 — 파라미터로만)
     var showsTrendStrips: Bool = false
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
@@ -529,7 +529,7 @@ struct RecordBarChart: View {
     // MARK: - 평균 심박 · 유산소 줄 (같은 날짜축, 각자 실제 축)
 
     private var stripsVisible: Bool {
-        showsTrendStrips && !isExport && bars.contains { $0.avgHR != nil || $0.vo2 != nil }
+        showsTrendStrips && !compact && bars.contains { $0.avgHR != nil || $0.vo2 != nil }
     }
 
     private struct Strip {

@@ -776,7 +776,8 @@ struct MileageStreakShareCard: View {
             exportMode: true,
             showsTotals: !isMonthSummary,
             cardBackground: p.boxFill,
-            flowComment: isMonthSummary ? flowComment?.withoutTotals() : flowComment
+            flowComment: isMonthSummary ? flowComment?.withoutTotals() : flowComment,
+            showsTrendStrips: true   // 성장 탭과 같은 심박·유산소 선·범례
         )
     }
 
@@ -917,8 +918,8 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     private let cardW: CGFloat = 300
-    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
-    private let cardH: CGFloat = 560
+    /// 러닝 흐름 차트(내보내기 모드 ≈235) + 심박·유산소 범례·각주(≈48) + 잔디(≈118) + 머리·구분선·푸터가 잘리지 않는 높이
+    private let cardH: CGFloat = 608
 
     var body: some View {
         NavigationStack {
