@@ -421,10 +421,10 @@ struct StampControlsView: View {
         case .auto:
             Circle().fill(Color(hex: "3A3A4A"))   // 자동: "A" 텍스트는 colorSwatch에서 오버레이
         case .brand:
-            // fill=white, outline=violet → 흰 원 + 바이올렛 링
+            // fill=white, outline=black → 흰 원 + 검정 링
             Circle().fill(Color.white)
                 .padding(3)
-                .background(Circle().fill(Theme.violet))
+                .background(Circle().fill(Color.black))
         case .ink:
             // fill=black, outline=white → 검정 원 + 흰 링
             Circle().fill(Color.black)

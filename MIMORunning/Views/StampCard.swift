@@ -219,7 +219,7 @@ enum StampSwatch {
 func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Color, outline: Color) {
     let violet = Theme.violet
     switch mode {
-    case .brand: return (.white, violet)
+    case .brand: return (.white, .black)   // 2026-10-11 보라 테두리 → 검정(사용자)
     case .ink:   return (.black, .white)
     case .lime:  return (Color(hex: "C6FF00"), Color(hex: "14122B"))
     case .red:   return (Color(hex: "FF2E2E"), Color(hex: "14122B"))
