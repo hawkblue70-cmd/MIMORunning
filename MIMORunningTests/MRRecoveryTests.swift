@@ -31,6 +31,15 @@ struct MRRecoveryTests {
         #expect(!MRRecovery.isEligible(endHR: 129, maxHR: nil))
     }
 
+    @Test func trendFloorDropsUnstoppedFinish() {
+        // 2026-10 실제: 평소 26~37, 멈추지 않고 끝낸 10/5만 7 → 울타리 밖
+        let v: [Double] = [33, 35, 37, 27, 26, 7, 30, 27, 31, 34]
+        let floor = MRRecovery.trendFloor(v)!
+        #expect(floor > 7 && floor < 26)
+        // 표본이 적으면 거르지 않는다
+        #expect(MRRecovery.trendFloor([33, 7, 30]) == nil)
+    }
+
     @Test func computeRequiresSixtySecondSample() {
         let p = post([(55, 125), (65, 121), (118, 110), (125, 108)])
         let r = MRRecovery.compute(endHR: 150, post: p)

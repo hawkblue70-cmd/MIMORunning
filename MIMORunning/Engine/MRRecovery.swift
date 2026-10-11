@@ -112,6 +112,26 @@ enum MRRecovery {
         return n % 2 == 0 ? (v[n / 2 - 1] + v[n / 2]) / 2 : v[n / 2]
     }
 
+    // MARK: 추세용 이상치
+
+    /// 이 표본 수 미만이면 울타리를 세우지 않는다(거르지 않음) — 임의로 정함
+    static let outlierMinSamples = 8
+
+    /// 추세·밴드에서 뺄 1분 회복 하한 — 본인 이력의 사분위 울타리 Q1 − 1.5·IQR. 표본이 적으면 nil.
+    /// 멈추지 않고 걷거나 천천히 뛰며 끝낸 러닝은 1분 낙폭이 한 자릿수로 나온다(2026-10-05: 7bpm, 평소 26~37).
+    /// 이런 값 하나가 7일 vs 직전 7일 비교를 "−49.8%"로 만들었다. 러닝 상세의 그 러닝 값은 그대로 보인다.
+    static func trendFloor(_ hrr1s: [Double]) -> Double? {
+        guard hrr1s.count >= outlierMinSamples else { return nil }
+        let v = hrr1s.sorted()
+        func q(_ p: Double) -> Double {
+            let pos = Double(v.count - 1) * p
+            let i = Int(pos), f = pos - Double(i)
+            return i + 1 < v.count ? v[i] + (v[i + 1] - v[i]) * f : v[i]
+        }
+        let q1 = q(0.25), q3 = q(0.75)
+        return q1 - 1.5 * (q3 - q1)
+    }
+
     /// 표시·집계 자격. 최대심박을 알면 80%, 모르면 130bpm.
     static func isEligible(endHR: Double, maxHR: Double?) -> Bool {
         if let m = maxHR, m > 0 { return endHR >= m * minEndHRFracOfMax }

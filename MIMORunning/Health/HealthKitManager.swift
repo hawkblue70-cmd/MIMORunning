@@ -2788,12 +2788,12 @@ class HealthKitManager {
             let newerRun = activities.contains {
                 $0.type == .running && $0.date > file.cachedAt && Date().timeIntervalSince($0.date) > 3600 + $0.duration
             }
-            if !newerRun { return file.points.filter { $0.date >= start } }
+            if !newerRun { return Self.droppingRecoveryOutliers(file.points).filter { $0.date >= start } }
         }
 
         // 동시 요청 시 이미 실행 중인 재구축 Task를 공유 — HealthKit 중복 조회 방지 (metricFetchTasks와 동일 패턴)
         if let existing = recoveryHistoryTask {
-            return await existing.value.filter { $0.date >= start }
+            return Self.droppingRecoveryOutliers(await existing.value).filter { $0.date >= start }
         }
 
         let task = Task<[RecoveryHistoryPoint], Never> { [self] in
@@ -2835,7 +2835,22 @@ class HealthKitManager {
             return points
         }
         recoveryHistoryTask = task
-        return await task.value.filter { $0.date >= start }
+        return Self.droppingRecoveryOutliers(await task.value).filter { $0.date >= start }
+    }
+
+    /// 1년 이력에서 이상치(멈추지 않고 끝낸 러닝 등)를 뺀다 — 울타리는 1년 전체로 세운다(`MRRecovery.trendFloor`).
+    /// 캐시에는 원본을 두고 돌려줄 때만 거른다.
+    private static func droppingRecoveryOutliers(_ pts: [RecoveryHistoryPoint]) -> [RecoveryHistoryPoint] {
+        guard let floor = MRRecovery.trendFloor(pts.map(\.hrr1)) else { return pts }
+        #if DEBUG
+        let dropped = pts.filter { $0.hrr1 < floor }
+        if !dropped.isEmpty {
+            let df = DateFormatter(); df.dateFormat = "M/d"
+            print(String(format: "[회복] 이상치 제외(하한 %.0f): ", floor)
+                  + dropped.map { "\(df.string(from: $0.date)) \(Int($0.hrr1.rounded()))" }.joined(separator: " · "))
+        }
+        #endif
+        return pts.filter { $0.hrr1 >= floor }
     }
 
     /// 과거 러닝의 (종료심박, 1·2분 낙폭) 목록 — 밴드용. `excluding` 러닝은 뺀다.
@@ -4075,7 +4090,8 @@ class HealthKitManager {
 
     // 지표당 파일 1개 — 날짜 무관, 영구 캐시 (새 런 추가·새로고침 시만 삭제)
     private func metricHistoryCacheURL(_ metric: TrendMetric, usePounds: Bool) -> URL {
-        let suffix = (metric == .bodyMass && usePounds) ? "_lbs" : ""
+        // 1분 회복은 이상치 제외 규칙(2026-10-11) 전에 만든 캐시를 버리려고 _v2
+        let suffix = (metric == .bodyMass && usePounds) ? "_lbs" : (metric == .hrRecovery1 ? "_v2" : "")
         return Self.metricCacheDir.appendingPathComponent("metric_\(metric.rawValue)\(suffix).json")
     }
 
