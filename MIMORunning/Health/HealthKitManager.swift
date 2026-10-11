@@ -2788,12 +2788,12 @@ class HealthKitManager {
             let newerRun = activities.contains {
                 $0.type == .running && $0.date > file.cachedAt && Date().timeIntervalSince($0.date) > 3600 + $0.duration
             }
-            if !newerRun { return Self.droppingRecoveryOutliers(file.points).filter { $0.date >= start } }
+            if !newerRun { return droppingRecoveryOutliers(file.points).filter { $0.date >= start } }
         }
 
         // 동시 요청 시 이미 실행 중인 재구축 Task를 공유 — HealthKit 중복 조회 방지 (metricFetchTasks와 동일 패턴)
         if let existing = recoveryHistoryTask {
-            return Self.droppingRecoveryOutliers(await existing.value).filter { $0.date >= start }
+            return droppingRecoveryOutliers(await existing.value).filter { $0.date >= start }
         }
 
         let task = Task<[RecoveryHistoryPoint], Never> { [self] in
@@ -2835,23 +2835,33 @@ class HealthKitManager {
             return points
         }
         recoveryHistoryTask = task
-        return Self.droppingRecoveryOutliers(await task.value).filter { $0.date >= start }
+        return droppingRecoveryOutliers(await task.value).filter { $0.date >= start }
     }
 
     /// 1년 이력에서 이상치(멈추지 않고 끝낸 러닝 등)를 뺀다 — 울타리는 1년 전체로 세운다(`MRRecovery.trendFloor`).
     /// 캐시에는 원본을 두고 돌려줄 때만 거른다.
-    private static func droppingRecoveryOutliers(_ pts: [RecoveryHistoryPoint]) -> [RecoveryHistoryPoint] {
+    private func droppingRecoveryOutliers(_ pts: [RecoveryHistoryPoint]) -> [RecoveryHistoryPoint] {
         guard let floor = MRRecovery.trendFloor(pts.map(\.hrr1)) else { return pts }
         #if DEBUG
+        // 추세 카드·관찰·밴드·곡선이 각자 불러 같은 줄이 여러 번 찍혔다 — 내용이 바뀔 때만 찍는다
         let dropped = pts.filter { $0.hrr1 < floor }
         if !dropped.isEmpty {
             let df = DateFormatter(); df.dateFormat = "M/d"
-            print(String(format: "[회복] 이상치 제외(하한 %.0f): ", floor)
-                  + dropped.map { "\(df.string(from: $0.date)) \(Int($0.hrr1.rounded()))" }.joined(separator: " · "))
+            let line = String(format: "[회복] 이상치 제외(하한 %.0f): ", floor)
+                + dropped.map { "\(df.string(from: $0.date)) \(Int($0.hrr1.rounded()))" }.joined(separator: " · ")
+            if line != lastRecoveryOutlierLog {
+                lastRecoveryOutlierLog = line
+                print(line)
+            }
         }
         #endif
         return pts.filter { $0.hrr1 >= floor }
     }
+
+    #if DEBUG
+    /// 마지막으로 찍은 이상치 제외 줄 — 같은 내용은 다시 찍지 않는다
+    @ObservationIgnored private var lastRecoveryOutlierLog: String?   // 화면 갱신을 일으키지 않게
+    #endif
 
     /// 과거 러닝의 (종료심박, 1·2분 낙폭) 목록 — 밴드용. `excluding` 러닝은 뺀다.
     func recoveryDropHistory(from start: Date, excluding activityID: UUID?) async -> [MRRecoveryDropPoint] {
