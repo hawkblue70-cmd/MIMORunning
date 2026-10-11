@@ -140,17 +140,18 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
 
     // 글자색에 자동 대비되는 테두리 색 (밝은 색→검정, 어두운·진한 색→흰색).
     // 2026-10-11 바이올렛·블루를 검정으로 바꿨다가 검정 테두리가 잘 안 보여 흰색으로 되돌림(사용자).
+    // 흰 테두리는 불투명 100% — 60%에 얇은 두께까지 겹치니 어두운 사진 위에서 윤곽이 번져 글자가 묻혔다.
     var borderSwiftColor: Color {
         switch self {
         case .white, .gold, .lime: return .black
-        case .violet, .blue:       return .white.opacity(0.60)
+        case .violet, .blue:       return .white
         }
     }
 
     var borderUIColor: UIColor {
         switch self {
         case .white, .gold, .lime: return .black
-        case .violet, .blue:       return UIColor.white.withAlphaComponent(0.60)
+        case .violet, .blue:       return .white
         }
     }
 
