@@ -89,10 +89,12 @@ struct StampControlsView: View {
 
     private var stampStyleControls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 색상 스와치 + 음소거(영상) — 7색 + 음소거가 오른쪽 열(≈230pt) 한 줄에 들어가게 스와치 19pt·간격 4
-            HStack(spacing: 4) {
+            // 색상 스와치 + 음소거(영상) — 7색이 오른쪽 열 폭을 고르게 나눠 쓴다(남는 칸 없이).
+            // 영상은 음소거 칩이 제 폭을 먼저 갖고 나머지를 색이 나눈다. 스와치 22pt면 음소거까지 한 줄에 든다.
+            HStack(spacing: 2) {
                 ForEach(StampColorMode.allCases, id: \.rawValue) { mode in
                     colorSwatch(mode)
+                        .frame(maxWidth: .infinity)
                 }
                 if template == .video { muteChip }
             }
@@ -401,9 +403,9 @@ struct StampControlsView: View {
             withAnimation(.easeInOut(duration: 0.15)) { vm.colorMode = mode }
         } label: {
             ZStack {
-                swatchCircle(mode).frame(width: 19, height: 19)
+                swatchCircle(mode).frame(width: 22, height: 22)
                 if mode == .auto {
-                    Text("A").font(.system(size: 8, weight: .black)).foregroundStyle(.white)
+                    Text("A").font(.system(size: 9, weight: .black)).foregroundStyle(.white)
                 }
             }
             .padding(2)
