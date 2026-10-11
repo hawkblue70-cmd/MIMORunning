@@ -111,20 +111,20 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
     var color: Color {
         switch self {
         case .white:  return .white
-        case .violet: return Color(hex: "5E35B1")
+        case .violet: return Color(hex: "A48BFF")   // 2026-10-11 5E35B1 → 밝게(사진 위 가독성)
         case .gold:   return Color(hex: "FFC74D")
         case .lime:   return Theme.power
-        case .blue:   return Color(hex: "1976D2")
+        case .blue:   return Color(hex: "5AB0FF")   // 2026-10-11 1976D2 → 밝게
         }
     }
 
     var uiColor: UIColor {
         switch self {
         case .white:  return .white
-        case .violet: return UIColor(red: 0x5E/255.0, green: 0x35/255.0, blue: 0xB1/255.0, alpha: 1)
+        case .violet: return UIColor(red: 0xA4/255.0, green: 0x8B/255.0, blue: 0xFF/255.0, alpha: 1)
         case .gold:   return UIColor(red: 0xFF/255.0, green: 0xC7/255.0, blue: 0x4D/255.0, alpha: 1)
         case .lime:   return UIColor(red: 0xA3/255.0, green: 0xE6/255.0, blue: 0x35/255.0, alpha: 1)
-        case .blue:   return UIColor(red: 0x19/255.0, green: 0x76/255.0, blue: 0xD2/255.0, alpha: 1)
+        case .blue:   return UIColor(red: 0x5A/255.0, green: 0xB0/255.0, blue: 0xFF/255.0, alpha: 1)
         }
     }
 
@@ -138,33 +138,17 @@ enum OneLinerTextColor: String, CaseIterable, Codable {
         }
     }
 
-    // 글자색에 자동 대비되는 테두리 색 (밝은 색→검정, 어두운·진한 색→흰색).
-    // 2026-10-11 바이올렛·블루를 검정으로 바꿨다가 검정 테두리가 잘 안 보여 흰색으로 되돌림(사용자).
-    // 흰 테두리는 불투명 100% — 60%에 얇은 두께까지 겹치니 어두운 사진 위에서 윤곽이 번져 글자가 묻혔다.
-    var borderSwiftColor: Color {
-        switch self {
-        case .white, .gold, .lime: return .black
-        case .violet, .blue:       return .white
-        }
-    }
+    // 글자 테두리 — 모든 글자색이 '밝은 글자 + 검정 테두리' 한 규칙(2026-10-11).
+    // 어두운 바이올렛·블루 + 흰 테두리는 사진 위에서 묻혔고(60%·100% 모두), 어두운 글자 + 검정 테두리는 테두리가 안 보였다.
+    // 글자를 밝게 바꾸고 테두리는 검정 — 회색 테두리는 밝은 글자와도 배경과도 대비가 약해 쓰지 않는다.
+    var borderSwiftColor: Color { .black }
 
-    var borderUIColor: UIColor {
-        switch self {
-        case .white, .gold, .lime: return .black
-        case .violet, .blue:       return .white
-        }
-    }
+    var borderUIColor: UIColor { .black }
 
     /// 테두리 두께 = 폰트 크기 × 이 값. 글자를 8방향으로 복제해 만들므로 실제로는 양쪽으로 퍼진다.
     /// 0.055는 40pt 글자에서 사방 2.2pt(= 글자가 4.4pt 두꺼워짐)로, 경로 영상처럼 글자가 커지면
     /// 테두리가 글자 모양을 갉아먹었다.
-    /// 흰 테두리는 어두운 배경에서 번져 더 두꺼워 보여 검정보다 얇게 — 0.037 → 0.028(2026-10-11 사용자 "이전보다 작게").
-    var borderOffsetFactor: CGFloat {
-        switch self {
-        case .white, .gold, .lime: return 0.040   // 검정 테두리
-        case .violet, .blue:       return 0.028   // 흰색 테두리
-        }
-    }
+    var borderOffsetFactor: CGFloat { 0.040 }
 }
 
 // MARK: - TextSizeLevel
