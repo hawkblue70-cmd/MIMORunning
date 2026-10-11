@@ -89,12 +89,11 @@ struct StampControlsView: View {
 
     private var stampStyleControls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 색상 스와치 + 음소거(영상) — 7색이 오른쪽 열 폭을 고르게 나눠 쓴다(남는 칸 없이).
-            // 영상은 음소거 칩이 제 폭을 먼저 갖고 나머지를 색이 나눈다. 스와치 22pt면 음소거까지 한 줄에 든다.
-            HStack(spacing: 2) {
+            // 색상 스와치 + 음소거(영상) — 스와치 22pt · 간격 6(열 폭에 고르게 펼치니 간격이 넓었다, 2026-10-11).
+            // 7색 + 음소거까지 오른쪽 열 한 줄에 든다.
+            HStack(spacing: 6) {
                 ForEach(StampColorMode.allCases, id: \.rawValue) { mode in
                     colorSwatch(mode)
-                        .frame(maxWidth: .infinity)
                 }
                 if template == .video { muteChip }
             }
