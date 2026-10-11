@@ -217,7 +217,6 @@ enum StampSwatch {
 }
 
 func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Color, outline: Color) {
-    let violet = Theme.violet
     switch mode {
     case .brand: return (.white, .black)   // 2026-10-11 보라 테두리 → 검정(사용자)
     case .ink:   return (.black, .white)
@@ -225,7 +224,9 @@ func stampColors(_ mode: StampColorMode, isBrightBackground: Bool) -> (fill: Col
     case .red:   return (Color(hex: "FF2E2E"), Color(hex: "14122B"))
     case .yellow: return (StampSwatch.yellow, Color(hex: "14122B"))
     case .blue:  return (StampSwatch.blue, Color(hex: "14122B"))
-    case .auto:  return isBrightBackground ? (.black, violet) : (.white, violet)
+    // 자동: 어두운 배경 = 흰 글자 + 검정 테두리(기본과 같음) · 밝은 배경 = 검정 글자 + 흰 테두리(잉크와 같음).
+    // 2026-10-11 보라 테두리를 검정으로 — 밝은 배경의 검정 글자에 검정 테두리는 보이지 않아 그쪽만 흰 테두리.
+    case .auto:  return isBrightBackground ? (.black, .white) : (.white, .black)
     }
 }
 
