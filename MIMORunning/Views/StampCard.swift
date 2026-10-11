@@ -183,22 +183,32 @@ struct StampDateLabel: View {
     }
 }
 
-// MARK: - Stamp Outline (4방향 그림자로 text-stroke 시뮬레이션)
+// MARK: - Stamp Outline (8방향 복사본 — 문구 테두리와 같은 방식)
+
+/// 스탬프 테두리 두께(pt) — 문구 테두리 규칙(글자 크기 × 0.040, 최소 0.8)의 최소값과 같다.
+let stampOutlineOffset: CGFloat = 0.8
 
 extension View {
-    // fill = 텍스트 주색(경로선과 동일), outline = 외곽 그림자색(경로 케이싱과 동일).
-    // 8방향 0.45pt shadow가 외곽선처럼 보이고, foreground fill이 주색으로 드러남.
+    // fill = 텍스트 주색(경로선과 동일), outline = 외곽색(경로 케이싱과 동일).
+    // 2026-10-11: 그림자 8개(0.45pt·흐림 0.2·50%)는 그림자가 앞 그림자까지 복사해 최대 1.8pt로 퍼지고 흐려 번져 보였다.
+    // 문구 테두리(EffectTextView.borderedContent)처럼 흐림 없는 복사본 8개를 뒤에 깐다 — 서로 겹쳐 쌓이지 않는다.
+    // 복사본은 색과 무관하게 실루엣만 쓴다(검정으로 누르고 → 흰색으로 뒤집고 → 테두리색을 곱함, 알파는 그대로).
     func stampOutline(fill: Color, outline: Color) -> some View {
-        let c = outline.opacity(0.50)
-        return self.foregroundStyle(fill)
-            .shadow(color: c, radius: 0.2, x:  0.45, y:  0)
-            .shadow(color: c, radius: 0.2, x: -0.45, y:  0)
-            .shadow(color: c, radius: 0.2, x:  0,    y:  0.45)
-            .shadow(color: c, radius: 0.2, x:  0,    y: -0.45)
-            .shadow(color: c, radius: 0.2, x:  0.45, y:  0.45)
-            .shadow(color: c, radius: 0.2, x: -0.45, y: -0.45)
-            .shadow(color: c, radius: 0.2, x:  0.45, y: -0.45)
-            .shadow(color: c, radius: 0.2, x: -0.45, y:  0.45)
+        let o = stampOutlineOffset
+        let content = self.foregroundStyle(fill)
+        let dirs: [(CGFloat, CGFloat)] = [(-1, -1), (1, -1), (-1, 1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
+        return content.background {
+            ZStack {
+                ForEach(0..<dirs.count, id: \.self) { i in
+                    content
+                        .colorMultiply(.black)
+                        .colorInvert()
+                        .colorMultiply(outline)
+                        .offset(x: dirs[i].0 * o, y: dirs[i].1 * o)
+                }
+            }
+            .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
