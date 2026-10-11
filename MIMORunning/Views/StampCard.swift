@@ -185,8 +185,8 @@ struct StampDateLabel: View {
 
 // MARK: - Stamp Outline (8방향 복사본 — 문구 테두리와 같은 방식)
 
-/// 스탬프 테두리 두께(pt). 처음엔 문구 테두리 최소값(0.8)과 같게 했으나 실기기에서 두꺼워 보여 0.6으로(2026-10-11).
-let stampOutlineOffset: CGFloat = 0.6
+/// 스탬프 테두리 두께(pt). 처음엔 문구 테두리 최소값(0.8)과 같게 했으나 실기기에서 두꺼워 보여 0.6 → 0.5로(2026-10-11).
+let stampOutlineOffset: CGFloat = 0.5
 
 extension View {
     // fill = 텍스트 주색(경로선과 동일), outline = 외곽색(경로 케이싱과 동일).
