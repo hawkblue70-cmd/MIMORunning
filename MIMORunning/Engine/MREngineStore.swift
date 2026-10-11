@@ -746,6 +746,7 @@ final class MREngineStore: ObservableObject {
         todayCard = buildTodayCard(runs: runs, now: now)
 
         #if DEBUG
+        logConditionCheck(now: now)
         let sorted14 = runs.sorted { $0.date < $1.date }
         let gap14 = sorted14.count > 1
             ? (0..<(sorted14.count - 1)).filter { i in
@@ -1233,6 +1234,10 @@ final class MREngineStore: ObservableObject {
         if let f = fatigue { storedFatigue = f }
         if let c = cadenceShift { storedCadenceShift = c }
         guard case .ready = state else { return }   // 재계산만 건너뛴다
+        #if DEBUG
+        // 롱런 후반 진단은 성장 탭이 넘겨 줄 때 채워진다 — 그때 한 번 더 찍어 ⑦까지 보이게
+        if fatigue != nil { logConditionCheck(now: Date()) }
+        #endif
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,
                                races: userInput.races,
@@ -1514,6 +1519,15 @@ final class MREngineStore: ObservableObject {
             print(String(format: "[HRV 어젯밤] 오늘 키 밤 값(중앙값) %.1fms", n.value))
         } else {
             print("[HRV 어젯밤] 오늘 키 밤 값 없음")
+        }
+    }
+
+    /// `[컨디션 점검]` — 최근 7일 vs 평소 부하·기온·같은 속도 심박·안정시 심박·HRV·활력·장거리 후반(MRConditionCheck.swift).
+    private func logConditionCheck(now: Date) {
+        for line in mrConditionCheckLines(runs: runs, heatHR: heatHR, restingHR: rhrSamples,
+                                          hrvNights: hrvNights, respNights: respNights, tempNights: tempNights,
+                                          fatigue: storedFatigue, hardRunStarts: hardRunStarts, asOf: now) {
+            print(line)
         }
     }
 

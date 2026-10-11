@@ -1106,6 +1106,13 @@ struct GrowthView: View {
         }
         metricAnalyses = results
         metricDataPoints = points
+        #if DEBUG
+        // 컨디션 점검 ⑧ — 1분 회복은 이 지표 캐시에만 있다(엔진 스토어 밖). 운동을 어떻게 끝냈는지(쿨다운)에 크게 흔들린다.
+        if let hrr = points[.hrRecovery1], !hrr.isEmpty {
+            let df = DateFormatter(); df.dateFormat = "M/d"
+            print("[컨디션 점검] ⑧ 1분 회복(14일): " + hrr.map { "\(df.string(from: $0.date)) \(Int($0.value.rounded()))" }.joined(separator: " · "))
+        }
+        #endif
         // 러닝 흐름 유산소 띠 — 같은 1년 캐시에서 걸러 받는다(추가 HealthKit 조회 없음)
         let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
         recordVO2Points = await manager.fetchMetricHistory(.vo2Max, from: yearAgo)
