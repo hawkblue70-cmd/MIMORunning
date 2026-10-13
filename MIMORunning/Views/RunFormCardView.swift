@@ -647,6 +647,23 @@ struct RunFormCardView: View {
                 case .stride:
                     guard absDiff >= 0.03 else { return nil }
                     let d = String(format: "%.2f", absDiff)
+                    // 보폭은 페이스를 따라 변한다 — 후반 페이스가 같은 방향으로 10초/km 넘게 변했으면 그 원인을 함께 적는다.
+                    // "보폭이 후반에 짧아졌습니다"만 쓰면 6'14"→6'42"로 늦춘 이지런이 폼이 무너진 것처럼 읽혔다(2026-10-14)
+                    let full = splits.filter { $0.distanceM >= 300 && $0.duration > 0 }
+                    if full.count >= 4 {
+                        let half = full.count / 2
+                        let paceDelta = Array(full.suffix(full.count - half)).overallPaceSecPerKm
+                            - Array(full.prefix(half)).overallPaceSecPerKm
+                        let p = Int(abs(paceDelta).rounded())
+                        if paceDelta >= FormPhase.paceDeltaSec, diff < 0 {
+                            return L.s("후반 페이스가 \(p)초/km 느려지며 보폭이 \(d)m 짧아졌습니다.",
+                                       "Pace eased \(p) s/km in the second half and stride shortened \(d) m with it.", ja: "後半のペースが\(p)秒/km落ち、ストライドが\(d)m短くなりました。")
+                        }
+                        if paceDelta <= -FormPhase.paceDeltaSec, diff > 0 {
+                            return L.s("후반 페이스가 \(p)초/km 빨라지며 보폭이 \(d)m 길어졌습니다.",
+                                       "Pace picked up \(p) s/km in the second half and stride lengthened \(d) m with it.", ja: "後半のペースが\(p)秒/km上がり、ストライドが\(d)m長くなりました。")
+                        }
+                    }
                     return diff < 0
                         ? L.s("보폭이 후반에 \(d)m 짧아졌습니다.", "Stride was \(d) m shorter in the second half.", ja: "ストライドが後半に\(d)m短くなりました。")
                         : L.s("보폭이 후반에 \(d)m 길어졌습니다.", "Stride was \(d) m longer in the second half.", ja: "ストライドが後半に\(d)m長くなりました。")

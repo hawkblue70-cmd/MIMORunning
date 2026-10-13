@@ -1612,10 +1612,10 @@ enum RunInsightEngine {
             var hi = [thisStr + "km"]
             if let target = baseline.planWeeklyTargetKm, target > 0 {
                 let targetStr = String(format: "%.0f", target)
-                // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "… / 48km · 10K 계획."
-                let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan", ja: " · \($0)の計画") } ?? ""
-                msg = L.s("내일이 이번 주 마지막 날입니다 · \(thisStr) / \(targetStr)km\(tag).",
-                           "Tomorrow is the last day this week · \(thisStr) / \(targetStr) km\(tag).", ja: "明日が今週最後の日です · \(thisStr) / \(targetStr)km\(tag)。")
+                // 실제/계획 나눗셈("16.2 / 53km")은 진행률 표시 — 2026-09-22 결정대로 쓰지 않고 두 값을 따로 적는다(2026-10-14)
+                let planName = baseline.planLabel.map { L.s("\($0) 계획", "\($0) plan", ja: "\($0)の計画") } ?? L.s("계획", "plan", ja: "計画")
+                msg = L.s("내일이 이번 주 마지막 날입니다 · 지금까지 \(thisStr)km · \(planName) 주간 \(targetStr)km.",
+                           "Tomorrow is the last day this week · \(thisStr) km so far · \(planName) week \(targetStr) km.", ja: "明日が今週最後の日です · ここまで\(thisStr)km · \(planName)は週\(targetStr)km。")
                 hi.append(targetStr + "km")
                 #if DEBUG
                 print("[주간] 6일차(토) · \(thisStr)/\(targetStr)km → 마지막 안내")
@@ -1653,10 +1653,10 @@ enum RunInsightEngine {
         let daysLeft = 7 - wd
         if let target = baseline.planWeeklyTargetKm, target > 0 {
             let targetStr = String(format: "%.0f", target)
-            // 계획이 둘 이상 겹치면 어느 계획의 목표인지 — "이번 주 12.6 / 48km · 10K 계획 · 5일 남았어요."
-            let tag = baseline.planLabel.map { L.s(" · \($0) 계획", " · \($0) plan", ja: " · \($0)の計画") } ?? ""
-            let msg = L.s("이번 주 \(thisStr) / \(targetStr)km\(tag) · \(daysLeft)일 남았습니다.",
-                           "This week \(thisStr) / \(targetStr) km\(tag) · \(daysLeft) days left.", ja: "今週\(thisStr) / \(targetStr)km\(tag) · 残り\(daysLeft)日です。")
+            // 실제/계획 나눗셈·남은 일수는 진행률 표시 — 2026-09-22 결정대로 두 값을 따로 적는다(2026-10-14)
+            let planName = baseline.planLabel.map { L.s("\($0) 계획", "\($0) plan", ja: "\($0)の計画") } ?? L.s("계획", "plan", ja: "計画")
+            let msg = L.s("이번 주 \(thisStr)km · \(planName) 주간 \(targetStr)km입니다.",
+                           "This week \(thisStr) km · \(planName) week \(targetStr) km.", ja: "今週\(thisStr)km · \(planName)は週\(targetStr)kmです。")
             #if DEBUG
             print("[주간] \(wd)일차(\(dayNames[wd])) · \(thisStr)/\(targetStr)km · \(daysLeft)일 남음 → 진행률 문구")
             #endif

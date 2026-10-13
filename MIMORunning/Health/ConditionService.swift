@@ -103,9 +103,15 @@ struct WeatherSnapshot: Codable {
         return night ? "cloud.moon.fill" : "cloud.sun.fill"
     }
 
+    /// 해 진 뒤·해 뜨기 전인가 — 서울 기준 월 중순 해돋이·해넘이(시, 소수). 19~6시 고정이면 10월 18:10(해넘이 17:55 무렵)
+    /// 러닝에 해 아이콘이 나왔다(2026-10-14). 앱 사용자가 국내 중심이라 서울 값으로 충분하다(다른 지역은 몇십 분 차).
+    static let seoulSunrise: [Double] = [7.75, 7.4, 6.75, 6.0, 5.4, 5.2, 5.3, 5.75, 6.2, 6.6, 7.1, 7.6]
+    static let seoulSunset:  [Double] = [17.65, 18.15, 18.6, 19.05, 19.45, 19.9, 19.9, 19.5, 18.85, 17.9, 17.4, 17.25]
     static func isNight(_ date: Date) -> Bool {
-        let h = Calendar.current.component(.hour, from: date)
-        return h >= 19 || h < 6
+        let c = Calendar.current.dateComponents([.month, .hour, .minute], from: date)
+        let m = max(1, min(12, c.month ?? 1)) - 1
+        let t = Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60
+        return t >= seoulSunset[m] || t < seoulSunrise[m]
     }
 
     var formattedTemp: String { String(format: "%.0f°C", tempC) }

@@ -117,8 +117,9 @@ enum FormNarrative {
                     return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다.",
                                           "Ground contact was \(g) ms — longer than usual.", ja: "接地時間が\(g)msで普段より長かったです。"))
                 case .easy:
-                    return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다. 회복이 덜 된 날일 수 있습니다.",
-                                          "Ground contact was \(g) ms — longer than usual. You may not have been fully recovered.", ja: "接地時間が\(g)msで普段より長かったです。回復しきれていない日かもしれません。"))
+                    // 회복 상태는 추측하지 않는다 — 같은 화면 HRV "좋음"과 부딪혔다(2026-10-14). 사실만.
+                    return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다.",
+                                          "Ground contact was \(g) ms — longer than usual.", ja: "接地時間が\(g)msで普段より長かったです。"))
                 case .fast:
                     return withStride(L.s("속도를 냈는데 지면접촉이 \(g)ms로 길었습니다. 다리가 무거운 날이었을 수 있습니다.",
                                           "You pushed the pace, but ground contact ran long at \(g) ms. Your legs may have felt heavy.", ja: "スピードを出したのに接地時間が\(g)msと長かったです。脚が重い日だったのかもしれません。"))

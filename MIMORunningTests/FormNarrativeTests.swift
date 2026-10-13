@@ -83,8 +83,8 @@ struct FormNarrativeTests {
 
     @Test func easyGctAboveWithStrideClause() {
         let i = input(gct: .above, sl: .below, gctStr: "268")
-        #expect(ko(i, .easy) == "지면접촉이 268ms로 평소보다 길었습니다. 회복이 덜 된 날일 수 있습니다. 보폭이 1.12m로 평소보다 작았습니다.")
-        #expect(ko(input(gct: .above, gctStr: "268"), .easy) == "지면접촉이 268ms로 평소보다 길었습니다. 회복이 덜 된 날일 수 있습니다.")
+        #expect(ko(i, .easy) == "지면접촉이 268ms로 평소보다 길었습니다. 보폭이 1.12m로 평소보다 작았습니다.")
+        #expect(ko(input(gct: .above, gctStr: "268"), .easy) == "지면접촉이 268ms로 평소보다 길었습니다.")
     }
 
     @Test func easyGctBelowWithCadenceInRangeOrAbove() {
