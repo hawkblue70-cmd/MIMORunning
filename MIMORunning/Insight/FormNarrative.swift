@@ -27,6 +27,8 @@ enum FormNarrative {
         let paceStr: String
         /// 수직진폭 판정 — 케이던스↑·보폭 범위 안 문장에서 "위아래 움직임도 작았어요"를 붙일 때만 본다
         var vo: Status = .unknown
+        /// 피로 맥락("5일 연속 · 최근 7일 부하 +134%") — 이지런 다리 무거움 문장의 근거. 없으면 nil.
+        var fatigueContext: String? = nil
     }
 
     static func frame(for type: WorkoutType) -> Frame {
@@ -117,7 +119,15 @@ enum FormNarrative {
                     return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다.",
                                           "Ground contact was \(g) ms — longer than usual.", ja: "接地時間が\(g)msで普段より長かったです。"))
                 case .easy:
-                    // 회복 상태는 추측하지 않는다 — 같은 화면 HRV "좋음"과 부딪혔다(2026-10-14). 사실만.
+                    // 같은 페이스 대비 지면접촉↑ + 케이던스↓ 둘 다면 다리 피로 패턴(접지가 길고 발을 덜 굴림).
+                    // HRV(자율신경)는 다리 근육 피로를 잘 담지 못해 HRV가 좋아도 이 패턴은 나온다(사용자 지적, 2026-10-14).
+                    // 근거가 하나(지면접촉만)면 사실만 — 손목 지면접촉 오차·노면 영향이 있다.
+                    if i.cad == .below {
+                        let ctx = i.fatigueContext.map { " — \($0)" } ?? ""
+                        return L.s("같은 페이스 평소보다 지면접촉이 \(g)ms로 길고 케이던스가 \(cadStr)spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다\(ctx).",
+                                   "At your usual pace, ground contact ran long at \(g) ms and cadence was low at \(cadStr) spm — the pattern of a heavy-legs day\(ctx).",
+                                   ja: "同じペースの普段より接地時間が\(g)msと長く、ケイデンスが\(cadStr)spmと低かったです。脚が重い日のパターンです\(ctx)。")
+                    }
                     return withStride(L.s("지면접촉이 \(g)ms로 평소보다 길었습니다.",
                                           "Ground contact was \(g) ms — longer than usual.", ja: "接地時間が\(g)msで普段より長かったです。"))
                 case .fast:

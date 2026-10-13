@@ -40,6 +40,8 @@ struct RunFormCardView: View {
     var runCadenceResidual: Double? = nil
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
+    /// 피로 맥락("5일 연속 · 최근 7일 부하 +134%") — 이지런 다리 무거움 문장 근거(RunSummaryBuilder.fatigueContext)
+    var fatigueContext: String? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
 
     /// 내보내기(촘촘 모드)면 섹션 간격 14→9 · 상하 여백 16→12 · 문장 줄 간격 −1
@@ -1795,7 +1797,7 @@ struct RunFormCardView: View {
         let input = FormNarrative.Input(
             cad: cadStatus, gct: gctStatus, sl: slStatus,
             cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr,
-            vo: voStatus)
+            vo: voStatus, fatigueContext: fatigueContext)
         return FormNarrative.sentence(input, frame: FormNarrative.frame(for: workoutType))
     }
 

@@ -1049,6 +1049,7 @@ struct RunInsightTabCard: View {
                 runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: hasFormGap,
                 weatherSnapshot: weatherSnapshot,
+                fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
                 historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
@@ -6285,6 +6286,7 @@ struct InsightExportSheet: View {
                 runCadenceResidual: formRunCadenceResidual,
                 hasRecentGap: exportFormHasGap,
                 weatherSnapshot: weatherSnapshot,
+                fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
                 historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
