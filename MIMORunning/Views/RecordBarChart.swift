@@ -604,7 +604,9 @@ struct RecordBarChart: View {
                 .foregroundStyle(strip.color)
                 .opacity(bucketOpacity(p.id))
                 .annotation(position: .top, spacing: 1) {
-                    if isEnd {
+                    // 좁은 카드(compact)에선 선 끝 숫자가 플롯 밖으로 삐져 세로축 숫자와 겹친다 — 값은 아래 범례
+                    // "그 전 149 → 최근 7일 148"에 이미 있어 생략한다(2026-10-14)
+                    if isEnd && !compact {
                         Text(stripText(p.y, strip.decimals))
                             .font(.system(size: compact ? 8 : 9, weight: .semibold))
                             .foregroundStyle(strip.color)

@@ -5005,14 +5005,17 @@ private struct PerformanceInsightCard: View {
                            "\(work.count) work reps avg \(avgStr) · \(overall) overall incl. recovery", ja: "本練習\(work.count)本の平均 \(avgStr) · 回復込みの全体 \(overall)")
             }
         }
+        // 유산소 게이지가 같은 카드에 있으면 유산소 한 줄은 게이지 캡션을 그대로 반복한다 — 빼고 다음 후보로(2026-10-14)
+        let gaugeShown = vo2Info != nil && detail?.vo2Max != nil
         for cat: InsightCategory in [.efficiency, .endurance, .load, .cardio] {
+            if cat == .cardio && gaugeShown { continue }
             guard let m = insights.first(where: { $0.category == cat })?.message else { continue }
             if cat == .cardio && (age == nil || isMale == nil) {
                 return L.s("애플 건강 앱에서 나이와 성별 입력 필요합니다.", "Enter age & gender in Apple Health.", ja: "ヘルスケアで年齢と性別の入力が必要です。")
             }
             return m
         }
-        return insights.first?.message
+        return insights.first(where: { !(gaugeShown && $0.category == .cardio) })?.message
     }
 
     // MARK: - Return insight (복귀 인사이트)

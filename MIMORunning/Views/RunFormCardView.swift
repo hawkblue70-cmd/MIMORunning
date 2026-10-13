@@ -1414,7 +1414,10 @@ struct RunFormCardView: View {
             if displayKms.count >= 2 {
                 let gap = totalKm - displayKms[displayKms.count - 2]
                 let lastIsDecimal = abs(totalKm - totalKm.rounded()) >= 0.05
-                if gap < kmStep * (lastIsDecimal ? 0.9 : 0.7) {
+                // 라벨 간격 기준 — 격 km 표시면 라벨 사이가 2칸. 끝 라벨은 차트 오른쪽 끝에서 안쪽으로 밀려 들어오므로
+                // 보통 간격만큼만 떨어져 있으면 직전 라벨과 붙는다("10 12" → "1012", 2026-10-14) — 1.25칸 미만이면 직전 제거
+                let labelStep = showEveryOther ? kmStep * 2 : kmStep
+                if gap < kmStep * (lastIsDecimal ? 0.9 : 0.7) || (showEveryOther && gap < labelStep * 1.25) {
                     displayKms.remove(at: displayKms.count - 2)
                 }
             }
