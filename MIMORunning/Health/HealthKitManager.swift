@@ -1725,7 +1725,7 @@ class HealthKitManager {
 
     /// 상세 캐시 파일 이름 버전. 올리면 기존 캐시를 버리고 다시 받는다.
     /// 앱 시작 때 옛 버전 파일을 지우는 정리(MRCacheMaintenance)가 이 값을 기준으로 남길 것을 고른다.
-    nonisolated static let detailCacheVersion = "v15"
+    nonisolated static let detailCacheVersion = "v16"   // v16: 구간 케이던스 200spm 초과 반감 오류 수정(250 기준)
     /// 상세 캐시 폴더 — 정리 쪽에서도 같은 경로를 봐야 해서 한 곳에서 만든다.
     nonisolated static var detailCacheDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -3558,8 +3558,15 @@ class HealthKitManager {
         let totalSteps  = relevant.reduce(0.0) { $0 + $1.quantity.doubleValue(for: .count()) }
         let totalDurSec = relevant.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
         guard totalDurSec > 0 else { return nil }
-        let spm = (totalSteps / totalDurSec) * 60
-        let corrected = spm > 200 ? spm / 2 : spm
+        return Self.normalizedStepCadence((totalSteps / totalDurSec) * 60)
+    }
+
+    /// 걸음 수 샘플로 낸 케이던스(spm) 정리 — 폰·워치 걸음이 겹쳐 두 배로 잡힌 값만 반으로.
+    /// ⚠ 예전엔 200spm 초과를 모두 반으로 나눠, 5'04"/km 구간의 실제 205spm이 103spm이 됐다 —
+    ///   후반 평균이 194→173으로 내려가 "케이던스 내려감·보폭으로 올림"으로 잘못 읽혔다(2026-10-14).
+    ///   러너 케이던스는 250spm을 넘지 않고, 두 배 겹침은 300 이상으로 나온다.
+    nonisolated static func normalizedStepCadence(_ spm: Double) -> Int? {
+        let corrected = spm > 250 ? spm / 2 : spm
         return corrected > 60 ? Int(corrected.rounded()) : nil
     }
 
@@ -3937,8 +3944,7 @@ class HealthKitManager {
                 let totalDurSec = relevant.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
                 guard totalDurSec > 0 else { return nil }
                 let spm = (totalSteps / totalDurSec) * 60
-                let corrected = spm > 200 ? spm / 2 : spm
-                return corrected > 60 ? Int(corrected.rounded()) : nil
+                return Self.normalizedStepCadence(spm)
             }()
 
             result.append(IntervalSegment(

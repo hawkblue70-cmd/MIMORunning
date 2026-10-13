@@ -6212,7 +6212,10 @@ struct InsightExportSheet: View {
     }
 
     private func weatherIcon(for tempC: Double) -> String {
-        WeatherSnapshot.icon(tempC: tempC, humidityPercent: activity.humidityPercent, at: activity.date)
+        // 날씨 스냅샷(강수량)이 있으면 그 아이콘 — 폼 카드 "비 오는 날"과 같은 근거. 없을 때만 기온·습도로.
+        // 머리는 습도만 보고 구름+달, 폼 카드는 강수량으로 "비 오는 날"이라 엇갈렸다(2026-10-14)
+        if let w = weatherSnapshot { return w.systemIcon(at: activity.date) }
+        return WeatherSnapshot.icon(tempC: tempC, humidityPercent: activity.humidityPercent, at: activity.date)
     }
 
     @ViewBuilder
