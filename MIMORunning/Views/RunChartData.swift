@@ -53,9 +53,9 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .heartRate:    return .line(width: 2.2)
         case .cadence:      return .line(width: 2.1)
         case .power:        return .line(width: 2.1)
-        case .groundContact: return .line(width: 1.8)
-        case .strideLength: return .line(width: 1.8)
-        case .verticalOsc:  return .line(width: 1.8)
+        case .groundContact: return .line(width: 2.0)
+        case .strideLength: return .line(width: 2.0)
+        case .verticalOsc:  return .line(width: 2.0)
         case .aerobic:      return .line(width: 1.5)
         case .calories:     return .line(width: 1.5)
         case .pace:         return .bars
@@ -69,9 +69,9 @@ enum RunChartLayer: String, CaseIterable, Identifiable {
         case .heartRate:    return 1.00
         case .cadence:      return 1.00
         case .power:        return 1.00
-        case .groundContact: return 0.92
-        case .strideLength: return 0.92
-        case .verticalOsc:  return 0.92
+        case .groundContact: return 1.00
+        case .strideLength: return 1.00
+        case .verticalOsc:  return 1.00
         case .aerobic:      return 0.92
         case .calories:     return 0.92
         case .pace:         return 0.20

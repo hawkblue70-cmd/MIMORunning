@@ -126,15 +126,17 @@ extension Theme {
     static let chartCadence  = Theme.cadence         // 순수 옐로 — 지표 의미색과 같은 값
     // 선은 전부 형광 톤 — 검은 배경에서 라벤더(A78BFA)·시스템 초록(34C759)만 한 단계 어두워
     //   심박(존 색)·케이던스(순노랑)·진폭(마젠타) 옆에서 가라앉아 보였다.
-    static let chartPower    = Color(hex: "C77DFF")  // 형광 바이올렛 (브랜드 계열)
+    static let chartPower    = Color(hex: "B44DFF")  // 채도 높은 바이올렛 (예전 C77DFF는 파스텔이라 가라앉음)
     static let chartElev     = Color(hex: "00E676")  // 형광 스프링 그린 (라임 아님 — Z3·케이던스와 분리)
     static let chartElevFill = Color(hex: "00E676")  // 고도 fill
     static let chartStride   = Color(hex: "F2F2F7")  // 화이트 (검은 배경에서 가장 뚜렷)
     // 지면접촉은 지표 의미색이 청록(5CE5D5)이지만 차트에서는 못 쓴다 — 심박 선이 Z2에서 아쿠아(4DFFF0)라
     //   이지런 대부분 구간에서 두 선이 같은 색이 된다. 존 다섯·노랑·바이올렛·마젠타·초록 사이 빈 자리인
     //   페리윙클(파랑 211°와 바이올렛 285° 사이)을 쓴다.
-    static let chartGroundContact = Color(hex: "7B87FF")
-    static let chartVertOsc  = Color(hex: "F050FF")  // 형광 마젠타
+    // 2026-10-14: 러닝 흐름 선(4D8DFF·빨강·초록)처럼 채도 높은 단색으로 — 파스텔 페리윙클(7B87FF)·라벤더는
+    //   보라 계열 세 선(지면접촉·파워·진폭)이 서로 묻혔다. 색상환 247°·276°·314°로 간격을 벌린다.
+    static let chartGroundContact = Color(hex: "6A5CFF")  // 채도 높은 인디고
+    static let chartVertOsc  = Color(hex: "FF40D0")  // 마젠타-핑크 (파워 바이올렛과 분리, Z5 핑크 348°와도 거리)
     static let chartAerobic  = Color(hex: "AEB2BC")  // 값 전용 타일 — 선을 그리지 않으므로 중립 회색(밝게)
     static let chartValueOnly = Color(hex: "AEB2BC") // 값 전용 타일 공통 (유산소·칼로리)
 
