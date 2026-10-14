@@ -304,6 +304,24 @@ struct RunCombinedChartView: View {
 
     // MARK: - Pace columns (time-proportional background)
 
+    /// 구간 평균 심박 → 존 안 위치(Z1 아래 0 … Z5 위 5) → 강도 1…10. 심박·존이 없으면 nil.
+    private func columnEffort(_ col: PaceColumn) -> Int? {
+        guard !data.hrZoneBands.isEmpty,
+              let hr = data.series[.heartRate]?.points else { return nil }
+        let inCol = hr.filter { $0.km >= col.startKm && $0.km <= col.endKm }.map(\.value)
+        guard !inCol.isEmpty else { return nil }
+        let bpm = inCol.reduce(0, +) / Double(inCol.count)
+        let sorted = data.hrZoneBands.sorted { $0.lowerBPM < $1.lowerBPM }
+        var pos = Double(sorted.count)
+        for (i, band) in sorted.enumerated() where bpm < Double(band.upperBPM) {
+            let span = Double(max(1, band.upperBPM - band.lowerBPM))
+            pos = Double(i) + max(0, min(1, (bpm - Double(band.lowerBPM)) / span))
+            break
+        }
+        let t = pos / Double(sorted.count)                 // 0…1
+        return EffortResolver.clamp(1 + Int((t * 9).rounded()))
+    }
+
     private func drawPaceColumns(ctx: GraphicsContext, rect: CGRect, playProgress: Double? = nil) {
         // 페이스 막대는 토글 대상이 아니다(타일 없음) — 저장된 enabledLayers에 페이스가 빠져 있어도 그린다.
         // 예전에 칩을 꺼둔 채 저장한 사용자는 칩이 사라진 뒤 되돌릴 방법이 없었다.
@@ -326,10 +344,21 @@ struct RunCombinedChartView: View {
             let barPath = Path(roundedRect: barRect, cornerRadius: 2)
             let fillOp   = isInProgress ? baseOp * 0.5 : baseOp
             let borderOp = isInProgress ? p.paceColBorderOp * 0.5 : p.paceColBorderOp
-            ctx.fill(barPath, with: .color(p.pace.opacity(fillOp)))
-            // 테두리도 페이스 색 — 흰 테두리는 막대를 회색으로 보이게 했다
-            ctx.stroke(barPath, with: .color(p.pace.opacity(borderOp)),
-                       style: StrokeStyle(lineWidth: p.paceColBorderWidth))
+            // 막대 색 = 그 구간 강도(러닝 흐름 막대와 같은 EffortPalette). 심박·존이 없으면 페이스 청록.
+            if let effort = columnEffort(col) {
+                let c = EffortPalette.color(for: effort)
+                ctx.fill(barPath, with: .linearGradient(
+                    Gradient(colors: [c.opacity(min(1, fillOp * 2.0)), c.opacity(fillOp * 0.9)]),
+                    startPoint: CGPoint(x: barRect.midX, y: barRect.minY),
+                    endPoint: CGPoint(x: barRect.midX, y: barRect.maxY)))
+                ctx.stroke(barPath, with: .color(c.opacity(min(1, borderOp * 1.6))),
+                           style: StrokeStyle(lineWidth: p.paceColBorderWidth))
+            } else {
+                ctx.fill(barPath, with: .color(p.pace.opacity(fillOp)))
+                // 테두리도 페이스 색 — 흰 테두리는 막대를 회색으로 보이게 했다
+                ctx.stroke(barPath, with: .color(p.pace.opacity(borderOp)),
+                           style: StrokeStyle(lineWidth: p.paceColBorderWidth))
+            }
 
             // Label centred under column; skip if too narrow or in-progress bar
             if w >= 14, !isInProgress {
