@@ -105,4 +105,62 @@ struct TabDigestFormTests {
         #expect(g?.priority == 2)
         #expect(g?.text.contains("편한 날엔 자연스러운 변화입니다") == true)
     }
+
+    // MARK: 마무리 문장 문제의 순서·방향 (F2·F8)
+
+    @Test func easyHeavyLegsProblemIsF2WithFormNext() {
+        let x = inputs(cadence: 165, gct: 265, baseline: baseline(), fatigue: "5일 연속 · 최근 7일 부하 +134%")
+        let next = "다음 이지런은 지면접촉을 짧게 의식해 보세요."
+        let lines = [RunSummaryLine(axis: RunHeadline.Axis.form.label!, state: "다리 무거움", tone: .neutral, next: next)]
+        let p = TabDigestForm.signals(x, lines: lines).first { $0.kind == .problem }
+        #expect(p?.priority == 2)
+        #expect(p?.direction == next)
+    }
+
+    @Test func lowCadenceProblemIsF8AfterOtherFormProblems() {
+        let x = inputs(cadence: 155)
+        let p = TabDigestForm.signals(x, lines: []).first { $0.kind == .problem }
+        #expect(p?.priority == 8)
+        #expect(p?.direction == nil)   // 케이던스-심박 권고 재료 없음
+    }
+
+    // MARK: 후반 폼(.lateForm) — 리듬 R3 '다리 먼저'와 폼 F6이 같은 사실
+
+    @Test func lateLegsAndFormHeavierOnlyFormBlockStatesIt() {
+        func stats(_ s: Double, _ e: Double) -> FormPhase.PhaseStats {
+            FormPhase.PhaseStats(splitCount: 4, startKm: s, endKm: e, paceSecPerKm: 360,
+                                 cadence: 170, stride: nil, groundContact: nil, verticalOsc: nil, avgHR: nil)
+        }
+        var i = RunSummaryInput(); i.workoutType = .longRun; i.distKm = 16
+        i.lateRun = LateRunDiagnosis.Result(kind: .legs, mid: stats(4, 12), late: stats(12, 16), decouplingPct: nil,
+                                            legMetrics: [.cadence], durationMin: 100)
+        let rhythm = TabDigestRhythm.signals(context: .stub(workoutType: .longRun), input: i, lines: [])
+        let r3 = rhythm.first { $0.priority == 3 && $0.kind == .problem }
+        #expect(r3?.family == .lateForm)
+
+        let form = TabDigestForm.signals(inputs(workoutType: .general, phase: .stub(late: .bouncier)), lines: [])
+        let f6 = form.first { $0.priority == 6 && $0.kind == .problem }
+        #expect(f6?.family == .lateForm)
+
+        let blocks = TabDigest.make(rhythm + form)
+        let r3Text = r3?.text ?? "-"
+        #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3Text } != true)
+        #expect(blocks.first { $0.tab == .form }?.statements.contains { $0.text == f6?.text } == true)
+    }
+
+    /// 폼에 후반 폼 신호가 없으면 리듬 R3 '다리 먼저'는 리듬 블록에 남는다
+    @Test func lateLegsStaysInRhythmWithoutFormSignal() {
+        func stats(_ s: Double, _ e: Double) -> FormPhase.PhaseStats {
+            FormPhase.PhaseStats(splitCount: 4, startKm: s, endKm: e, paceSecPerKm: 360,
+                                 cadence: 170, stride: nil, groundContact: nil, verticalOsc: nil, avgHR: nil)
+        }
+        var i = RunSummaryInput(); i.workoutType = .longRun; i.distKm = 16
+        i.lateRun = LateRunDiagnosis.Result(kind: .legs, mid: stats(4, 12), late: stats(12, 16), decouplingPct: nil,
+                                            legMetrics: [.cadence], durationMin: 100)
+        let rhythm = TabDigestRhythm.signals(context: .stub(workoutType: .longRun), input: i, lines: [])
+        let r3 = rhythm.first { $0.priority == 3 && $0.kind == .problem }
+        #expect(r3 != nil)
+        let blocks = TabDigest.make(rhythm)
+        #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3?.text } == true)
+    }
 }

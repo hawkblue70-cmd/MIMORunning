@@ -33,6 +33,8 @@ enum TabDigestForm {
         /// 최근 3개월 14일↑ 공백 — 추세 문장 침묵
         var hasRecentGap: Bool = false
         var runCadenceResidual: Double? = nil
+        /// 더위 심박 보정(bpm, `heatHRModel.delta(기온)`) — 3단계 문장 "흔한 변화" 꼬리 생략 판단(카드와 같은 값). 카드 경로는 쓰지 않는다.
+        var heatDeltaBpm: Double? = nil
 
         /// 카드용 — 카드 프로퍼티를 그대로 넘긴다
         init(activity: Activity, splits: [SplitData], avgCadence: Int?, avgStrideLength: Double?,
@@ -63,7 +65,7 @@ enum TabDigestForm {
         /// 요약용 — 인사이트 탭이 폼 카드에 넘기는 것과 같은 값으로 채운다(인터벌 케이던스 = 운동 구간 평균).
         init(activity: Activity, detail: ActivityDetail?, baseline: RunningFormBaseline?, formShifts: [MRFormShift],
              workoutType: WorkoutType, typicalKm: Double?, fatigueContext: String?,
-             hasRecentGap: Bool = false, runCadenceResidual: Double? = nil) {
+             hasRecentGap: Bool = false, runCadenceResidual: Double? = nil, heatDeltaBpm: Double? = nil) {
             let cadence: Int? = {
                 guard workoutType == .interval,
                       let wc = IntervalSegment.workAverage(detail?.intervalSegments ?? [], { $0.avgCadence.map(Double.init) })
@@ -83,6 +85,7 @@ enum TabDigestForm {
                                               formShifts: formShifts, workoutType: workoutType),
                       hasRecentGap: hasRecentGap, runCadenceResidual: runCadenceResidual)
             self.detail = detail
+            self.heatDeltaBpm = heatDeltaBpm
         }
 
         // MARK: 파생값 (옮김: RunFormCardView의 computed 프로퍼티)
@@ -428,7 +431,9 @@ enum TabDigestForm {
 
         // F1 후반 페이스 무너짐 / F6 후반 무거워짐·위로 튐 / 좋음: 끝까지 유지·이지 케이던스만 하강
         if let p = x.phase {
-            let sentence = FormPhase.sentence(p, isLongDistance: isLong)
+            // 카드(RunFormCardView)와 같은 꼬리 생략 — 더위 안심 괄호가 붙으면 "흔한 변화" 꼬리를 뺀다
+            let sentence = FormPhase.sentence(p, isLongDistance: isLong,
+                                              suppressCommonTail: FormPhase.hasHeatReassurance(p, heatDeltaBpm: x.heatDeltaBpm))
             switch p.late {
             case .faded:
                 problem(1, .latePace, sentence, next)
@@ -437,11 +442,11 @@ enum TabDigestForm {
                 if p.isSoftCadenceOnly {
                     good(2, sentence)
                 } else {
-                    problem(6, .unique, sentence, next)
+                    problem(6, .lateForm, sentence, next)
                     latePhaseProblem = true
                 }
             case .bouncier:
-                problem(6, .unique, sentence, next)
+                problem(6, .lateForm, sentence, next)
                 latePhaseProblem = true
             case .held:
                 good(1, sentence)
@@ -453,7 +458,17 @@ enum TabDigestForm {
         // F2·F3·F8 마무리 문장 문제 분기 / 좋음: 지면접촉 짧음
         if let text = narrative(x) {
             if narrativeIsProblem(x) {
-                problem(2, .unique, text, next ?? cadenceAdvice(x))
+                switch route(x) {
+                case .lowCadence?:
+                    // F8 케이던스 160 미만 — 방향 = 케이던스-심박 권고(있을 때). F4~F7 뒤.
+                    problem(8, .unique, text, cadenceAdvice(x))
+                case .framed(_, let f)? where f == .easy:
+                    // F2 다리 무거움 패턴 — 방향 = 러닝폼 줄 next
+                    problem(2, .unique, text, next)
+                default:
+                    // F3 빠른 날 — 권고가 문장 안에 있어 방향 없음
+                    problem(3, .unique, text, nil)
+                }
             } else if narrativeIsGood(x) {
                 good(5, text)
             }
@@ -468,7 +483,7 @@ enum TabDigestForm {
             case .tempo:
                 if v.isProblem { problem(5, .unique, v.text, nil) } else if v.isGood { good(3, v.text) }
             case .lsd, .longRun:
-                if v.isProblem { if !latePhaseProblem { problem(6, .unique, v.text, next) } }
+                if v.isProblem { if !latePhaseProblem { problem(6, .lateForm, v.text, next) } }
                 else if v.isGood { good(4, v.text) }
             default:
                 break
@@ -477,7 +492,7 @@ enum TabDigestForm {
 
         // F7 장거리 후반 범위 이탈 시작 km
         if let text = formChangeSentence(x) {
-            problem(7, .unique, text, next)
+            problem(7, .lateForm, text, next)
         }
 
         // 덧붙임 — 장기 추세 첫 문장

@@ -159,14 +159,14 @@ struct TabDigestPerformanceTests {
         #expect(late.first?.text == "후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.")
     }
 
-    /// 더운 날 7% → 중립 good p9
-    @Test func hotMidDecouplingIsNeutralGood() {
+    /// 더운 날 7% → 중립 덧붙임(extra) p1 — 좋은 신호에 밀려 사라지지 않게
+    @Test func hotMidDecouplingIsNeutralExtra() {
         // 140 → 151: (1 − 140/151) ≈ 7.3%
         let s = TabDigestPerformance.signals(context: decouplingContext(back: 151, tempC: 26), input: RunSummaryInput(),
                                              lines: [], insights: [], easyAlertText: nil)
         let late = s.filter { $0.family == .lateHR }
         #expect(late.count == 1)
-        #expect(late.first?.kind == .good && late.first?.priority == 9 && late.first?.tone == .neutral)
+        #expect(late.first?.kind == .extra && late.first?.priority == 1 && late.first?.tone == .neutral)
         #expect(late.first?.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.")
     }
 

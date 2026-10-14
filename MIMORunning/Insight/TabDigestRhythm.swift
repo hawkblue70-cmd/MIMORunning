@@ -406,7 +406,15 @@ enum TabDigestRhythm {
                 let e = LateRunDiagnosis.evidence(r, heatDeltaBpm: i.heatDeltaBpm)
                 return e.isEmpty ? LateRunDiagnosis.state(r) : LateRunDiagnosis.state(r) + " — " + e
             }()
-            problem(3, (r.kind == .cardio || r.kind == .combined) ? .lateHR : .latePace, text, late?.next)
+            // 심박 먼저·함께 = 후반 심박 / 다리 먼저 = 후반 폼(폼 카드 소유) / 힘 빠짐 = 후반 페이스
+            let family: TabDigest.Family = {
+                switch r.kind {
+                case .cardio, .combined: return .lateHR
+                case .legs:              return .lateForm
+                default:                 return .latePace
+                }
+            }()
+            problem(3, family, text, late?.next)
             hasLate = true
         }
 

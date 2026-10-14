@@ -274,7 +274,10 @@ struct ActivityDetailView: View {
     private var headlineKey: String {
         "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
         "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.points.count ?? 0)|\(level.rawValue)|" +
-        "\(formShifts.count)|\(formRunCadenceResidual ?? 0)|\(engine.phys.hrMax?.value ?? 0)"
+        "\(formShifts.count)|\(formRunCadenceResidual ?? 0)|\(engine.phys.hrMax?.value ?? 0)|" +
+        // 요약 유형·계획 단계·강도 입력·기록 수 — 바뀌면 총평/블록 판정이 달라진다
+        "\(summaryWorkoutType(for: activity.id).map { "\($0)" } ?? "-")|\(matchedPlanWeek()?.phase ?? "-")|" +
+        "\(resolvedEffort?.value ?? 0)|\(effortIndex.user.count)|\(manager.activities.count)"
     }
 
     private func recomputeHeadline() {
@@ -307,7 +310,9 @@ struct ActivityDetailView: View {
                 typicalKm: RunSummaryBuilder.typicalRunDistanceKm(activity: activity, history: history),
                 fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
                 hasRecentGap: TabDigestForm.hasRecentGap(activity: activity, history: history),
-                runCadenceResidual: formRunCadenceResidual)
+                runCadenceResidual: formRunCadenceResidual,
+                // 폼 카드와 같은 더위 보정 — 3단계 문장 "흔한 변화" 꼬리 생략 여부가 같아진다
+                heatDeltaBpm: engine.heatHR.delta(activity.temperatureC))
             form = TabDigestForm.signals(x, lines: lines)
             formDefault = TabDigestForm.defaultDirection(x)
         }

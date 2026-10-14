@@ -15,13 +15,15 @@ enum TabDigest {
 
     /// 같은 사실을 여러 카드가 말하는 신호 묶음 — 묶음마다 소유 탭은 하나
     enum Family: Equatable {
-        case lateHR, latePace, load, distanceRank, efficiency, unique
+        case lateHR, latePace, lateForm, load, distanceRank, efficiency, unique
 
         /// 앞쪽 탭부터 신호가 있으면 그 탭이 소유
         var ownerOrder: [Tab] {
             switch self {
             case .lateHR:       return [.performance, .rhythm]
             case .latePace:     return [.form, .rhythm, .performance]
+            // 후반 폼 변화(다리 먼저 지침·무거워짐·범위 이탈) — 폼 카드가 소유
+            case .lateForm:     return [.form, .rhythm]
             case .load:         return [.performance, .rhythm, .form]
             case .distanceRank: return [.rhythm, .performance]
             case .efficiency:   return [.performance]

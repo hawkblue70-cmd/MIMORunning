@@ -361,7 +361,7 @@ enum TabDigestPerformance {
 
         // P3 — 디커플링. 값이 계산되면 .lateHR 신호를 정확히 1개 낸다(설계 §5: 후반 심박은 퍼포먼스 소유 — 리듬 R4가 다른 말을 하지 않게)
         //   문제: 5% 넘게 오름(덥지 않음) · 주의색(더운 날 10%↑ 포함) · 5% 안이지만 마지막 구간 심박 상승
-        //   좋음 g3: 지켰다(초록) / 그 밖 중립(더운 날 5~10%, 빌드업): 좋은 신호 최하위(9)·톤 중립
+        //   좋음 g3: 지켰다(초록) / 그 밖 중립(더운 날 5~10%, 빌드업): 덧붙임(extra, 1)·톤 중립
         let distKm = c.activity.distance / 1000
         if let pct = decouplingPct(splits: c.detail?.splits ?? [], workoutType: c.workoutType, distKm: distKm) {
             // 카드처럼 5% 안일 때만 총평 후반 심박 판정을 본다
@@ -374,7 +374,8 @@ enum TabDigestPerformance {
             } else if v.isGood {
                 good(3, .lateHR, v.text)
             } else {
-                out.append(TabDigest.Signal(tab: .performance, kind: .good, priority: 9, family: .lateHR, text: v.text, tone: .neutral))
+                // 중립(더운 날 5~10%·빌드업) — 덧붙임으로 항상 보인다(.lateHR을 가져가므로 리듬 R3/R4 사실이 사라지지 않게)
+                out.append(TabDigest.Signal(tab: .performance, kind: .extra, priority: 1, family: .lateHR, text: v.text, tone: .neutral))
             }
         }
 
