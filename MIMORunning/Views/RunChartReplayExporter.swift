@@ -128,7 +128,7 @@ struct ShareChartPalette {
         hrLineWidth:        2.8,
         xAxisTimeColor:     Color(hex: "FFE04D"),
         xAxisDistColor:     .white,
-        paceColLabelColor:  Color(hex: "229ACB"), // 막대 아래 페이스 숫자도 같은 어두운 청록
+        paceColLabelColor:  Theme.splitBarHi,   // 막대 아래 페이스 숫자도 페이스 색
         scrubberBorderOp:   0.0,
         valueLabelBgOp:     0.0,
         mapBorderOp:        0.0,
