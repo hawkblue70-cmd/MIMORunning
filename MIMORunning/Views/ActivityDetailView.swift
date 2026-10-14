@@ -1868,6 +1868,28 @@ private struct InsightCard: View {
         .contentTransition(.opacity)
     }
 
+    /// 사실 줄 — 탭 블록이 같은 축(폼·심박·거리·부하)을 이미 말하면 그 조각을 뺀다. 다 빠지면 줄 자체를 숨긴다.
+    /// 드문 사건·대체(엔진 부연·대회 비교)는 블록이 다루지 않으므로 그대로.
+    private var visibleFact: String? {
+        guard usesHeadline, let h = headline else { return displayDetail }
+        guard !digest.isEmpty, !h.factParts.isEmpty else { return h.fact }
+        let covered = Set(digest.map(\.tab))
+        let kept = h.factParts.filter { part in
+            guard let tab = Self.tab(for: part.axis) else { return true }
+            return !covered.contains(tab)
+        }
+        return kept.isEmpty ? nil : kept.map(\.text).joined(separator: " · ")
+    }
+
+    private static func tab(for axis: RunHeadline.Axis) -> TabDigest.Tab? {
+        switch axis {
+        case .form:             return .form
+        case .heart, .distance: return .rhythm
+        case .load:             return .performance
+        case .none:             return nil
+        }
+    }
+
     private var showsComparison: Bool { insight?.theme == .raceDay && comparisonLine != nil }
 
     private var displayDetail: String {
@@ -1962,10 +1984,12 @@ private struct InsightCard: View {
                         .contentTransition(.opacity)
                     // 사실·다음 줄은 블록 유무와 관계없이 항상 그린다 — 블록이 늦게 도착하면서 이 줄이
                     // 잠깐 보였다 사라지던 깜빡임 제거(2026-10-15 사용자 요청: 기존 문구를 유지하며 블록을 덧붙임).
-                    Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .contentTransition(.opacity)
+                    if let fact = visibleFact {
+                        Text(fact)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.72))
+                            .contentTransition(.opacity)
+                    }
                     // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
                     if let next = headline?.next {
                         Text(next)

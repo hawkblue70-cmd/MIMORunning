@@ -9,6 +9,9 @@ struct RunHeadline: Equatable {
     let fact: String
     let next: String?
     let source: Source
+    /// `fact`를 이루는 조각과 그 축 — 탭 요약 블록이 같은 축을 말하면 화면에서 그 조각을 뺀다(중복 방지)
+    var factParts: [FactPart] = []
+    struct FactPart: Equatable { let text: String; let axis: Axis }
 
     /// 총평 줄과 맞출 축 — 라벨 문자열은 RunSummary와 같아야 한다(비교는 여기서만).
     enum Axis: Equatable { case form, distance, heart, load, none
@@ -64,16 +67,17 @@ struct RunHeadline: Equatable {
         }
         let first = cands[firstIdx]
         var fact = first.fact
+        var parts = [FactPart(text: first.fact, axis: first.axis)]
         if first.source != .rareEvent {
             let second = cands.enumerated().first { pair in
                 let c = pair.element
                 return pair.offset != firstIdx && c.source != .rareEvent && c.fact != first.fact &&
                     (first.axis == .none || c.axis != first.axis)
             }?.element
-            if let s = second { fact += " · " + s.fact }
+            if let s = second { fact += " · " + s.fact; parts.append(FactPart(text: s.fact, axis: s.axis)) }
         }
         return RunHeadline(title: first.title, fact: fact,
-                           next: nextAction(for: first.axis, lines: summaryLines), source: first.source)
+                           next: nextAction(for: first.axis, lines: summaryLines), source: first.source, factParts: parts)
     }
 
     // MARK: - 후보 (순서 = 배열 순서)
