@@ -15,6 +15,9 @@ enum TabDigestRhythm {
         var shade: Shade = .neutral
         /// 폼(접지·케이던스) 판정 — 리듬 블록에서는 내지 않는다(폼 탭 몫, 설계 §5)
         var aboutForm: Bool = false
+        /// 페이스 모양 판정 종류 — 요약에서 소유 블록을 가른다(설계 §5: 일반 유형 후반 느려짐은 퍼포먼스 몫)
+        enum PaceShape: Equatable { case distanceRunDrop, varied, slowedLate }
+        var paceShape: PaceShape? = nil
         var isGood: Bool { shade == .good }
     }
 
@@ -292,13 +295,13 @@ enum TabDigestRhythm {
                                  isProblem: false, shade: .neutral)
             } else {
                 result = Verdict(text: L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast", ja: "後半のペースが大きく落ちました。序盤が速かったのかもしれません"),
-                                 isProblem: true, shade: .caution)
+                                 isProblem: true, shade: .caution, paceShape: .distanceRunDrop)
             }
             // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second), (sg - fg) <= -7 {
                 let delta = Int(abs((sg - fg).rounded()))
                 result = Verdict(text: result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
-                                 isProblem: result.isProblem, shade: result.shade)
+                                 isProblem: result.isProblem, shade: result.shade, paceShape: result.paceShape)
             }
             return result
 
@@ -342,11 +345,11 @@ enum TabDigestRhythm {
                                isProblem: true, shade: .neutral, aboutForm: true)
             } else if cv > 5 {
                 return Verdict(text: L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"),
-                               isProblem: true, shade: .neutral)
+                               isProblem: true, shade: .neutral, paceShape: .varied)
             } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
                 // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
                 return Verdict(text: L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"),
-                               isProblem: true, shade: .neutral)
+                               isProblem: true, shade: .neutral, paceShape: .slowedLate)
             } else if cv <= 3 {
                 return Verdict(text: L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"),
                                isProblem: false, shade: .good)
@@ -410,7 +413,8 @@ enum TabDigestRhythm {
         // R4 — 후반 심박 상승(빌드업·오르막 아님) — 카드 심박 캡션과 같은 판정
         let hr = hrVerdict(samples: c.hrSamples, hrMax: c.hrMax, age: c.age, workoutType: c.workoutType,
                            activity: c.activity, detail: c.detail, history: c.history)
-        if !hasLate, let hr, hr.kind == .secondHalfRise {
+        // 빌드업은 후반 상승이 계획이라 문제로 내지 않는다(카드 캡션은 유형 문구로 그대로)
+        if !hasLate, c.workoutType != .buildUp, let hr, hr.kind == .secondHalfRise {
             problem(4, .lateHR, hr.text, nil)
         }
 
@@ -422,11 +426,16 @@ enum TabDigestRhythm {
             problem(5, .unique, zone.text, heart?.next)
         }
 
-        // R6 — 페이스: 후반 많이 떨어짐(거리주) / 기복 / 후반 느려짐
+        // R6 — 페이스: 후반 많이 떨어짐(거리주, .latePace) / 기복(.unique).
+        // 일반 유형 후반 느려짐은 퍼포먼스 지구력(P6) 소유라 여기서 내지 않는다(설계 §5 — 조합기 순서상 리듬이 앞서므로 신호 단계에서 거름)
         let pace = paceShapeVerdict(splits: c.detail?.splits ?? [], workoutType: c.workoutType,
                                     altitudeProfile: c.detail?.altitudeProfile ?? [])
         if let pace, pace.isProblem, !pace.aboutForm {
-            problem(6, .latePace, pace.text, nil)
+            switch pace.paceShape {
+            case .distanceRunDrop: problem(6, .latePace, pace.text, nil)
+            case .varied:          problem(6, .unique, pace.text, nil)
+            case .slowedLate, nil: break
+            }
         }
 
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장

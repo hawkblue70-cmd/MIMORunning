@@ -149,6 +149,56 @@ struct TabDigestRhythmTests {
         #expect(g?.text == "최근 10회 중 가장 긴 거리")
     }
 
+    private func detail(_ splits: [SplitData]) -> ActivityDetail {
+        ActivityDetail(routeCoordinates: [], routeTimeOffsets: [], elevationGain: 0,
+                       avgPower: nil, avgCadence: nil, splits: splits, hrZones: [],
+                       intervalSegments: [], workoutType: .general,
+                       avgGroundContactTime: nil, avgStrideLength: nil,
+                       avgVerticalOscillation: nil, vo2Max: nil,
+                       altitudeProfile: [], altitudeTimeProfile: [])
+    }
+
+    private func paceSignals(_ paces: [Double], type: WorkoutType) -> [TabDigest.Signal] {
+        let splits = paces.enumerated().map { split($0.offset + 1, pace: $0.element) }
+        var i = RunSummaryInput(); i.workoutType = type; i.distKm = Double(paces.count)
+        return TabDigestRhythm.signals(context: .stub(workoutType: type, detail: detail(splits)), input: i, lines: [])
+            .filter { $0.priority == 6 && $0.kind == .problem }
+    }
+
+    @Test func generalSlowdownIsNotRhythmSignal() {
+        #expect(paceSignals([370, 372, 374, 376, 395, 400, 405, 410], type: .general).isEmpty)
+    }
+
+    @Test func distanceRunBigDropIsLatePaceProblem() {
+        let s = paceSignals([300, 300, 300, 300, 330, 330, 330, 330], type: .distanceRun)
+        #expect(s.count == 1)
+        #expect(s.first?.family == .latePace)
+        #expect(s.first?.text == "후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다")
+    }
+
+    @Test func generalVariedPaceIsUniqueProblem() {
+        let s = paceSignals([300, 360, 300, 360, 300, 360, 300, 360], type: .general)
+        #expect(s.count == 1)
+        #expect(s.first?.family == .unique)
+        #expect(s.first?.text == "페이스 기복이 있었습니다")
+    }
+
+    /// 빌드업은 후반 심박 상승이 계획 — 캡션은 유형 문구로 나오지만 문제 신호는 아니다
+    @Test func buildUpSecondHalfRiseIsNotProblem() {
+        let samples: [(offset: TimeInterval, bpm: Int)] = (0..<40).map { (offset: Double($0) * 30, bpm: $0 < 20 ? 140 : 155) }
+        let ctx = RunSummaryBuilder.Context.stub(workoutType: .buildUp, hrSamples: samples)
+        let cap = TabDigestRhythm.hrVerdict(samples: samples, hrMax: nil, age: nil, workoutType: .buildUp,
+                                            activity: ctx.activity, detail: nil, history: [])
+        #expect(cap?.kind == .secondHalfRise)
+        #expect(cap?.text == "후반에 페이스를 올려 심박도 올랐습니다")
+        var i = RunSummaryInput(); i.workoutType = .buildUp; i.distKm = 8
+        let sig = TabDigestRhythm.signals(context: ctx, input: i, lines: [])
+        #expect(!sig.contains { $0.priority == 4 && $0.kind == .problem })
+        // 같은 샘플이라도 일반 러닝이면 문제 p4
+        let gen = TabDigestRhythm.signals(context: .stub(workoutType: .general, hrSamples: samples), input: RunSummaryInput(), lines: [])
+        #expect(gen.contains { $0.priority == 4 && $0.kind == .problem && $0.family == .lateHR })
+    }
+
     @Test func defaultDirectionIsDistanceLineNext() {
         let lines = [RunSummaryLine(axis: "심박", state: "x", tone: .good, next: "a"),
                      RunSummaryLine(axis: "거리 적응", state: "y", tone: .good, next: "b")]
