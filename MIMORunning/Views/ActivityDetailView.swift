@@ -274,18 +274,19 @@ struct ActivityDetailView: View {
     private var headlineKey: String {
         "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
         "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.points.count ?? 0)|\(level.rawValue)|" +
-        "\(formShifts.count)|\(formRunCadenceResidual ?? 0)"
+        "\(formShifts.count)|\(formRunCadenceResidual ?? 0)|\(engine.phys.hrMax?.value ?? 0)"
     }
 
     private func recomputeHeadline() {
         guard activity.type == .running else { headline = nil; digest = []; return }
-        let input = RunSummaryBuilder.input(summaryContext)
+        let ctx = summaryContext
+        let input = RunSummaryBuilder.input(ctx)
         let lines = RunSummary.lines(input)
         let eff = RunInsight.efficiencyComparison(in: runInsights)
         let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff,
                                  threshold: thresholdContext)
         if h != headline { withAnimation(.easeInOut(duration: 0.3)) { headline = h } }
-        let d = computeDigest(context: summaryContext, input: input, lines: lines)
+        let d = computeDigest(context: ctx, input: input, lines: lines)
         if d != digest { withAnimation(.easeInOut(duration: 0.3)) { digest = d } }
     }
 
@@ -1932,7 +1933,14 @@ private struct InsightCard: View {
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    // 탭 요약 블록이 있으면 사실·다음 줄은 블록으로 옮겨져 여기선 그리지 않는다(중복 방지)
+                    // 탭 요약 블록이 있으면 총평 출처 사실(headline.fact)·다음 줄은 블록으로 옮겨져 그리지 않는다(중복 방지).
+                    // 블록이 만들지 않는 사실(드문 사건·대체의 엔진 부연, 대회 해마다 비교, 악조건 체감 강도)은 블록과 함께 남긴다.
+                    if !digest.isEmpty, !usesHeadline || showsComparison {
+                        Text(displayDetail)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.72))
+                            .contentTransition(.opacity)
+                    }
                     if digest.isEmpty {
                         Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
                             .font(.subheadline)
