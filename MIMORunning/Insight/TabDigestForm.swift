@@ -256,6 +256,40 @@ enum TabDigestForm {
 
     private enum Verdict { case problem, good }
 
+    /// 마무리 문장 갈래의 요약 개조식 — 문장과 같은 갈래·같은 값(케이던스·지면접촉 평균)으로 만든다.
+    static func narrativeShort(_ x: Inputs) -> String? {
+        let L = AppLanguage.shared
+        guard let r = route(x) else { return nil }
+        switch r {
+        case .lowCadence(let cad):
+            return L.s("케이던스 \(cad)spm · 160 미만", "Cadence \(cad) spm · under 160", ja: "ケイデンス\(cad)spm · 160未満")
+        case .framed(let i, let f):
+            guard let v = framedVerdict(i, f) else { return nil }
+            let gct = i.gctStr ?? "--"
+            if v == .good {
+                return L.s("지면접촉 \(gct)ms · 평소보다 짧음", "Ground contact \(gct) ms · shorter than usual", ja: "接地時間\(gct)ms · 普段より短い")
+            }
+            if i.gctStr != nil, i.gct == .above, f == .easy, i.cad == .below {
+                // F2 다리 무거움 패턴 — 피로 맥락은 40자 안에 들어갈 때만 잇는다
+                let base = L.s("지면접촉 \(gct)ms·케이던스 \(i.cadStr)spm — 다리 무거운 날 패턴",
+                               "Contact \(gct) ms · cadence \(i.cadStr) spm — heavy-legs pattern",
+                               ja: "接地\(gct)ms・ケイデンス\(i.cadStr)spm — 脚が重い日のパターン")
+                // 한 줄 상한 — 한국어·일본어 40자, 영어는 글자 수가 길어 64자
+                let limit = Int(L.s("40", "64", ja: "40")) ?? 40
+                if let fc = x.fatigueContext, !fc.isEmpty, (base + " · " + fc).count <= limit {
+                    return base + " · " + fc
+                }
+                return base
+            }
+            if i.gctStr != nil, i.gct == .above, f == .fast {
+                return L.s("빠른 날 지면접촉 \(gct)ms · 평소보다 김", "Fast day · contact \(gct) ms, longer than usual", ja: "速い日の接地時間\(gct)ms · 普段より長い")
+            }
+            return L.s("빠른 날 케이던스 \(i.cadStr)spm · 평소보다 낮음", "Fast day · cadence \(i.cadStr) spm, lower than usual", ja: "速い日のケイデンス\(i.cadStr)spm · 普段より低い")
+        default:
+            return nil
+        }
+    }
+
     /// `FormNarrative.sentence` 분기 순서(지면접촉 → 케이던스 → 보폭 → 모두 범위)를 따라 고른 분기의 성격.
     /// 문제 = 이지 다리 무거움(F2)·빠른 날 접지 김/케이던스 낮게 속도(F3). 좋음 = 지면접촉 짧음(A7).
     private static func framedVerdict(_ i: FormNarrative.Input, _ f: FormNarrative.Frame) -> Verdict? {
@@ -295,17 +329,17 @@ enum TabDigestForm {
     /// 거리문맥 러닝에서 케이던스·보폭·지면접촉이 평소 범위를 벗어난 첫 버킷을 찾아 관찰 문구를 만든다.
     /// 세 지표 모두 범위 안이거나 3단계 폼 문장이 있으면 nil. 줄은 "\n"으로 잇는다.
     /// - Parameter series: 카드가 이미 계산해 둔 추이 시리즈(없으면 여기서 계산)
-    static func formChangeSentence(_ x: Inputs, series: [RunFormCardView.FormSeries]? = nil) -> String? {
+    private struct BandExit {
+        let dir: FormNarrative.Metric
+        let kmStart: Double   // 버킷 시작 km
+        let kmEnd: Double     // 버킷 끝 km
+    }
+
+    /// 범위 이탈 시작 버킷(시작 km 순). 문장·요약이 같은 결과를 쓴다. 거리문맥이 아니거나 3단계 폼 문장이 있으면 nil.
+    private static func formChangeExits(_ x: Inputs, series: [RunFormCardView.FormSeries]?) -> [BandExit]? {
         // 3단계 폼 문장이 나오면 이탈 위치까지 그 문장이 말한다 — 같은 사실을 두 번 적지 않는다.
         guard x.isLongDistanceContext, x.phase == nil else { return nil }
-        let L = AppLanguage.shared
         let all = series ?? RunFormCardView.makeFormSeries(x)
-
-        struct BandExit {
-            let dir: FormNarrative.Metric
-            let kmStart: Double   // 버킷 시작 km
-            let kmEnd: Double     // 버킷 끝 km
-        }
         var exits: [BandExit] = []
         // [103] 전체 거리의 40% 이전 이탈은 "처음부터 다른 값" — 변화 판정 제외
         let totalKm = x.activity.distance / 1000
@@ -332,7 +366,31 @@ enum TabDigestForm {
         }
 
         guard !exits.isEmpty else { return nil }
-        let sorted = exits.sorted { $0.kmStart < $1.kmStart }
+        return exits.sorted { $0.kmStart < $1.kmStart }
+    }
+
+    /// 장거리 범위 이탈 요약 개조식 — "28km부터 케이던스·지면접촉 범위 이탈"
+    static func formChangeShort(_ x: Inputs, series: [RunFormCardView.FormSeries]? = nil) -> String? {
+        guard let sorted = formChangeExits(x, series: series), let first = sorted.first else { return nil }
+        let L = AppLanguage.shared
+        let km = Int(first.kmStart.rounded())
+        let names: [String] = sorted.compactMap { e in
+            switch e.dir {
+            case .cadence:       return L.s("케이던스", "cadence", ja: "ケイデンス")
+            case .stride:        return L.s("보폭", "stride", ja: "ストライド")
+            case .groundContact: return L.s("지면접촉", "ground contact", ja: "接地時間")
+            case .verticalOsc:   return nil
+            }
+        }
+        guard !names.isEmpty else { return nil }
+        return L.s("\(km)km부터 \(names.joined(separator: "·")) 평소 범위 밖",
+                   "Outside usual range from \(km) km · \(names.joined(separator: ", "))",
+                   ja: "\(km)kmから\(names.joined(separator: "・"))が普段の範囲外")
+    }
+
+    static func formChangeSentence(_ x: Inputs, series: [RunFormCardView.FormSeries]? = nil) -> String? {
+        guard let sorted = formChangeExits(x, series: series) else { return nil }
+        let L = AppLanguage.shared
 
         // 문구 — 관찰+위치만, 원인 표현 없음 [96 ⚠️]
         let lines: [String] = sorted.enumerated().compactMap { idx, e in
@@ -407,20 +465,20 @@ enum TabDigestForm {
 
     static func signals(_ x: Inputs, lines: [RunSummaryLine]) -> [TabDigest.Signal] {
         var out: [TabDigest.Signal] = []
-        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?) {
+        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?, short: String?) {
             out.append(TabDigest.Signal(tab: .form, kind: .problem, priority: p, family: family, text: text,
-                                        tone: .caution, direction: direction))
+                                        tone: .caution, direction: direction, short: short))
         }
-        func good(_ p: Int, _ text: String, _ direction: String? = nil) {
+        func good(_ p: Int, _ text: String, _ direction: String? = nil, short: String?) {
             out.append(TabDigest.Signal(tab: .form, kind: .good, priority: p, family: .unique, text: text,
-                                        tone: .good, direction: direction))
+                                        tone: .good, direction: direction, short: short))
         }
 
         // 인터벌 — 인터벌 피로 카드의 해석 + 제안 한 쌍만
         if x.isInterval {
             if let v = IntervalFatigueCard.verdict(segments: x.intervalSegments) {
-                if v.isProblem { problem(1, .unique, v.interpretation, v.suggestion) }
-                else { good(1, v.interpretation) }
+                if v.isProblem { problem(1, .unique, v.interpretation, v.suggestion, short: v.short) }
+                else { good(1, v.interpretation, short: v.short) }
             }
             return out
         }
@@ -434,22 +492,23 @@ enum TabDigestForm {
             // 카드(RunFormCardView)와 같은 꼬리 생략 — 더위 안심 괄호가 붙으면 "흔한 변화" 꼬리를 뺀다
             let sentence = FormPhase.sentence(p, isLongDistance: isLong,
                                               suppressCommonTail: FormPhase.hasHeatReassurance(p, heatDeltaBpm: x.heatDeltaBpm))
+            let st = FormPhase.shortState(p)
             switch p.late {
             case .faded:
-                problem(1, .latePace, sentence, next)
+                problem(1, .latePace, sentence, next, short: st)
                 latePhaseProblem = true
             case .heavier:
                 if p.isSoftCadenceOnly {
-                    good(2, sentence)
+                    good(2, sentence, short: st)
                 } else {
-                    problem(6, .lateForm, sentence, next)
+                    problem(6, .lateForm, sentence, next, short: st)
                     latePhaseProblem = true
                 }
             case .bouncier:
-                problem(6, .lateForm, sentence, next)
+                problem(6, .lateForm, sentence, next, short: st)
                 latePhaseProblem = true
             case .held:
-                good(1, sentence)
+                good(1, sentence, short: AppLanguage.shared.s("폼 끝까지 유지", "Form held to the finish", ja: "フォームを最後まで維持"))
             case .cadenceDefended:
                 break
             }
@@ -457,20 +516,21 @@ enum TabDigestForm {
 
         // F2·F3·F8 마무리 문장 문제 분기 / 좋음: 지면접촉 짧음
         if let text = narrative(x) {
+            let short = narrativeShort(x)
             if narrativeIsProblem(x) {
                 switch route(x) {
                 case .lowCadence?:
                     // F8 케이던스 160 미만 — 방향 = 케이던스-심박 권고(있을 때). F4~F7 뒤.
-                    problem(8, .unique, text, cadenceAdvice(x))
+                    problem(8, .unique, text, cadenceAdvice(x), short: short)
                 case .framed(_, let f)? where f == .easy:
                     // F2 다리 무거움 패턴 — 방향 = 러닝폼 줄 next
-                    problem(2, .unique, text, next)
+                    problem(2, .unique, text, next, short: short)
                 default:
                     // F3 빠른 날 — 권고가 문장 안에 있어 방향 없음
-                    problem(3, .unique, text, nil)
+                    problem(3, .unique, text, nil, short: short)
                 }
             } else if narrativeIsGood(x) {
-                good(5, text)
+                good(5, text, short: short)
             }
         }
 
@@ -479,12 +539,12 @@ enum TabDigestForm {
         if let v = TabDigestRhythm.typeFormVerdict(workoutType: x.workoutType, splits: x.splits, formBaseline: x.baseline) {
             switch x.workoutType {
             case .buildUp:
-                if v.isProblem { problem(4, .unique, v.text, nil) }
+                if v.isProblem { problem(4, .unique, v.text, nil, short: v.short) }
             case .tempo:
-                if v.isProblem { problem(5, .unique, v.text, nil) } else if v.isGood { good(3, v.text) }
+                if v.isProblem { problem(5, .unique, v.text, nil, short: v.short) } else if v.isGood { good(3, v.text, short: v.short) }
             case .lsd, .longRun:
-                if v.isProblem { if !latePhaseProblem { problem(6, .lateForm, v.text, next) } }
-                else if v.isGood { good(4, v.text) }
+                if v.isProblem { if !latePhaseProblem { problem(6, .lateForm, v.text, next, short: v.short) } }
+                else if v.isGood { good(4, v.text, short: v.short) }
             default:
                 break
             }
@@ -492,16 +552,43 @@ enum TabDigestForm {
 
         // F7 장거리 후반 범위 이탈 시작 km
         if let text = formChangeSentence(x) {
-            problem(7, .lateForm, text, next)
+            problem(7, .lateForm, text, next, short: formChangeShort(x))
         }
 
         // 덧붙임 — 장기 추세 첫 문장
         if let obs = mrFormObservation(x.formShifts, hasRecentGap: x.hasRecentGap, refCadence: x.avgCadence,
                                        runCadenceResidual: x.runCadenceResidual),
            let first = obs.text.components(separatedBy: "\n").first, !first.isEmpty {
-            out.append(TabDigest.Signal(tab: .form, kind: .extra, priority: 1, family: .unique, text: first))
+            out.append(TabDigest.Signal(tab: .form, kind: .extra, priority: 1, family: .unique, text: first,
+                                        short: trendShort(x)))
         }
         return out
+    }
+
+    /// 장기 추세 요약 개조식 — `mrFormObservation`이 고르는 실증 지표(최대 2개)와 같은 값.
+    /// 첫 줄이 다루는 지표만: 케이던스+지면접촉이 함께면 둘 다, 아니면 첫 지표 하나.
+    static func trendShort(_ x: Inputs) -> String? {
+        let L = AppLanguage.shared
+        let capped = Array(x.formShifts.filter(\.isReal).prefix(2))
+        let keys = Set(capped.map(\.metric.key))
+        let shown = keys.isSuperset(of: ["cadence", "gct"]) ? capped : Array(capped.prefix(1))
+        let parts: [String] = shown.compactMap { s in
+            switch s.metric.key {
+            case "cadence":
+                let d = TabDigest.signed(Int(s.delta.rounded()))
+                return L.s("케이던스 \(d)spm", "cadence \(d) spm", ja: "ケイデンス\(d)spm")
+            case "gct":
+                let d = TabDigest.signed(Int(s.delta.rounded()))
+                return L.s("지면접촉 \(d)ms", "ground contact \(d) ms", ja: "接地時間\(d)ms")
+            case "vo":
+                let v = String(format: "%+.1f", s.delta)
+                return L.s("위아래 움직임 \(v)cm", "vertical oscillation \(v) cm", ja: "上下動\(v)cm")
+            default:
+                return nil
+            }
+        }
+        guard !parts.isEmpty else { return nil }
+        return L.s("같은 페이스 폼 추세 · ", "Form trend at same pace · ", ja: "同ペースのフォーム推移 · ") + parts.joined(separator: " · ")
     }
 
     /// 폼 블록 기본 방향 — 케이던스-심박 권고

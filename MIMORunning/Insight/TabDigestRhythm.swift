@@ -18,6 +18,8 @@ enum TabDigestRhythm {
         /// 페이스 모양 판정 종류 — 요약에서 소유 블록을 가른다(설계 §5: 일반 유형 후반 느려짐은 퍼포먼스 몫)
         enum PaceShape: Equatable { case distanceRunDrop, varied, slowedLate }
         var paceShape: PaceShape? = nil
+        /// 요약 블록용 개조식 표현(`TabDigest.Signal.short`) — 카드는 쓰지 않는다
+        var short: String? = nil
         var isGood: Bool { shade == .good }
     }
 
@@ -41,26 +43,34 @@ enum TabDigestRhythm {
         let visible = fractions.filter { $0.value > 0.01 }
         let total = max(1e-9, visible.values.reduce(0, +))
         let z2frac = (fractions[2] ?? 0) / total
+        func pct(_ f: Double) -> Int { Int((f * 100).rounded()) }
+        let z2pct = pct((visible[2] ?? 0) / total)
         let zone2 = Verdict(text: L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました"),
-                            isProblem: false, shade: .good)
+                            isProblem: false, shade: .good,
+                            short: L.s("Zone 2 중심 · \(z2pct)%", "Mostly Zone 2 · \(z2pct)%", ja: "ゾーン2中心 · \(z2pct)%"))
         if z2frac >= 0.60 { return zone2 }
         // 총평과 같은 규칙 — Zone 4+5 합이 가장 큰 존 이상(35%↑)이면 고강도 캡션
         guard let v = FormNarrative.verdictZone(fractions: visible) else { return nil }
         let heatSuffix = heatSuffix ?? ""
         let planned = FormNarrative.isPlannedHighIntensity(workoutType)
         switch v.zone {
-        case 1: return Verdict(text: L.s("가벼운 회복 강도였습니다", "Light recovery run", ja: "軽い回復強度でした"), isProblem: false)
+        case 1: return Verdict(text: L.s("가벼운 회복 강도였습니다", "Light recovery run", ja: "軽い回復強度でした"), isProblem: false,
+                               short: L.s("가벼운 회복 강도 · Zone 1 \(pct(v.frac))%", "Light recovery · \(pct(v.frac))% in Zone 1", ja: "軽い回復強度 · ゾーン1 \(pct(v.frac))%"))
         case 2: return zone2
         case 3:
             // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "의도한 고강도"와도 부딪혔다
             if workoutType == .interval {
                 return Verdict(text: L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed", ja: "本練習と回復が混ざった平均がゾーン3です") + heatSuffix,
-                               isProblem: false)
+                               isProblem: false,
+                               short: L.s("운동·회복 평균 Zone 3", "Work + recovery average Zone 3", ja: "本練習・回復の平均ゾーン3") + heatSuffix)
             }
             return Verdict(text: L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone", ja: "心拍はテンポ域にとどまりました") + heatSuffix,
-                           isProblem: !planned)
+                           isProblem: !planned,
+                           short: L.s("템포 구간 심박 · Zone 3 \(pct(v.frac))%", "Tempo-zone HR · \(pct(v.frac))% in Zone 3", ja: "テンポ域の心拍 · ゾーン3 \(pct(v.frac))%") + heatSuffix)
         default:
-            return Verdict(text: FormNarrative.highIntensityZoneCaption(type: workoutType) + heatSuffix, isProblem: !planned)
+            let high = pct(((visible[4] ?? 0) + (visible[5] ?? 0)) / total)
+            return Verdict(text: FormNarrative.highIntensityZoneCaption(type: workoutType) + heatSuffix, isProblem: !planned,
+                           short: L.s("고강도 구간 · Zone 4~5 \(high)%", "High intensity · \(high)% in Zone 4–5", ja: "高強度域 · ゾーン4~5 \(high)%") + heatSuffix)
         }
     }
 
@@ -70,6 +80,8 @@ enum TabDigestRhythm {
         enum Kind: Equatable { case maxIntensity, lateClimb, secondHalfRise, easedOff, steady }
         let kind: Kind
         let text: String
+        /// 요약 블록용 개조식 표현 — 카드는 쓰지 않는다
+        var short: String? = nil
     }
 
     /// 심박 차트 캡션 — 샘플 10개 미만이면 nil.
@@ -113,9 +125,20 @@ enum TabDigestRhythm {
         // 중반이 섞여 마지막 구간 상승(149→161)이 묻혀 "끝까지 안정적"과 총평이 엇갈렸다(2026-10-08)
         let lateRose = RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail,
                                                          workoutType: workoutType, history: history)
-        if diff >= 8 || lateRose { return HRCaption(kind: .secondHalfRise, text: FormNarrative.hrSecondHalfRiseCaption(type: workoutType)) }
-        if diff <= -5 { return HRCaption(kind: .easedOff, text: L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました")) }
-        return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType))
+        let d = Int(diff.rounded())
+        let dStr = TabDigest.signed(d)
+        if diff >= 8 || lateRose {
+            let short = diff >= 8
+                ? L.s("후반 심박 상승 · 전후반 \(dStr)bpm", "HR up late · \(dStr) bpm half to half", ja: "後半の心拍上昇 · 前後半\(dStr)bpm")
+                : L.s("마지막 구간 심박 상승", "HR up in the final stretch", ja: "最後の区間で心拍上昇")
+            return HRCaption(kind: .secondHalfRise, text: FormNarrative.hrSecondHalfRiseCaption(type: workoutType), short: short)
+        }
+        if diff <= -5 {
+            return HRCaption(kind: .easedOff, text: L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"),
+                             short: L.s("후반 심박 \(dStr)bpm · 전반 대비", "Late HR \(dStr) bpm vs first half", ja: "後半の心拍\(dStr)bpm · 前半比"))
+        }
+        return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType),
+                         short: L.s("심박 끝까지 안정 · 전후반 \(dStr)bpm", "HR steady to the end · \(dStr) bpm half to half", ja: "心拍は最後まで安定 · 前後半\(dStr)bpm"))
     }
 
     // MARK: - 거리 문맥 (옮김: RhythmInsightCard.distanceContext — 카드는 앞에 "↑ "를 붙인다)
@@ -160,16 +183,19 @@ enum TabDigestRhythm {
         let pct = Int((ratio * 100).rounded())
         if ratio >= 0.80 {
             return Verdict(text: L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%", ja: "しっかりイージーペースを守りました"),
-                           isProblem: false, shade: .good)
+                           isProblem: false, shade: .good,
+                           short: L.s("이지 페이스 유지 · Zone 1~2 \(pct)%", "Easy pace held · \(pct)% in Zone 1–2", ja: "イージーペース維持 · ゾーン1~2 \(pct)%"))
         } else if ratio >= 0.50 {
             // 존 **비율**만 보는 규칙이라 "중간중간 올라갔다"처럼 시간 변화를 말하면 안 된다 —
             // 심박 곡선이 평평해도(차트 캡션 "끝까지 안정적") 이 문장이 떠서 서로 부딪쳤다.
             return Verdict(text: L.s("이지 구간이 \(pct)%였습니다. 조금 더 천천히 가도 좋습니다",
                                      "Easy zones \(pct)% — a little slower would help", ja: "イージー区間が\(pct)%でした。もう少しゆっくりでも大丈夫です"),
-                           isProblem: true, shade: .neutral)
+                           isProblem: true, shade: .neutral,
+                           short: L.s("이지 구간 · Zone 1~2 \(pct)%", "Easy zones · \(pct)% in Zone 1–2", ja: "イージー区間 · ゾーン1~2 \(pct)%"))
         } else {
             return Verdict(text: L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort", ja: "イージーランなのに心拍がかなり高めでした。もっとゆっくり走っても大丈夫です"),
-                           isProblem: true, shade: .caution)
+                           isProblem: true, shade: .caution,
+                           short: L.s("이지런 기준 심박 높음 · Zone 1~2 \(pct)%", "High HR for an easy run · \(pct)% in Zone 1–2", ja: "イージーランとしては高い心拍 · ゾーン1~2 \(pct)%"))
         }
     }
 
@@ -194,18 +220,25 @@ enum TabDigestRhythm {
             // "끌어올렸다"는 본인 전반 대비 실제로 올랐을 때만 — 기준값만 넘고 전반과 같으면
             // 폼 추이 카드의 "케이던스는 그대로예요"와 어긋난다.
             let fc = halfAvgCadence(Array(fullSplits.prefix(half)))
+            let scI = Int(sc.rounded())
             if sc >= expectedCad, let fc, sc - fc >= 2 {
+                let up = Int((sc - fc).rounded())
                 return Verdict(text: L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"),
-                               isProblem: false, shade: .good, aboutForm: true)
+                               isProblem: false, shade: .good, aboutForm: true,
+                               short: L.s("후반 케이던스 +\(up)spm · \(scI)spm", "Late cadence +\(up) spm · \(scI) spm", ja: "後半ケイデンス+\(up)spm · \(scI)spm"))
             } else if sc >= expectedCad {
                 return Verdict(text: L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"),
-                               isProblem: false, shade: .good, aboutForm: true)
+                               isProblem: false, shade: .good, aboutForm: true,
+                               short: L.s("후반 케이던스 \(scI)spm · 평소 이상", "Late cadence \(scI) spm · above usual", ja: "後半ケイデンス\(scI)spm · 普段以上"))
             } else if sc <= expectedCad - 2 {
+                let gap = Int((expectedCad - sc).rounded())
                 return Verdict(text: L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"),
-                               isProblem: true, shade: .caution, aboutForm: true)
+                               isProblem: true, shade: .caution, aboutForm: true,
+                               short: L.s("보폭 위주 빌드업 · 후반 케이던스 평소 -\(gap)spm", "Stride-led buildup · late cadence -\(gap) spm vs usual", ja: "ストライド主体のビルドアップ · 後半ケイデンス普段比-\(gap)spm"))
             } else {
                 return Verdict(text: L.s("평소 패턴대로 페이스를 올렸습니다", "Paced up in your usual pattern", ja: "普段のパターンどおりにペースを上げました"),
-                               isProblem: false, shade: .neutral, aboutForm: true)
+                               isProblem: false, shade: .neutral, aboutForm: true,
+                               short: L.s("평소 패턴 빌드업 · 후반 케이던스 \(scI)spm", "Usual buildup pattern · late cadence \(scI) spm", ja: "普段どおりのビルドアップ · 後半ケイデンス\(scI)spm"))
             }
 
         case .tempo:
@@ -215,29 +248,36 @@ enum TabDigestRhythm {
             let second = Array(fullSplits.suffix(fullSplits.count - half))
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
+                let g = TabDigest.signed(Int(gctRise.rounded()))
                 if gctRise <= -7 {
                     return Verdict(text: L.s("후반으로 갈수록 지면접촉이 짧아졌습니다. 템포 페이스가 잘 맞았습니다",
                                              "Ground contact shortened — tempo pace was well-matched", ja: "後半になるほど接地時間が短くなりました。テンポのペースがよく合っていました"),
-                                   isProblem: false, shade: .good, aboutForm: true)
+                                   isProblem: false, shade: .good, aboutForm: true,
+                                   short: L.s("후반 지면접촉 \(g)ms · 단축", "Late ground contact \(g) ms · shorter", ja: "後半の接地時間\(g)ms · 短縮"))
                 } else if gctRise < 8 {
                     return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
-                                   isProblem: false, shade: .good, aboutForm: true)
+                                   isProblem: false, shade: .good, aboutForm: true,
+                                   short: L.s("후반까지 폼 유지 · 지면접촉 \(g)ms", "Form held late · ground contact \(g) ms", ja: "後半までフォーム維持 · 接地時間\(g)ms"))
                 } else {
                     let rise = Int(gctRise.rounded())
                     return Verdict(text: L.s("후반에 지면접촉이 +\(rise)ms 늘었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
                                              "Ground contact +\(rise)ms in second half — pace may be slightly high", ja: "後半に接地時間が+\(rise)ms増えました。テンポのペースが少し速いかもしれません"),
-                                   isProblem: true, shade: .caution, aboutForm: true)
+                                   isProblem: true, shade: .caution, aboutForm: true,
+                                   short: L.s("후반 지면접촉 +\(rise)ms", "Late ground contact +\(rise) ms", ja: "後半の接地時間+\(rise)ms"))
                 }
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
+                    let c = TabDigest.signed(Int((sc - fc).rounded()))
                     return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
-                                   isProblem: false, shade: .good, aboutForm: true)
+                                   isProblem: false, shade: .good, aboutForm: true,
+                                   short: L.s("후반까지 폼 유지 · 케이던스 \(c)spm", "Form held late · cadence \(c) spm", ja: "後半までフォーム維持 · ケイデンス\(c)spm"))
                 } else {
                     let drop = Int(cadDrop.rounded())
                     return Verdict(text: L.s("후반에 발걸음이 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
                                              "Cadence dropped \(drop)spm — pace may be slightly high", ja: "後半にピッチが\(drop)spm落ちました。テンポのペースが少し速いかもしれません"),
-                                   isProblem: true, shade: .caution, aboutForm: true)
+                                   isProblem: true, shade: .caution, aboutForm: true,
+                                   short: L.s("후반 케이던스 -\(drop)spm", "Late cadence -\(drop) spm", ja: "後半ケイデンス-\(drop)spm"))
                 }
             } else {
                 return nil
@@ -248,21 +288,30 @@ enum TabDigestRhythm {
             let half = fullSplits.count / 2
             let first = Array(fullSplits.prefix(half))
             let second = Array(fullSplits.suffix(fullSplits.count - half))
-            let heavier = Verdict(text: L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"),
-                                  isProblem: true, shade: .neutral, aboutForm: true)
-            let held = Verdict(text: FormNarrative.formHeldCaption(type: wt), isProblem: false, shade: .good, aboutForm: true)
+            func heavier(_ short: String) -> Verdict {
+                Verdict(text: L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"),
+                        isProblem: true, shade: .neutral, aboutForm: true, short: short)
+            }
+            func held(_ short: String) -> Verdict {
+                Verdict(text: FormNarrative.formHeldCaption(type: wt), isProblem: false, shade: .good, aboutForm: true, short: short)
+            }
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
                 let gctRise = sg - fg
+                let g = TabDigest.signed(Int(gctRise.rounded()))
                 if gctRise <= -7 {
                     return Verdict(text: L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened through the long run", ja: "長い距離なのに後半になるほど接地時間が短くなりました"),
-                                   isProblem: false, shade: .good, aboutForm: true)
+                                   isProblem: false, shade: .good, aboutForm: true,
+                                   short: L.s("장거리 후반 지면접촉 \(g)ms · 단축", "Late ground contact \(g) ms · shorter", ja: "長距離後半の接地時間\(g)ms · 短縮"))
                 } else if gctRise < 10 {
-                    return held
+                    return held(L.s("후반까지 폼 유지 · 지면접촉 \(g)ms", "Form held late · ground contact \(g) ms", ja: "後半までフォーム維持 · 接地時間\(g)ms"))
                 } else {
-                    return heavier
+                    return heavier(L.s("후반 폼 무거워짐 · 지면접촉 \(g)ms", "Heavier form late · ground contact \(g) ms", ja: "後半フォームが重く · 接地時間\(g)ms"))
                 }
             } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
-                return fc - sc < 2 ? held : heavier
+                let c = TabDigest.signed(Int((sc - fc).rounded()))
+                return fc - sc < 2
+                    ? held(L.s("후반까지 폼 유지 · 케이던스 \(c)spm", "Form held late · cadence \(c) spm", ja: "後半までフォーム維持 · ケイデンス\(c)spm"))
+                    : heavier(L.s("후반 폼 무거워짐 · 케이던스 \(c)spm", "Heavier form late · cadence \(c) spm", ja: "後半フォームが重く · ケイデンス\(c)spm"))
             } else {
                 return nil
             }
@@ -286,22 +335,28 @@ enum TabDigestRhythm {
             let second = Array(fullSplits.suffix(fullSplits.count - half))
             guard let fp = halfAvgPace(first), let sp = halfAvgPace(second) else { return nil }
             let paceDelta = sp - fp
+            let pd = TabDigest.signed(Int(paceDelta.rounded()))
+            let pdShort = L.s("\(pd)초/km", "\(pd) s/km", ja: "\(pd)秒/km")
             var result: Verdict
             if paceDelta <= 0 {
                 result = Verdict(text: L.s("후반에도 페이스가 떨어지지 않았습니다", "Pace held through the finish", ja: "後半もペースが落ちませんでした"),
-                                 isProblem: false, shade: .good)
+                                 isProblem: false, shade: .good,
+                                 short: L.s("후반 페이스 유지 · 전반 대비 ", "Pace held late · ", ja: "後半ペース維持 · 前半比") + pdShort)
             } else if paceDelta <= 25 {
                 result = Verdict(text: L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌습니다", "Pace slipped \(Int(paceDelta.rounded()))s in second half", ja: "後半にペースが\(Int(paceDelta.rounded()))秒落ちました"),
-                                 isProblem: false, shade: .neutral)
+                                 isProblem: false, shade: .neutral,
+                                 short: L.s("후반 페이스 ", "Late pace ", ja: "後半ペース") + pdShort)
             } else {
                 result = Verdict(text: L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast", ja: "後半のペースが大きく落ちました。序盤が速かったのかもしれません"),
-                                 isProblem: true, shade: .caution, paceShape: .distanceRunDrop)
+                                 isProblem: true, shade: .caution, paceShape: .distanceRunDrop,
+                                 short: L.s("후반 페이스 크게 하락 · ", "Big late pace drop · ", ja: "後半ペース大幅低下 · ") + pdShort)
             }
             // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second), (sg - fg) <= -7 {
                 let delta = Int(abs((sg - fg).rounded()))
                 result = Verdict(text: result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
-                                 isProblem: result.isProblem, shade: result.shade, paceShape: result.paceShape)
+                                 isProblem: result.isProblem, shade: result.shade, paceShape: result.paceShape,
+                                 short: result.short.map { $0 + L.s(" · 지면접촉 -\(delta)ms", " · contact -\(delta) ms", ja: " · 接地-\(delta)ms") })
             }
             return result
 
@@ -329,6 +384,15 @@ enum TabDigestRhythm {
             let firstCad = halfAvgCadence(first); let secondCad = halfAvgCadence(second)
             let formHeavy: Bool
             let formImproved: Bool   // ⓪ 후반 GCT ≤ -7ms — 개선
+            // 요약용 숫자 — 판정에 쓴 값 그대로(GCT 우선, 없으면 케이던스)
+            let formDeltaShort: String? = {
+                if let fg = fGCT, let sg = sGCT {
+                    return L.s("지면접촉 ", "ground contact ", ja: "接地時間") + TabDigest.signed(Int((sg - fg).rounded())) + "ms"
+                }
+                guard !slopeConfounded, let fc = firstCad, let sc = secondCad else { return nil }
+                return L.s("케이던스 ", "cadence ", ja: "ケイデンス") + TabDigest.signed(Int((sc - fc).rounded())) + "spm"
+            }()
+            let cvStr = String(format: "%.1f", cv)
             if let fg = fGCT, let sg = sGCT {
                 formHeavy    = (sg - fg) >= 10
                 formImproved = (sg - fg) <= -7
@@ -339,20 +403,26 @@ enum TabDigestRhythm {
             }
             if formImproved {
                 return Verdict(text: L.s("후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened as the run progressed", ja: "後半になるほど接地時間が短くなりました"),
-                               isProblem: false, shade: .good, aboutForm: true)
+                               isProblem: false, shade: .good, aboutForm: true,
+                               short: L.s("후반 지면접촉 단축", "Shorter ground contact late", ja: "後半の接地時間短縮") + (formDeltaShort.map { " · " + $0 } ?? ""))
             } else if formHeavy {
                 return Verdict(text: L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"),
-                               isProblem: true, shade: .neutral, aboutForm: true)
+                               isProblem: true, shade: .neutral, aboutForm: true,
+                               short: L.s("후반 폼 무거워짐", "Heavier form late", ja: "後半フォームが重く") + (formDeltaShort.map { " · " + $0 } ?? ""))
             } else if cv > 5 {
                 return Verdict(text: L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"),
-                               isProblem: true, shade: .neutral, paceShape: .varied)
+                               isProblem: true, shade: .neutral, paceShape: .varied,
+                               short: L.s("km 페이스 기복 · 변동 \(cvStr)%", "Uneven km pace · \(cvStr)% variation", ja: "kmペースの波 · 変動\(cvStr)%"))
             } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
                 // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
+                let d = TabDigest.signed(Int((second.overallPaceSecPerKm - first.overallPaceSecPerKm).rounded()))
                 return Verdict(text: L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"),
-                               isProblem: true, shade: .neutral, paceShape: .slowedLate)
+                               isProblem: true, shade: .neutral, paceShape: .slowedLate,
+                               short: L.s("후반 페이스 \(d)초/km", "Late pace \(d) s/km", ja: "後半ペース\(d)秒/km"))
             } else if cv <= 3 {
                 return Verdict(text: L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"),
-                               isProblem: false, shade: .good)
+                               isProblem: false, shade: .good,
+                               short: L.s("고른 페이스 · 변동 \(cvStr)%", "Even pace · \(cvStr)% variation", ja: "均等なペース · 変動\(cvStr)%"))
             } else {
                 return nil
             }
@@ -377,12 +447,12 @@ enum TabDigestRhythm {
 
     static func signals(context c: RunSummaryBuilder.Context, input i: RunSummaryInput, lines: [RunSummaryLine]) -> [TabDigest.Signal] {
         var out: [TabDigest.Signal] = []
-        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?) {
+        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?, short: String?) {
             out.append(TabDigest.Signal(tab: .rhythm, kind: .problem, priority: p, family: family, text: text,
-                                        tone: .caution, direction: direction))
+                                        tone: .caution, direction: direction, short: short))
         }
-        func good(_ p: Int, _ family: TabDigest.Family, _ text: String) {
-            out.append(TabDigest.Signal(tab: .rhythm, kind: .good, priority: p, family: family, text: text, tone: .good))
+        func good(_ p: Int, _ family: TabDigest.Family, _ text: String, short: String?) {
+            out.append(TabDigest.Signal(tab: .rhythm, kind: .good, priority: p, family: family, text: text, tone: .good, short: short))
         }
 
         let heart = line(RunHeadline.Axis.heart.label, in: lines)
@@ -393,7 +463,7 @@ enum TabDigestRhythm {
             let planEasy = i.workoutType != .race && i.planPhase.map { RunSummary.planEasyPhases.contains($0) } == true
             let easyIntent = RunSummary.easyIntentTypes.contains(i.workoutType)
             if planEasy || easyIntent {
-                problem(planEasy ? 2 : 1, .unique, statement(h), h.next)
+                problem(planEasy ? 2 : 1, .unique, statement(h), h.next, short: h.state)
                 heartProblem = true
             }
         }
@@ -414,7 +484,7 @@ enum TabDigestRhythm {
                 default:                 return .latePace
                 }
             }()
-            problem(3, family, text, late?.next)
+            problem(3, family, text, late?.next, short: LateRunDiagnosis.state(r))
             hasLate = true
         }
 
@@ -423,7 +493,7 @@ enum TabDigestRhythm {
                            activity: c.activity, detail: c.detail, history: c.history)
         // 빌드업은 후반 상승이 계획이라 문제로 내지 않는다(카드 캡션은 유형 문구로 그대로)
         if !hasLate, c.workoutType != .buildUp, let hr, hr.kind == .secondHalfRise {
-            problem(4, .lateHR, hr.text, nil)
+            problem(4, .lateHR, hr.text, nil, short: hr.short)
         }
 
         // R5 — 의도 없는 템포 구간 머묾 / 고강도 많음 (R1/R2가 같은 심박 강도를 이미 말했으면 생략)
@@ -431,7 +501,7 @@ enum TabDigestRhythm {
         let zone = zoneVerdict(fractions: zoneFractions, workoutType: c.workoutType,
                                heatSuffix: zoneHeatSuffix(heatHRModel: c.heatHRModel, temperatureC: c.activity.temperatureC))
         if !heartProblem, let zone, zone.isProblem {
-            problem(5, .unique, zone.text, heart?.next)
+            problem(5, .unique, zone.text, heart?.next, short: zone.short)
         }
 
         // R6 — 페이스: 후반 많이 떨어짐(거리주, .latePace) / 기복(.unique).
@@ -440,8 +510,8 @@ enum TabDigestRhythm {
                                     altitudeProfile: c.detail?.altitudeProfile ?? [])
         if let pace, pace.isProblem, !pace.aboutForm {
             switch pace.paceShape {
-            case .distanceRunDrop: problem(6, .latePace, pace.text, nil)
-            case .varied:          problem(6, .unique, pace.text, nil)
+            case .distanceRunDrop: problem(6, .latePace, pace.text, nil, short: pace.short)
+            case .varied:          problem(6, .unique, pace.text, nil, short: pace.short)
             case .slowedLate, nil: break
             }
         }
@@ -449,16 +519,17 @@ enum TabDigestRhythm {
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
         if c.workoutType == .easy, let f = easyLowZoneFraction(zones: c.hrZones) {
             let v = easyVerdict(lowZoneFraction: f)
-            if v.isGood { good(1, .unique, v.text) }
+            if v.isGood { good(1, .unique, v.text, short: v.short) }
         } else if let zone, zone.isGood {
-            good(1, .unique, zone.text)
+            good(1, .unique, zone.text, short: zone.short)
         }
         if let hr, hr.kind == .steady || hr.kind == .easedOff {
-            good(2, .unique, hr.text)
+            good(2, .unique, hr.text, short: hr.short)
         }
         if i.distanceRank == 1, let n = i.distanceSampleCount, n >= 5,
            let text = distanceRankPhrase(rank: 1, sampleCount: n) {
-            good(3, .distanceRank, text)
+            good(3, .distanceRank, text,
+                 short: AppLanguage.shared.s("최근 \(n)회 중 최장 거리", "Longest of last \(n) runs", ja: "直近\(n)回で最長距離"))
         }
         return out
     }

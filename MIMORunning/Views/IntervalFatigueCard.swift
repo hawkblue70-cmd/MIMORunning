@@ -18,6 +18,8 @@ struct IntervalFatigueCard: View {
         let suggestion: String?
         /// 근피로·심폐 부담·한계·리듬 붕괴 = 문제 / 유지·후반 상승·네거티브 = 좋음
         let isProblem: Bool
+        /// 오늘의 인사이트 요약 블록용 개조식 표현 — 카드는 쓰지 않는다
+        var short: String? = nil
     }
 
     /// 카드가 분석 박스(관찰·해석·제안)를 그리는 조건과 같다 — 운동 구간 3개 이상·전후반 1개 이상. 아니면 nil.
@@ -29,7 +31,36 @@ struct IntervalFatigueCard: View {
         case .muscFatigue, .cardioStress, .cardioLimit, .rhythmCollapse: isProblem = true
         case .normal, .lateBoost, .negativeSplit:                         isProblem = false
         }
-        return Verdict(interpretation: card.interpretation, suggestion: card.suggestion, isProblem: isProblem)
+        return Verdict(interpretation: card.interpretation, suggestion: card.suggestion, isProblem: isProblem,
+                       short: card.digestShort)
+    }
+
+    /// 요약 개조식 — 판정에 쓴 전후반 값 그대로: 회차 페이스 변화 · (보폭/케이던스 하락) · 심박 변화(±5bpm 이상)
+    private var digestShort: String? {
+        let L = AppLanguage.shared
+        guard let diff = paceDiffPct else { return nil }
+        var parts: [String] = []
+        let p = String(format: "%.1f", abs(diff))
+        if diff <= -1 {
+            parts.append(L.s("후반 회차 페이스 \(p)% 빨라짐", "Late reps \(p)% faster", ja: "後半の本数のペース\(p)%向上"))
+        } else if diff < 1 {
+            parts.append(L.s("회차 페이스 유지", "Rep pace held", ja: "本数のペース維持"))
+        } else {
+            parts.append(L.s("후반 회차 페이스 \(p)% 느려짐", "Late reps \(p)% slower", ja: "後半の本数のペース\(p)%低下"))
+        }
+        switch interpretationType {
+        case .muscFatigue:
+            if let sd = strideDropPct { parts.append(L.s("보폭 -\(String(format: "%.1f", sd))%", "stride -\(String(format: "%.1f", sd))%", ja: "ストライド-\(String(format: "%.1f", sd))%")) }
+        case .rhythmCollapse:
+            if let cd = cadDropPct { parts.append(L.s("케이던스 -\(String(format: "%.1f", cd))%", "cadence -\(String(format: "%.1f", cd))%", ja: "ケイデンス-\(String(format: "%.1f", cd))%")) }
+        default:
+            break
+        }
+        if let eh = earlyHR, let lh = lateHR {
+            let d = Int((lh - eh).rounded())
+            if abs(d) >= 5 { parts.append(L.s("심박 \(TabDigest.signed(d))bpm", "HR \(TabDigest.signed(d)) bpm", ja: "心拍\(TabDigest.signed(d))bpm")) }
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var workSegs: [IntervalSegment] { segments.filter { $0.stepLabel == "운동" } }

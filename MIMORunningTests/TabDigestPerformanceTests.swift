@@ -183,4 +183,31 @@ struct TabDigestPerformanceTests {
             $0.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다."
         } == true)
     }
+
+    // MARK: 요약 개조식(short)
+
+    private func isTerse(_ s: String?) -> Bool {
+        guard let s, !s.isEmpty else { return false }
+        return !s.contains("습니다")
+    }
+
+    @Test func performanceShortsAreTerse() {
+        var i = RunSummaryInput()
+        i.acuteChronic = .veryHigh
+        i.loadSentence = .veryHigh
+        let s = TabDigestPerformance.signals(context: .stub(workoutType: .general), input: i, lines: loadLines,
+                                             insights: [], easyAlertText: nil)
+        let p2 = s.first { $0.kind == .problem && $0.priority == 2 }
+        #expect(p2?.short == "7일 부하 4주 평균 대비 크게 높음 · 급증")
+
+        let splits = (1...10).map { i in
+            SplitData(id: i, distanceM: 1000, duration: 360, avgHeartRate: i <= 5 ? 140 : 155, avgCadence: nil,
+                      avgPower: nil, avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+        let d = TabDigestPerformance.signals(context: .stub(workoutType: .longRun, detail: detail(splits)),
+                                             input: RunSummaryInput(), lines: [], insights: [], easyAlertText: nil)
+        let p3 = d.first { $0.priority == 3 && $0.kind == .problem }
+        #expect(isTerse(p3?.short))
+        #expect(p3?.short?.hasPrefix("후반 심박 드리프트") == true)
+    }
 }

@@ -42,6 +42,8 @@ enum TabDigest {
         var tone: Tone = .neutral
         /// 이 문제/신호의 짝 권고 — 없으면 nil
         var direction: String? = nil
+        /// 요약 블록용 개조식 표현(명사형·숫자 포함) — 없으면 `text`. 카드 본문은 늘 `text`를 쓴다.
+        var short: String? = nil
     }
 
     /// 탭마다 문제 없을 때 쓰는 기본 방향(설계 §4 각 '기본 방향')
@@ -69,10 +71,13 @@ enum TabDigest {
             var dir = problems.first?.direction ?? good?.direction ?? defaults.directions[tab]
             if let d = dir, used.contains(d) { dir = nil }
             if let d = dir { used.insert(d) }
-            out.append(Block(tab: tab, statements: chosen.map { Statement(text: $0.text, tone: $0.tone) }, direction: dir))
+            out.append(Block(tab: tab, statements: chosen.map { Statement(text: $0.short ?? $0.text, tone: $0.tone) }, direction: dir))
         }
         return out
     }
+
+    /// 요약 개조식 숫자 부호 — 양수는 "+", 0·음수는 그대로("-3")
+    static func signed(_ n: Int) -> String { n > 0 ? "+\(n)" : "\(n)" }
 
     /// 세 탭 수집기 결과를 한 번에 조합 — `make(rhythm + form + performance)`와 같다.
     static func assemble(rhythm: [Signal], form: [Signal], performance: [Signal], defaults: Defaults = .init()) -> [Block] {

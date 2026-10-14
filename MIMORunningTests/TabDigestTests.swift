@@ -61,4 +61,11 @@ final class TabDigestTests: XCTestCase {
         ])
         XCTAssertEqual(b.map(\.tab), [.rhythm, .form, .performance])
     }
+    func testMakePrefersShortOverText() {
+        let b = TabDigest.make([
+            S(tab: .rhythm, kind: .problem, priority: 1, family: .unique, text: "긴 카드 문장입니다", tone: .caution, short: "짧은 개조식"),
+            S(tab: .rhythm, kind: .problem, priority: 2, family: .unique, text: "short 없음", tone: .caution),
+        ])
+        XCTAssertEqual(b[0].statements.map(\.text), ["짧은 개조식", "short 없음"])
+    }
 }

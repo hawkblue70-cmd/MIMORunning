@@ -204,4 +204,28 @@ struct TabDigestRhythmTests {
                      RunSummaryLine(axis: "거리 적응", state: "y", tone: .good, next: "b")]
         #expect(TabDigestRhythm.defaultDirection(lines: lines) == "b")
     }
+
+    // MARK: 요약 개조식(short)
+
+    private func isTerse(_ s: String?) -> Bool {
+        guard let s, !s.isEmpty else { return false }
+        return !s.contains("습니다") && !s.contains("였습니다")
+    }
+
+    @Test func rhythmShortsAreTerse() {
+        var i = RunSummaryInput(); i.workoutType = .easy; i.zoneFractions = [3: 0.6, 2: 0.4]; i.distKm = 8
+        let lines = RunSummary.lines(i)
+        let p = TabDigestRhythm.signals(context: .stub(workoutType: .easy), input: i, lines: lines).first { $0.kind == .problem }
+        #expect(isTerse(p?.short))
+        #expect(p?.short?.hasPrefix("이지런 기준 높음") == true)   // 총평 심박 줄 상태어 그대로
+
+        var r = RunSummaryInput(); r.distanceRank = 1; r.distanceSampleCount = 10; r.distKm = 8
+        let g = TabDigestRhythm.signals(context: .stub(workoutType: .general), input: r, lines: []).first { $0.family == .distanceRank }
+        #expect(g?.short == "최근 10회 중 최장 거리")
+        #expect(g?.text == "최근 10회 중 가장 긴 거리")   // 카드 문장은 그대로
+
+        let easy = TabDigestRhythm.easyVerdict(lowZoneFraction: 0.85)
+        #expect(easy.short == "이지 페이스 유지 · Zone 1~2 85%")
+        #expect(easy.text == "제대로 이지 페이스를 지켰습니다")
+    }
 }

@@ -60,43 +60,50 @@ enum TabDigestPerformance {
         let L = AppLanguage.shared
         let hot = (temperatureC ?? -.infinity) >= decouplingHotTempC
         typealias V = TabDigestRhythm.Verdict
+        // 요약 개조식 — 같은 pct 값
+        let p = String(format: "%.1f", pct)
+        let drift = L.s("후반 심박 드리프트 \(p)%", "Late HR drift \(p)%", ja: "後半の心拍ドリフト\(p)%")
+        let heatTail = L.s(" · 더위 영향", " · heat", ja: " · 暑さの影響")
         if wt == .buildUp {
             return V(text: L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",
                                "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"),
-                     isProblem: false, shade: .neutral)
+                     isProblem: false, shade: .neutral,
+                     short: L.s("후반 가속만큼 심박 상승 · \(p)%", "HR up with faster finish · \(p)%", ja: "後半の加速分の心拍上昇 · \(p)%"))
         }
         let aerobic = wt == .longRun || wt == .lsd || wt == .easy || wt == .general
         // 전후반 5% 안이어도 총평 "후반"이 심박 신호면 "지켰다"고 하지 않는다 — 같은 화면에서 반대로 읽혔다
         if pct <= 5, lateHRRoseFirst {
             return V(text: L.s("전후반으로는 5% 안이지만, 마지막 구간에서 같은 페이스에 심박이 올랐습니다.",
                                "Within 5% half to half, but HR rose at the same pace in the final stretch.", ja: "前後半では5%以内ですが、最後の区間で同じペースでも心拍が上がりました。"),
-                     isProblem: false, shade: .neutral)
+                     isProblem: false, shade: .neutral,
+                     short: L.s("마지막 구간 심박 상승 · 전후반 \(p)%", "HR up in the final stretch · \(p)% half to half", ja: "最後の区間で心拍上昇 · 前後半\(p)%"))
         }
+        let within5 = drift + L.s(" · 5% 이내", " · within 5%", ja: " · 5%以内")
         if pct <= 5 {
             return aerobic
                 ? V(text: L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 거리를 유산소로 감당했습니다.",
                               "HR held against pace to the end — you covered this distance aerobically.", ja: "後半までペースに対する心拍を保ちました。この距離を有酸素でこなしました。"),
-                    isProblem: false, shade: .good)
+                    isProblem: false, shade: .good, short: within5)
                 : V(text: L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 페이스로 이 거리를 버틸 힘이 있습니다.",
                               "HR held against pace to the end — you can sustain this pace for this distance.", ja: "後半までペースに対する心拍を保ちました。このペースでこの距離を走りきる力があります。"),
-                    isProblem: false, shade: .good)
+                    isProblem: false, shade: .good, short: within5)
         }
         if pct <= 10 {
             return hot
                 ? V(text: L.s("후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.",
                               "HR drifted up, but on a hot day that's within the normal range.", ja: "後半に心拍が上がりましたが、暑い日なので自然な範囲です。"),
-                    isProblem: false, shade: .neutral)
+                    isProblem: false, shade: .neutral, short: drift + heatTail)
                 : V(text: L.s("조건은 좋았는데 후반에 심박이 올랐습니다. 이 거리와 강도가 아직 조금 부담일 수 있습니다.",
                               "Conditions were fine but HR drifted up — this distance and effort may still be a bit much.", ja: "条件はよかったのに後半に心拍が上がりました。この距離と強度はまだ少し負担なのかもしれません。"),
-                    isProblem: true, shade: .neutral)
+                    isProblem: true, shade: .neutral, short: drift)
         }
         return hot
             ? V(text: L.s("후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.",
                           "HR drifted a lot — heat and fluid loss likely played a big part.", ja: "後半に心拍が大きく上がりました。暑さと水分不足の影響が大きかったと考えられます。"),
-                isProblem: false, shade: .caution)
+                isProblem: false, shade: .caution, short: drift + heatTail)
             : V(text: L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있습니다.",
                           "HR drifted a lot — this may still be a stretch, or the start was too fast.", ja: "後半に心拍が大きく上がりました。この距離と強度がまだきついか、序盤が速かったのかもしれません。"),
-                isProblem: true, shade: .caution)
+                isProblem: true, shade: .caution, short: drift + L.s(" · 10% 초과", " · over 10%", ja: " · 10%超"))
     }
 
     // MARK: - 7일 부하 (옮김: PerformanceInsightCard.sevenDayLoadRatioLabel·sevenDayLoadSentence)
@@ -125,6 +132,22 @@ enum TabDigestPerformance {
         case .high:     return L.s("부하 조금 높은 편", "slightly heavier than usual", ja: "負荷がやや高め")
         case .low:      return L.s("회복 방향으로 진행 중", "trending toward recovery", ja: "回復方向に進行中")
         }
+    }
+
+    /// 요약 개조식 — "7일 부하 4주 평균 대비 크게 높음 · 급증". 둘 다 없으면 nil.
+    static func loadShort(ratio: EffortLoad.RatioLabel?, kind: EffortLoad.SentenceKind?) -> String? {
+        let L = AppLanguage.shared
+        let k: String? = kind.map {
+            switch $0 {
+            case .monotony: return L.s("편차 적음", "little variation", ja: "差が小さい")
+            case .veryHigh: return L.s("급증", "surging", ja: "急増")
+            case .high:     return L.s("조금 높은 편", "slightly heavy", ja: "やや高め")
+            case .low:      return L.s("감소", "easing", ja: "減少")
+            }
+        }
+        let parts = [ratio.map(loadRatioText), k].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return L.s("7일 부하 ", "7-day load ", ja: "7日負荷 ") + parts.joined(separator: " · ")
     }
 
     /// 라벨과 문장을 카드와 같은 구분자로 잇는다 — 둘 다 없으면 nil.
@@ -299,6 +322,23 @@ enum TabDigestPerformance {
     static func returnSentences(activity: Activity, history: [Activity], heatHRModel: MRHeatHRModel?)
         -> (gap: String, compare: String?, advice: String?, recovered: String?)? {
         guard let ri = returnInfo(activity: activity, history: history, heatHRModel: heatHRModel) else { return nil }
+        return returnSentences(ri, activity: activity, heatHRModel: heatHRModel)
+    }
+
+    /// 요약 개조식 — "21일 만의 러닝 · 공백 전 심박 142 → 오늘 151" / 회복 "심박 공백 전 수준 회복"
+    private static func returnShort(_ ri: ReturnInfo) -> String {
+        let L = AppLanguage.shared
+        if ri.hrRecovered {
+            return L.s("심박 공백 전 수준 회복", "HR back to pre-break level", ja: "心拍がブランク前の水準に回復")
+        }
+        let gap = L.s("\(ri.gapDays)일 만의 러닝", "First run in \(ri.gapDays) days", ja: "\(ri.gapDays)日ぶりのラン")
+        guard let pre = ri.preGapHR, let today = ri.todayHR else { return gap }
+        let a = Int(pre.rounded()), b = Int(today.rounded())
+        return gap + L.s(" · 공백 전 심박 \(a) → 오늘 \(b)", " · HR \(a) before → \(b) today", ja: " · ブランク前の心拍\(a) → 今日\(b)")
+    }
+
+    private static func returnSentences(_ ri: ReturnInfo, activity: Activity, heatHRModel: MRHeatHRModel?)
+        -> (gap: String, compare: String?, advice: String?, recovered: String?) {
         let L = AppLanguage.shared
         let gap = L.s("\(ri.gapDays)일 만의 러닝입니다", "First run in \(ri.gapDays) days", ja: "\(ri.gapDays)日ぶりのランです")
         if ri.hrRecovered {
@@ -336,27 +376,30 @@ enum TabDigestPerformance {
     static func signals(context c: RunSummaryBuilder.Context, input i: RunSummaryInput, lines: [RunSummaryLine],
                         insights: [RunInsight], easyAlertText: String?) -> [TabDigest.Signal] {
         var out: [TabDigest.Signal] = []
-        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?) {
+        let L = AppLanguage.shared
+        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?, short: String?) {
             out.append(TabDigest.Signal(tab: .performance, kind: .problem, priority: p, family: family, text: text,
-                                        tone: .caution, direction: direction))
+                                        tone: .caution, direction: direction, short: short))
         }
-        func good(_ p: Int, _ family: TabDigest.Family, _ text: String) {
-            out.append(TabDigest.Signal(tab: .performance, kind: .good, priority: p, family: family, text: text, tone: .good))
+        func good(_ p: Int, _ family: TabDigest.Family, _ text: String, short: String?) {
+            out.append(TabDigest.Signal(tab: .performance, kind: .good, priority: p, family: family, text: text, tone: .good, short: short))
         }
         let loadNext = line(RunHeadline.Axis.load.label, in: lines)?.next
 
         // P1 — 복귀(공백 14일↑): "{g}일 만의 러닝입니다" + 공백 전 심박 비교, 방향 = 28일↑ 권고
-        let ret = returnSentences(activity: c.activity, history: c.history, heatHRModel: c.heatHRModel)
+        let ri = returnInfo(activity: c.activity, history: c.history, heatHRModel: c.heatHRModel)
+        let ret = ri.map { returnSentences($0, activity: c.activity, heatHRModel: c.heatHRModel) }
+        let retShort = ri.map(returnShort)
         if let r = ret, r.recovered == nil {
             let text = r.compare.map { r.gap + " — " + $0 } ?? r.gap
-            problem(1, .unique, text, r.advice)
+            problem(1, .unique, text, r.advice, short: retShort)
         }
 
         // P2 — 7일 부하 크게 증가 / 단조. 카드처럼 오늘 강도 입력 전이면 말하지 않는다(7일 합에 오늘이 빠짐).
         let jumped = i.acuteChronic == .high || i.acuteChronic == .veryHigh
         if !i.todayEffortMissing, jumped || i.loadSentence == .monotony,
            let text = loadLine(ratio: i.acuteChronic.map(loadRatioText), sentence: i.loadSentence.flatMap(loadSentence)) {
-            problem(2, .load, text, loadNext)
+            problem(2, .load, text, loadNext, short: loadShort(ratio: i.acuteChronic, kind: i.loadSentence))
         }
 
         // P3 — 디커플링. 값이 계산되면 .lateHR 신호를 정확히 1개 낸다(설계 §5: 후반 심박은 퍼포먼스 소유 — 리듬 R4가 다른 말을 하지 않게)
@@ -370,36 +413,52 @@ enum TabDigestPerformance {
             let v = decouplingVerdict(pct: pct, workoutType: c.workoutType, temperatureC: c.activity.temperatureC,
                                       lateHRRoseFirst: lateFirst)
             if v.isProblem || v.shade == .caution || lateFirst {
-                problem(3, .lateHR, v.text, nil)
+                problem(3, .lateHR, v.text, nil, short: v.short)
             } else if v.isGood {
-                good(3, .lateHR, v.text)
+                good(3, .lateHR, v.text, short: v.short)
             } else {
                 // 중립(더운 날 5~10%·빌드업) — 덧붙임으로 항상 보인다(.lateHR을 가져가므로 리듬 R3/R4 사실이 사라지지 않게)
-                out.append(TabDigest.Signal(tab: .performance, kind: .extra, priority: 1, family: .lateHR, text: v.text, tone: .neutral))
+                out.append(TabDigest.Signal(tab: .performance, kind: .extra, priority: 1, family: .lateHR, text: v.text, tone: .neutral,
+                                            short: v.short))
             }
         }
 
         // P4 — 같은 페이스 심박 높음(효율 비교, 카디악 드리프트 제외) / g1 낮음
+        // 인사이트 highlights 첫 값 = 효율 "Nbpm" · 지구력 "N.N%" · 유산소 VO2 값(엔진이 채우는 순서)
         let eff = RunInsight.efficiencyComparison(in: insights)
-        if let eff, eff.source == .efficiencyComparisonHigher { problem(4, .efficiency, eff.message, nil) }
+        func effShort(lower: Bool) -> String {
+            let h = eff?.highlights.first.map { " " + $0 } ?? ""
+            return lower ? L.s("같은 페이스 심박\(h) 낮음", "HR\(h) lower at same pace", ja: "同ペースで心拍\(h)低い")
+                         : L.s("같은 페이스 심박\(h) 높음", "HR\(h) higher at same pace", ja: "同ペースで心拍\(h)高い")
+        }
+        if let eff, eff.source == .efficiencyComparisonHigher { problem(4, .efficiency, eff.message, nil, short: effShort(lower: false)) }
 
-        // P5 — 이지 비율 경고(카드 비동기 결과가 있을 때만)
-        if let t = easyAlertText { problem(5, .unique, t, loadNext) }
+        // P5 — 이지 비율 경고(카드 비동기 결과가 있을 때만) — 문장이 이미 개조식("8주 14회 중 이지런 2회 · …")
+        if let t = easyAlertText { problem(5, .unique, t, loadNext, short: t) }
 
         // P6 — 후반 페이스 5%↑ 느려짐(지구력 인사이트 caution = 5% 초과). 문장 꼬리에 권고가 있다.
         let endurance = insights.first { $0.category == .endurance }
-        if let e = endurance, e.tone == .caution { problem(6, .latePace, e.message, nil) }
+        let endDrift = endurance?.highlights.first.map { " " + $0 } ?? ""
+        if let e = endurance, e.tone == .caution {
+            problem(6, .latePace, e.message, nil,
+                    short: L.s("후반 페이스\(endDrift) 느려짐", "Back half\(endDrift) slower", ja: "後半ペース\(endDrift)低下"))
+        }
 
         // P7 — 유산소 등급 평균 이하·낮음(cardio 톤 neutral = belowAvg·low)
         if let cardio = insights.first(where: { $0.category == .cardio }), cardio.tone == .neutral {
-            problem(7, .unique, cardio.message, nil)
+            let vo = cardio.highlights.first.map { " " + $0 } ?? ""
+            problem(7, .unique, cardio.message, nil,
+                    short: L.s("유산소 피트니스\(vo) · \(cardio.badge)", "Cardio fitness\(vo) · \(cardio.badge)", ja: "心肺フィットネス\(vo) · \(cardio.badge)"))
         }
 
         // 좋은 신호 — 같은 페이스 심박 낮음 → (역치 상승은 제목이 말하므로 제외) → 디커플링 ≤5%(위 P3에서) → 복귀 심박 회복 → 후반 유지
-        if let eff, eff.tone == .good { good(1, .efficiency, eff.message) }
-        if let rec = ret?.recovered { good(4, .unique, rec) }
+        if let eff, eff.tone == .good { good(1, .efficiency, eff.message, short: effShort(lower: true)) }
+        if let rec = ret?.recovered { good(4, .unique, rec, short: retShort) }
         // g5 — 전반 대비 후반 3% 안(네거티브 스플릿 포함). 카드의 '네거티브 스플릿'은 차트 꼬리표뿐이라 지구력 문장을 쓴다.
-        if let e = endurance, e.tone == .good { good(5, .latePace, e.message) }
+        if let e = endurance, e.tone == .good {
+            good(5, .latePace, e.message,
+                 short: L.s("후반 페이스 유지 · 전반 대비\(endDrift)", "Back half held · \(endDrift.trimmingCharacters(in: .whitespaces)) vs first half", ja: "後半ペース維持 · 前半比\(endDrift)"))
+        }
         return out
     }
 

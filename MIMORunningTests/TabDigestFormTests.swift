@@ -163,4 +163,23 @@ struct TabDigestFormTests {
         let blocks = TabDigest.make(rhythm)
         #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3?.text } == true)
     }
+
+    // MARK: 요약 개조식(short)
+
+    private func isTerse(_ s: String?) -> Bool {
+        guard let s, !s.isEmpty else { return false }
+        return !s.contains("습니다")
+    }
+
+    @Test func formShortsAreTerse() {
+        let heavy = TabDigestForm.signals(inputs(cadence: 165, gct: 265, baseline: baseline(),
+                                                 fatigue: "5일 연속 · 최근 7일 부하 +134%"), lines: [])
+            .first { $0.kind == .problem }
+        #expect(isTerse(heavy?.short))
+        #expect(heavy?.short?.hasPrefix("지면접촉 265ms·케이던스 165spm — 다리 무거운 날 패턴") == true)
+        #expect((heavy?.short?.count ?? 99) <= 40)
+
+        let low = TabDigestForm.signals(inputs(cadence: 155), lines: []).first { $0.kind == .problem }
+        #expect(low?.short == "케이던스 155spm · 160 미만")
+    }
 }
