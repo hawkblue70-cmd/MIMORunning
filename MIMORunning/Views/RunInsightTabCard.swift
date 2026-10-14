@@ -2723,9 +2723,9 @@ private struct PerformanceInsightCard: View {
                 oneLiner(text: line, bg: IC.violetBg, fg: IC.violetText, accent: IC.violet)
             }
             if let ri = returnInsight {
-                if ri.hrRecovered {
+                if let recovered = ri.recovered {
                     divider
-                    returnRecoveredRow
+                    returnRecoveredRow(recovered)
                 } else {
                     divider
                     returnInsightRow(ri)
@@ -3273,89 +3273,31 @@ private struct PerformanceInsightCard: View {
 
     // MARK: - 유산소 디커플링 (Pa:HR)
 
-    /// 거리로 거르는 유형의 하한. GPS가 10km 코스를 9.8~9.9km로 재는 일이 흔해 10km를 고집하면
-    /// 10km 대회 대부분이 빠진다. 사용자 경험값 — 출처 없음.
-    private static let decouplingMinDistanceM: Double = 9_500
-    /// 이 기온 이상이면 후반 심박 상승을 더위 쪽으로 기울여 읽는다. 사용자 경험값 — 출처 없음.
-    private static let decouplingHotTempC: Double = 25
-
     private var decouplingWorkoutType: WorkoutType {
         workoutTypeFn?(activity.id) ?? detail?.workoutType ?? .general
     }
 
-    /// 디커플링을 재는 러닝. 인터벌만 제외 — 회복 구간이 섞여 전·후반 비교가 성립하지 않는다.
-    /// 롱런·LSD·거리주는 항상(분류기가 8km 이상을 보장), 그 외(대회·빌드업·템포·이지·일반)는 9.5km 이상.
-    private var isDecouplingApplicable: Bool {
-        let wt = decouplingWorkoutType
-        if wt == .interval { return false }
-        if wt == .longRun || wt == .lsd || wt == .distanceRun { return true }
-        return activity.distance >= Self.decouplingMinDistanceM
-    }
-
-    /// 전반·후반의 효율(속도 ÷ 심박) 차이(%). 양수 = 후반에 페이스 대비 심박이 올랐다(드리프트).
-    /// 비율이라 후반에 페이스를 올리고 심박도 그만큼 오르면 상쇄된다 — 페이스 전략은 1차로 걸러진다.
-    /// 1km 스플릿 기준, 심박 있는 온전한 스플릿이 6개 이상(반쪽 3km)일 때만.
+    /// 전반·후반 효율 차이(%) — 판정은 `TabDigestPerformance.decouplingPct`(요약과 같은 함수)
     private var aerobicDecouplingPct: Double? {
-        guard isDecouplingApplicable, let splits = detail?.splits else { return nil }
-        let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
-        guard full.count >= 6 else { return nil }
-        let half = full.count / 2
-        func efficiency(_ part: ArraySlice<SplitData>) -> Double? {
-            let dist  = part.reduce(0.0) { $0 + $1.distanceM }
-            let dur   = part.reduce(0.0) { $0 + $1.duration }
-            let hrSum = part.reduce(0.0) { $0 + Double($1.avgHeartRate ?? 0) * $1.duration }   // 시간 가중
-            guard dur > 0, hrSum > 0 else { return nil }
-            return (dist / dur) / (hrSum / dur)
-        }
-        guard let e1 = efficiency(full[..<half]), let e2 = efficiency(full[half...]), e1 > 0 else { return nil }
-        return (e1 - e2) / e1 * 100
+        guard let splits = detail?.splits else { return nil }
+        return TabDigestPerformance.decouplingPct(splits: splits, workoutType: decouplingWorkoutType,
+                                                  distKm: activity.distance / 1000)
     }
 
-    /// 구간별 뜻과 근거 — 숫자는 모두 보여주고, 문장만 유형·기온으로 갈라 읽는다.
-    /// - ≤5%(음수 포함): 한 시간 안팎의 정상 드리프트 — 프릴(Friel) 코칭 경험칙. 검증된 진단 경계는 아니다.
-    ///   출처: Friel, J. "Aerobic Endurance and Decoupling", TrainingPeaks Coach Blog, 2009.
-    ///   https://www.trainingpeaks.com/coach-blog/aerobic-endurance-and-decoupling/
-    ///   유산소 강도 러닝(롱런·LSD·이지·일반)에서만 "이 거리를 유산소로 감당" 판정을 붙인다.
-    /// - 5~10%: 기반 부족과 더위·수분·초반 과속이 겹치는 모호 구간 — 기온(≥25°C)으로 기울여 읽는다.
-    /// - >10%: 더위·탈수 조건에서 문헌이 보고하는 한 시간 드리프트 크기 안팎(Coyle & González-Alonso 2001,
-    ///   Wingo 2005, Lafrenz 2008). 거친 기준점이지 검증된 경계는 아니다.
-    /// - 빌드업: 후반 페이스를 올리는 훈련이라 심박이 따라 오르는 게 계획 — 판정 없이 그 사실만, 색도 중립.
-    /// - 거리주·템포·대회: 강도가 높아 5% 규칙의 전제(유산소 강도)가 안 맞는다 — "유산소 기반" 대신
-    ///   "이 페이스로 이 거리를 버틸 힘"으로 읽는다(드리프트 없이 그 강도를 끝까지 유지했다는 뜻).
+    /// 읽기 문장 + 카드 색 — 판정은 `TabDigestPerformance.decouplingVerdict`, 색 매핑만 카드에 남긴다.
     private func decouplingReading(_ pct: Double) -> (text: String, color: Color) {
-        let L = AppLanguage.shared
         let wt = decouplingWorkoutType
-        let hot = (activity.temperatureC ?? -.infinity) >= Self.decouplingHotTempC
-        let neutral = Color.white.opacity(0.85)
-        if wt == .buildUp {
-            return (L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",
-                        "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"), neutral)
+        // 총평 후반 심박 판정은 5% 안일 때만 본다(예전 지연 평가와 같음)
+        let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history)
+        let v = TabDigestPerformance.decouplingVerdict(pct: pct, workoutType: wt, temperatureC: activity.temperatureC,
+                                                       lateHRRoseFirst: lateFirst)
+        let color: Color
+        switch v.shade {
+        case .good:    color = IC.green
+        case .neutral: color = Color.white.opacity(0.85)
+        case .caution: color = Theme.caution
         }
-        let aerobic = wt == .longRun || wt == .lsd || wt == .easy || wt == .general
-        // 전후반 5% 안이어도 총평 "후반"이 심박 신호면 "지켰다"고 하지 않는다 — 같은 화면에서 반대로 읽혔다
-        if pct <= 5, RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history) {
-            return (L.s("전후반으로는 5% 안이지만, 마지막 구간에서 같은 페이스에 심박이 올랐습니다.",
-                        "Within 5% half to half, but HR rose at the same pace in the final stretch.", ja: "前後半では5%以内ですが、最後の区間で同じペースでも心拍が上がりました。"), neutral)
-        }
-        if pct <= 5 {
-            return aerobic
-                ? (L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 거리를 유산소로 감당했습니다.",
-                       "HR held against pace to the end — you covered this distance aerobically.", ja: "後半までペースに対する心拍を保ちました。この距離を有酸素でこなしました。"), IC.green)
-                : (L.s("후반까지 페이스 대비 심박을 지켰습니다. 이 페이스로 이 거리를 버틸 힘이 있습니다.",
-                       "HR held against pace to the end — you can sustain this pace for this distance.", ja: "後半までペースに対する心拍を保ちました。このペースでこの距離を走りきる力があります。"), IC.green)
-        }
-        if pct <= 10 {
-            return hot
-                ? (L.s("후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.",
-                       "HR drifted up, but on a hot day that's within the normal range.", ja: "後半に心拍が上がりましたが、暑い日なので自然な範囲です。"), neutral)
-                : (L.s("조건은 좋았는데 후반에 심박이 올랐습니다. 이 거리와 강도가 아직 조금 부담일 수 있습니다.",
-                       "Conditions were fine but HR drifted up — this distance and effort may still be a bit much.", ja: "条件はよかったのに後半に心拍が上がりました。この距離と強度はまだ少し負担なのかもしれません。"), neutral)
-        }
-        return hot
-            ? (L.s("후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.",
-                   "HR drifted a lot — heat and fluid loss likely played a big part.", ja: "後半に心拍が大きく上がりました。暑さと水分不足の影響が大きかったと考えられます。"), Theme.caution)
-            : (L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있습니다.",
-                   "HR drifted a lot — this may still be a stretch, or the start was too fast.", ja: "後半に心拍が大きく上がりました。この距離と強度がまだきついか、序盤が速かったのかもしれません。"), Theme.caution)
+        return (v.text, color)
     }
 
     /// 디커플링 띠 차트의 네 구간 색 — 모두 이 카드에 이미 있는 색.
@@ -3896,8 +3838,7 @@ private struct PerformanceInsightCard: View {
         let easyStreak: Int
         /// 유형 미확보 주에서 멈춤 → "N주 이상"
         let easyStreakAtLeast: Bool
-        /// 알림 표시 조건 — 기존 방식 유지: 분류 12회 이상 · 이지런 비율 20% 미만
-        var easyAlert: Bool { classified >= 12 && Double(easyCount) / Double(max(1, classified)) < 0.20 }
+        // 알림 표시 조건(분류 12회 이상 · 이지런 비율 20% 미만)과 문장은 `TabDigestPerformance.easyAlertText`
     }
 
     private var trainingDistData: (items: [TrainingDistItem], weeks: Int, totalRuns: Int, todayBucket: String?)? {
@@ -4429,17 +4370,9 @@ private struct PerformanceInsightCard: View {
             .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
             .fixedSize(horizontal: false, vertical: true)
             // ② 회차 기준 (K-7) — 유형이 이지런인 러닝의 회차. «19%인데 왜 0회?»로 읽히지 않게 라벨로 구분.
-            if data.easyAlert {
-                let w = data.easyStreak, atLeast = data.easyStreakAtLeast
-                let streakSuffix: String = {
-                    guard w > 1 || (w == 1 && atLeast) else { return "" }
-                    return L.s(" · 이지런 없는 주 \(w)주\(atLeast ? " 이상" : "")째", " · \(w)\(atLeast ? "+" : "") wk in a row with none", ja: " · イージーランなしの週が\(w)週\(atLeast ? "以上" : "")連続")
-                }()
-                // 계획이 아니라 러닝 종류(이지런) 회차 — "N주째"가 무엇인지(이지런 없는 주) 밝힌다
-                Text(L.s(
-                    "\(data.weeks)주 \(data.classified)회 중 이지런 \(data.easyCount)회\(streakSuffix)",
-                    "Easy runs: \(data.easyCount) of \(data.classified) in \(data.weeks) wk\(streakSuffix)", ja: "\(data.weeks)週\(data.classified)回のうちイージーラン\(data.easyCount)回\(streakSuffix)"
-                ))
+            if let alert = TabDigestPerformance.easyAlertText(weeks: data.weeks, classified: data.classified, easyCount: data.easyCount,
+                                                              easyStreak: data.easyStreak, easyStreakAtLeast: data.easyStreakAtLeast) {
+                Text(alert)
                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -4475,15 +4408,15 @@ private struct PerformanceInsightCard: View {
                 .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)
             // 한 줄: "4주 평균 대비 낮음, 회복 방향으로 진행 중" — 라벨 + 짧은 방향 문구
-            let ratioLabel = sevenDayLoadRatioLabel(load)
-            let sentence = load.sentence.map(sevenDayLoadSentence)
+            let ratioLabel = load.acuteChronic.map(TabDigestPerformance.loadRatioText)
+            let sentence = load.sentence.flatMap(TabDigestPerformance.loadSentence)
             if load.thisRunAU == nil {
                 // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
                 Text(L.s("오늘 강도 입력 전 — 입력하면 7일 부하에 반영됩니다", "Today's effort not rated — rate it to count toward the 7-day load", ja: "今日の強度は未入力 — 入力すると7日間の負荷に反映されます"))
                     .font(.system(size: 9)).foregroundStyle(Theme.caution.opacity(0.9))
                     .lineLimit(1).minimumScaleFactor(0.8)
-            } else if ratioLabel != nil || sentence != nil {
-                Text([ratioLabel, sentence].compactMap { $0 }.joined(separator: L.s(", ", ", ", ja: "、")))
+            } else if let loadLine = TabDigestPerformance.loadLine(ratio: ratioLabel, sentence: sentence) {
+                Text(loadLine)
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
                     .lineLimit(2).minimumScaleFactor(0.8)   // 한 줄이면 "— 강약 나누기"가 잘렸다
                     .fixedSize(horizontal: false, vertical: true)
@@ -4503,34 +4436,6 @@ private struct PerformanceInsightCard: View {
         guard let t = load.thisRunAU else { return base }
         let au = Int(t.rounded()).formatted(.number.grouping(.automatic))
         return L.s("\(base) (이 러닝 \(au) AU)", "\(base) (this run \(au) AU)", ja: "\(base)(このラン \(au) AU)")
-    }
-
-    /// "4주 평균 대비 낮음" — 7일 부하 / 4주 평균 비율 라벨. 기준 없으면 nil.
-    private func sevenDayLoadRatioLabel(_ load: SevenDayLoad) -> String? {
-        guard let ac = load.acuteChronic else { return nil }
-        let L = AppLanguage.shared
-        let t: String
-        switch ac {
-        case .low:      t = L.s("낮음", "lower", ja: "低い")
-        case .steady:   t = L.s("유지", "steady", ja: "横ばい")
-        case .high:     t = L.s("높음", "higher", ja: "高い")
-        case .veryHigh: t = L.s("크게 높음", "much higher", ja: "大きく高い")
-        }
-        return L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)", ja: "4週平均比 \(t)")
-    }
-
-
-    /// "이 러닝 109 AU · 7일 1,047 AU · 이전 7일 1,480 AU · 4주 평균 대비 낮음" — 없는 조각은 빠진다.
-    /// 단조도 / 4주 평균 대비 문장 — "부상·위험" 표현 없음(Impellizzeri 2020)
-    private func sevenDayLoadSentence(_ kind: EffortLoad.SentenceKind) -> String {
-        let L = AppLanguage.shared
-        switch kind {
-        // 라벨 뒤에 붙는 짧은 방향 문구 — 반폭 열에서 한 줄에 들어가야 한다
-        case .monotony: return L.s("부하 편차 적음 — 강약 나누기", "little variation — split easy/hard", ja: "負荷の差が小さい — 強弱をつけましょう")
-        case .veryHigh: return L.s("부하 크게 증가 중 — 회복 챙기기", "rising sharply — protect recovery", ja: "負荷が大きく増加中 — 回復を優先")
-        case .high:     return L.s("부하 조금 높은 편", "slightly heavier than usual", ja: "負荷がやや高め")
-        case .low:      return L.s("회복 방향으로 진행 중", "trending toward recovery", ja: "回復方向に進行中")
-        }
     }
 
     private func sevenDayLoadCaption(_ load: SevenDayLoad) -> String {
@@ -4590,147 +4495,17 @@ private struct PerformanceInsightCard: View {
 
     // MARK: - Return insight (복귀 인사이트)
 
-    private struct ReturnInsightInfo {
-        let gapDays: Int
-        /// 화면 표시용 원본 bpm — 판정/비교는 `returnInsight` 내부에서 보정값으로 이미 끝났다.
-        let preGapHR: Double?
-        let todayHR: Double?
-        let isExpiredByTime: Bool
-        let hrRecovered: Bool
+    /// 복귀 문장 — 판정·문장은 `TabDigestPerformance.returnSentences`(요약과 같은 함수)
+    private var returnInsight: (gap: String, compare: String?, advice: String?, recovered: String?)? {
+        TabDigestPerformance.returnSentences(activity: activity, history: history, heatHRModel: heatHRModel)
     }
 
-    private var returnInsight: ReturnInsightInfo? {
-        guard activity.type == .running else { return nil }
-        let cal = Calendar.current
-        let sorted = history.filter { $0.type == .running }.sorted { $0.date < $1.date }
-        guard let idx = sorted.firstIndex(where: { $0.id == activity.id }), idx > 0 else {
-            #if DEBUG
-            let runCount = history.filter { $0.type == .running }.count
-            print("[복귀] 미발동: history 러닝 \(runCount)회, activity.id 찾기 실패 또는 첫 러닝")
-            #endif
-            return nil
-        }
-
-        let prev = sorted[idx - 1]
-        let gapFromPrev = cal.dateComponents([.day], from: prev.date, to: activity.date).day ?? 0
-
-        // ── 1번째 복귀 러닝: "N일 만의 러닝이에요" ───────────────────────────
-        if gapFromPrev >= 14 {
-            let preGapRuns = sorted.filter {
-                $0.date < prev.date && $0.date >= prev.date.addingTimeInterval(-28 * 86_400)
-            }
-            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다. 화면 표시는 원본 bpm(preGapHRRaw),
-            // 판정/비교는 보정값(preGapHRRef)을 쓴다 — 둘의 러닝 선택 기준(같은 페이스 우선)은 같다.
-            let preGapSelected: [Activity]? = preGapRuns.count >= 3 ? {
-                if let todayPace = activity.paceSecPerKm {
-                    let matched = preGapRuns.filter {
-                        guard let p = $0.paceSecPerKm else { return false }
-                        return abs(p - todayPace) / todayPace <= 0.20
-                    }
-                    if matched.count >= 2, matched.contains(where: { $0.avgHeartRate != nil }) { return matched }
-                }
-                return preGapRuns
-            }() : nil
-            let preGapHRRaw: Double? = preGapSelected.flatMap { runs -> Double? in
-                let hrs = runs.compactMap { $0.avgHeartRate }
-                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
-            }
-            let daysSince = cal.dateComponents([.day], from: activity.date, to: Date()).day ?? 0
-            #if DEBUG
-            let preGapHRRef: Double? = preGapSelected.flatMap { runs -> Double? in
-                let hrs = runs.compactMap { refHR($0) }
-                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
-            }
-            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-            let matchedCount: Int = {
-                guard let todayPace = activity.paceSecPerKm else { return 0 }
-                return preGapRuns.filter {
-                    guard let p = $0.paceSecPerKm else { return false }
-                    return abs(p - todayPace) / todayPace <= 0.20
-                }.count
-            }()
-            print("[복귀] 직전 러닝 \(df.string(from: prev.date)) · 간격 \(gapFromPrev)일 (기준 14일) → 발동")
-            print("[복귀] 공백 전 4주: 러닝 \(preGapRuns.count)회 · 같은 페이스 심박 \(matchedCount)회 · 공백 전 심박(보정) \(preGapHRRef.map { String(Int($0)) } ?? "없음")")
-            if let today = refHR(activity) {
-                if let pre = preGapHRRef {
-                    let diff = Int(today.rounded()) - Int(pre.rounded())
-                    print("[복귀] 오늘 심박(보정) \(Int(today.rounded())) vs 공백 전 \(Int(pre.rounded())) → \(diff >= 0 ? "+" : "")\(diff)bpm")
-                } else {
-                    print("[복귀] 오늘 심박(보정) \(Int(today.rounded())) · 공백 전 심박 없음 (공백 전 런 \(preGapRuns.count)회 < 3 or HR data 없음)")
-                }
-            } else {
-                print("[복귀] 오늘 심박 없음")
-            }
-            #endif
-            return ReturnInsightInfo(
-                gapDays: gapFromPrev,
-                preGapHR: preGapHRRaw,
-                todayHR: activity.avgHeartRate.map(Double.init),
-                isExpiredByTime: daysSince >= 28,
-                hrRecovered: false  // 첫 복귀 런에서는 심박 회복 메시지 절대 표시 안 함
-            )
-        }
-
-        // ── 2회차 이상 복귀 러닝: "심박이 돌아왔어요" ──────────────────────
-        // 최근 28일 안에 ≥14일 공백이 있었고, 그 복귀 후 2번째 이상 런인 경우에만 평가
-        for i in stride(from: idx - 1, through: 1, by: -1) {
-            let daysSinceI = cal.dateComponents([.day], from: sorted[i].date, to: activity.date).day ?? 0
-            guard daysSinceI <= 28 else { break }
-            let prevToI = cal.dateComponents([.day], from: sorted[i - 1].date, to: sorted[i].date).day ?? 0
-            guard prevToI >= 14 else { continue }
-            // sorted[i]가 첫 복귀 런 — activity는 2회차 이상
-            let preGapEnd = sorted[i - 1]
-            let preGapRuns = sorted.filter {
-                $0.date < preGapEnd.date && $0.date >= preGapEnd.date.addingTimeInterval(-28 * 86_400)
-            }
-            guard preGapRuns.count >= 3 else { return nil }
-            // 15°C 기준 — 공백 전후가 계절을 넘는 경우가 많다. 화면 표시는 원본 bpm(preGapHRRaw),
-            // 판정/비교는 보정값(preGapHRRef)을 쓴다 — 둘의 러닝 선택 기준(같은 페이스 우선)은 같다.
-            let preGapSelected: [Activity] = {
-                if let todayPace = activity.paceSecPerKm {
-                    let matched = preGapRuns.filter {
-                        guard let p = $0.paceSecPerKm else { return false }
-                        return abs(p - todayPace) / todayPace <= 0.20
-                    }
-                    if matched.count >= 2, matched.contains(where: { $0.avgHeartRate != nil }) { return matched }
-                }
-                return preGapRuns
-            }()
-            let preGapHRRaw: Double? = {
-                let hrs = preGapSelected.compactMap { $0.avgHeartRate }
-                return hrs.isEmpty ? nil : Double(hrs.reduce(0, +)) / Double(hrs.count)
-            }()
-            let preGapHRRef: Double? = {
-                let hrs = preGapSelected.compactMap { refHR($0) }
-                return hrs.isEmpty ? nil : hrs.reduce(0, +) / Double(hrs.count)
-            }()
-            guard let pre = preGapHRRef else { return nil }
-            // 첫 복귀 런부터 현재까지 (2회 이상) — 심박 평균이 공백 전 대비 ≤+3bpm이면 회복 (보정값끼리 비교)
-            let postRuns = sorted.filter { $0.date >= sorted[i].date && $0.date <= activity.date }
-            guard postRuns.count >= 2 else { return nil }
-            let postHRs = postRuns.compactMap { refHR($0) }
-            guard !postHRs.isEmpty else { return nil }
-            let postAvgHR = postHRs.reduce(0, +) / Double(postHRs.count)
-            guard (postAvgHR - pre) <= 3 else { return nil }
-            let daysSince = cal.dateComponents([.day], from: sorted[i].date, to: Date()).day ?? 0
-            return ReturnInsightInfo(
-                gapDays: prevToI,
-                preGapHR: preGapHRRaw,
-                todayHR: activity.avgHeartRate.map(Double.init),
-                isExpiredByTime: daysSince >= 28,
-                hrRecovered: true
-            )
-        }
-        return nil
-    }
-
-    private var returnRecoveredRow: some View {
-        let L = AppLanguage.shared
-        return HStack(spacing: 8) {
+    private func returnRecoveredRow(_ text: String) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: "heart.circle.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(Color(hex: "30D158"))
-            Text(L.s("심박이 공백 전 수준으로 돌아왔습니다", "Your HR is back to pre-break levels", ja: "心拍がブランク前の水準に戻りました"))
+            Text(text)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color(hex: "30D158"))
             Spacer()
@@ -4742,8 +4517,7 @@ private struct PerformanceInsightCard: View {
     }
 
     @ViewBuilder
-    private func returnInsightRow(_ ri: ReturnInsightInfo) -> some View {
-        let L = AppLanguage.shared
+    private func returnInsightRow(_ ri: (gap: String, compare: String?, advice: String?, recovered: String?)) -> some View {
         let blue = Color(hex: "0A84FF")
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "arrow.counterclockwise.circle.fill")
@@ -4751,26 +4525,16 @@ private struct PerformanceInsightCard: View {
                 .foregroundStyle(blue)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
-                Text(L.s("\(ri.gapDays)일 만의 러닝입니다", "First run in \(ri.gapDays) days", ja: "\(ri.gapDays)日ぶりのランです"))
+                Text(ri.gap)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                if let pre = ri.preGapHR, let today = ri.todayHR {
-                    let base = L.s("공백 전 같은 페이스에서 심박 \(Int(pre.rounded()))이었는데 오늘은 \(Int(today.rounded()))입니다",
-                                   "Pre-gap HR was \(Int(pre.rounded())) at this pace — today \(Int(today.rounded()))", ja: "ブランク前は同じペースで心拍\(Int(pre.rounded()))でしたが、今日は\(Int(today.rounded()))です")
-                    let heatSuffix: String = {
-                        guard let m = heatHRModel, m.explains(tempC: activity.temperatureC) else { return "" }
-                        let n = Int(m.delta(activity.temperatureC).rounded())
-                        return m.isFallback
-                            ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat", ja: " · 暑さで+\(n)bpmほど")
-                            : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat", ja: " · 暑さで+\(n)bpm")
-                    }()
-                    Text(base + heatSuffix)
+                if let compare = ri.compare {
+                    Text(compare)
                         .font(.system(size: 12))
                         .foregroundStyle(Color.white.opacity(0.65))
                 }
-                if ri.gapDays >= 28 {
-                    Text(L.s("체력이 돌아오는 데 보통 공백만큼의 시간이 걸립니다. 2~3주에 걸쳐 천천히 올려도 괜찮습니다",
-                             "Fitness takes about as long as the break to return. Build back gradually over 2–3 weeks.", ja: "体力が戻るには通常ブランクと同じくらいの時間がかかります。2~3週間かけてゆっくり上げても大丈夫です"))
+                if let advice = ri.advice {
+                    Text(advice)
                         .font(.system(size: 11))
                         .foregroundStyle(Color.white.opacity(0.40))
                         .padding(.top, 2)

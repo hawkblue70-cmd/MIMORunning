@@ -27,10 +27,11 @@ struct RunInsight: Identifiable {
     /// 같은 `.efficiency` 카테고리라도 카디악 드리프트는 '같은 페이스 비교'가 아니다 — 요약·히어로는 비교만 받는다.
     var source: Source = .other
 
-    enum Source: Equatable { case efficiencyComparison, other }
+    /// `efficiencyComparisonHigher` = 같은 페이스 비교에서 "심박이 높습니다"(더위로 설명되는 '평소 수준'은 제외) — 요약 P4 판별용
+    enum Source: Equatable { case efficiencyComparison, efficiencyComparisonHigher, other }
 
     static func efficiencyComparison(in list: [RunInsight]) -> RunInsight? {
-        list.first { $0.source == .efficiencyComparison }
+        list.first { $0.source == .efficiencyComparison || $0.source == .efficiencyComparisonHigher }
     }
 }
 
@@ -1445,7 +1446,7 @@ enum RunInsightEngine {
                 message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                              "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
                 highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
-                source: .efficiencyComparison)
+                source: .efficiencyComparisonHigher)
         }
 
         // 양쪽 모두 15°C 환산 — 더운 날의 과거 심박이 "높았던 기준"으로 남지 않게
@@ -1503,7 +1504,7 @@ enum RunInsightEngine {
             message: L.s("\(prefix)비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                          "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "\(prefix)近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
             highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
-            source: .efficiencyComparison)
+            source: .efficiencyComparisonHigher)
     }
 
     private static func formInsight(detail: ActivityDetail?) -> RunInsight? {
