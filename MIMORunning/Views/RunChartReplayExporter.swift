@@ -68,12 +68,12 @@ struct ShareChartPalette {
         if isLight {
             switch layer {
             case .pace:         return pace                     // #00A8C8 cyan
-            case .cadence:      return Color(hex: "B8860B")    // 딥 골드
+            case .cadence:      return Color(hex: "E0A800")    // 선명한 골드 (2026-10-14: 딥 톤은 흰 배경에서 탁했다)
             case .elevation:    return elevation                // #4FA82E green
-            case .power:        return Color(hex: "7C3AED")    // 딥 바이올렛 (다크 C77DFF의 어두운 짝)
-            case .groundContact: return Color(hex: "3949AB")   // 딥 인디고 (다크 7B87FF의 어두운 짝)
+            case .power:        return Color(hex: "9B3BFF")    // 선명한 바이올렛 (다크 B44DFF의 짝)
+            case .groundContact: return Color(hex: "5B4BFF")   // 선명한 인디고 (다크 6A5CFF의 짝)
             case .strideLength: return Color(hex: "3A3A3C")    // 진회색 (다크의 화이트에 대응)
-            case .verticalOsc:  return Color(hex: "C2185B")    // 딥 마젠타 (다크 F050FF의 어두운 짝)
+            case .verticalOsc:  return Color(hex: "E0209F")    // 선명한 마젠타 (다크 FF40D0의 짝)
             default:            return layer.color
             }
         }
@@ -150,11 +150,11 @@ struct ShareChartPalette {
         gridLine:        Color(hex: "1A1A1A").opacity(0.15),
         chartCasing:     Color.white.opacity(0.95),
         hrZones: [                               // Apple Health zone colors (light)
-            Color(hex: "1565C0"),  // Z1 dark blue
-            Color(hex: "00897B"),  // Z2 teal
-            Color(hex: "689F00"),  // Z3 olive-lime
-            Color(hex: "E07800"),  // Z4 orange
-            Color(hex: "D81B60"),  // Z5 deep pink
+            Color(hex: "2F7BFF"),  // Z1 blue
+            Color(hex: "00B3A4"),  // Z2 teal
+            Color(hex: "7CC000"),  // Z3 lime
+            Color(hex: "FF8A00"),  // Z4 orange
+            Color(hex: "F0246A"),  // Z5 pink
         ],
         hrRepColor:      Color(hex: "E0242B"),    // HR chip/tile representative red
         pace:            Theme.splitBarLoLight,   // 구간 기록 라이트 막대와 같은 짙은 청록
@@ -164,7 +164,7 @@ struct ShareChartPalette {
         timeLabel:       Color(hex: "555555"),
         textSecondary:   Color(hex: "757575"),
         axisLabelColor:  Color(hex: "8A8A8A"),
-        paceColFillOp:      0.16,
+        paceColFillOp:      0.30,   // 0.16은 강도 색 막대가 연한 띠로만 보였다
         paceColBorderOp:    0.35,
         paceColBorderWidth: 0.8,
         lineWidthAdjust:    -0.2,
