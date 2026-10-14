@@ -1,0 +1,453 @@
+import Foundation
+
+/// 리듬 카드 판정(존 캡션·심박 캡션·종류별 전후반) + 오늘의 인사이트 리듬 블록 신호.
+/// 카드(`RhythmInsightCard`)와 요약이 같은 함수를 불러 같은 문장을 쓴다 — 카드는 `shade`를 원래 색으로 바꿔 쓴다.
+/// 설계: docs/superpowers/specs/2026-10-14-today-insight-tab-digest-design.md §4.1·§5
+enum TabDigestRhythm {
+
+    /// 카드와 요약이 함께 쓰는 판정 — 문장 + 톤
+    struct Verdict: Equatable {
+        /// 카드 글자색 단계 — 초록(Theme.positive)·흰색(0.75)·노랑(FFD166). 매핑은 카드에 남긴다.
+        enum Shade: Equatable { case good, neutral, caution }
+        let text: String
+        /// 요약에서 문제로 다룰 판정. 카드 색과는 별개다(페이스 기복·후반 느려짐은 카드에선 흰색, 요약에선 문제).
+        let isProblem: Bool
+        var shade: Shade = .neutral
+        /// 폼(접지·케이던스) 판정 — 리듬 블록에서는 내지 않는다(폼 탭 몫, 설계 §5)
+        var aboutForm: Bool = false
+        var isGood: Bool { shade == .good }
+    }
+
+    // MARK: - 존 도넛 캡션 (옮김: RhythmInsightCard.zoneVerdictLabel)
+
+    /// 존 캡션에 붙이는 더위 보정 꼬리. 보정량이 표기 임계값 미만이면 nil.
+    static func zoneHeatSuffix(heatHRModel: MRHeatHRModel?, temperatureC: Double?) -> String? {
+        let L = AppLanguage.shared
+        let heatDelta = heatHRModel?.delta(temperatureC) ?? 0
+        guard heatDelta >= RunSummary.heatNoteMinBpm else { return nil }
+        let n = Int(heatDelta.rounded())
+        return (heatHRModel?.isFallback == true)
+            ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat", ja: " · 暑さで+\(n)bpmほど")
+            : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat", ja: " · 暑さで+\(n)bpm")
+    }
+
+    /// 존 도넛 캡션. 보이는 존이 없으면 nil(카드는 빈 문자열).
+    /// 문제 = 계획된 고강도 유형이 아닌데 템포 구간에 머묾 / 고강도 구간이 많음.
+    static func zoneVerdict(fractions: [Int: Double], workoutType: WorkoutType, heatSuffix: String?) -> Verdict? {
+        let L = AppLanguage.shared
+        let visible = fractions.filter { $0.value > 0.01 }
+        let total = max(1e-9, visible.values.reduce(0, +))
+        let z2frac = (fractions[2] ?? 0) / total
+        let zone2 = Verdict(text: L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました"),
+                            isProblem: false, shade: .good)
+        if z2frac >= 0.60 { return zone2 }
+        // 총평과 같은 규칙 — Zone 4+5 합이 가장 큰 존 이상(35%↑)이면 고강도 캡션
+        guard let v = FormNarrative.verdictZone(fractions: visible) else { return nil }
+        let heatSuffix = heatSuffix ?? ""
+        let planned = FormNarrative.isPlannedHighIntensity(workoutType)
+        switch v.zone {
+        case 1: return Verdict(text: L.s("가벼운 회복 강도였습니다", "Light recovery run", ja: "軽い回復強度でした"), isProblem: false)
+        case 2: return zone2
+        case 3:
+            // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "의도한 고강도"와도 부딪혔다
+            if workoutType == .interval {
+                return Verdict(text: L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed", ja: "本練習と回復が混ざった平均がゾーン3です") + heatSuffix,
+                               isProblem: false)
+            }
+            return Verdict(text: L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone", ja: "心拍はテンポ域にとどまりました") + heatSuffix,
+                           isProblem: !planned)
+        default:
+            return Verdict(text: FormNarrative.highIntensityZoneCaption(type: workoutType) + heatSuffix, isProblem: !planned)
+        }
+    }
+
+    // MARK: - 심박 차트 캡션 (옮김: RhythmInsightCard.hrVerdictText)
+
+    struct HRCaption: Equatable {
+        enum Kind: Equatable { case maxIntensity, lateClimb, secondHalfRise, easedOff, steady }
+        let kind: Kind
+        let text: String
+    }
+
+    /// 심박 차트 캡션 — 샘플 10개 미만이면 nil.
+    static func hrVerdict(samples hrSamples: [(offset: TimeInterval, bpm: Int)], hrMax: Double?, age: Int?,
+                          workoutType: WorkoutType, activity: Activity, detail: ActivityDetail?,
+                          history: [Activity]) -> HRCaption? {
+        guard hrSamples.count >= 10 else { return nil }
+        let L = AppLanguage.shared
+        // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
+        // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
+        // 러닝 중간 튐(hrMidRunSpikeCleaned)도 주변 값으로 바꿔 판정한다 — 존 분포와 같은 규칙
+        let samples = hrMidRunSpikeCleaned(hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples)
+        guard samples.count >= 10 else { return nil }
+        let n = samples.count
+        let half = n / 2
+        let avgFirst  = samples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
+        let avgSecond = samples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
+        let diff = avgSecond - avgFirst
+        // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
+        // "최고 강도"는 최대심박 90% 이상에 2분 이상 머물렀을 때만 — 오르막 끝에서 한 번 스친 최고치로는 말하지 않는다.
+        // (존 도넛 "Zone 2 중심"·총평과 부딪혔다.) 평활한 값으로 재서 광학 튐도 거른다.
+        if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
+            let thr = 0.90 * Double(mhr)
+            let sm = hrChartSmoothed(samples.map(\.bpm))
+            var secAbove: TimeInterval = 0
+            for i in 0..<(samples.count - 1) where sm[i] >= thr {
+                secAbove += min(max(samples[i + 1].offset - samples[i].offset, 0), 30)
+            }
+            if secAbove >= 120 {
+                return HRCaption(kind: .maxIntensity, text: L.s("최고 강도까지 올렸습니다", "Pushed to max intensity", ja: "最高強度まで上げました"))
+            }
+        }
+        // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저
+        if diff >= 8, workoutType != .buildUp,
+           let climb = GradeAdjustedPace.halvesNetClimb(detail?.altitudeTimeProfile.map { (x: $0.offset, altitude: $0.altitude) } ?? []),
+           climb.second - climb.first >= GradeAdjustedPace.halvesClimbGapM, climb.second > 0 {
+            return HRCaption(kind: .lateClimb, text: L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb", ja: "後半の上りで心拍が上がりました"))
+        }
+        // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
+        // 전후반 평균으로는 8bpm 안이어도 총평이 "심박이 먼저 오름"이면 같은 말을 한다 — 반으로 나누면
+        // 중반이 섞여 마지막 구간 상승(149→161)이 묻혀 "끝까지 안정적"과 총평이 엇갈렸다(2026-10-08)
+        let lateRose = RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail,
+                                                         workoutType: workoutType, history: history)
+        if diff >= 8 || lateRose { return HRCaption(kind: .secondHalfRise, text: FormNarrative.hrSecondHalfRiseCaption(type: workoutType)) }
+        if diff <= -5 { return HRCaption(kind: .easedOff, text: L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました")) }
+        return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType))
+    }
+
+    // MARK: - 거리 문맥 (옮김: RhythmInsightCard.distanceContext — 카드는 앞에 "↑ "를 붙인다)
+
+    static func distanceRankPhrase(rank: Int, sampleCount: Int) -> String? {
+        guard rank <= 3 else { return nil }
+        let L = AppLanguage.shared
+        if rank == 1 {
+            return L.s("최근 \(sampleCount)회 중 가장 긴 거리", "Longest of last \(sampleCount) runs", ja: "直近\(sampleCount)回で最長の距離")
+        }
+        return L.s("최근 \(sampleCount)회 중 \(rank)번째로 긴 거리", "#\(rank) of last \(sampleCount) by distance", ja: "直近\(sampleCount)回で\(rank)番目に長い距離")
+    }
+
+    // MARK: - 종류별 전·후반 판정 (옮김: RhythmInsightCard.buildWorkoutTypeFormParts)
+
+    private static func fullSplits(_ splits: [SplitData]) -> [SplitData] { splits.filter { $0.distanceM >= 900 } }
+    private static func halfAvgPace(_ s: [SplitData]) -> Double? {
+        let p = s.map(\.paceSecPerKm); guard !p.isEmpty else { return nil }
+        return p.reduce(0, +) / Double(p.count)
+    }
+    private static func halfAvgCadence(_ s: [SplitData]) -> Double? {
+        let c = s.compactMap(\.avgCadence).map(Double.init); guard !c.isEmpty else { return nil }
+        return c.reduce(0, +) / Double(c.count)
+    }
+    private static func halfAvgGCT(_ s: [SplitData]) -> Double? {
+        let g = s.compactMap(\.avgGroundContactTime); guard !g.isEmpty else { return nil }
+        return g.reduce(0, +) / Double(g.count)
+    }
+
+    /// 이지 분기 입력 — Z1~2 비율(보이는 존 합 대비). 보이는 존이 없으면 nil.
+    static func easyLowZoneFraction(zones hrZones: [HRZoneData]) -> Double? {
+        let visibleZones = hrZones.filter { $0.fraction > 0.01 }
+        guard !visibleZones.isEmpty else { return nil }
+        let totalFrac = visibleZones.map(\.fraction).reduce(0, +)
+        let z2BelowFrac = hrZones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
+        return totalFrac > 0 ? z2BelowFrac / totalFrac : 0
+    }
+
+    /// 이지 분기 (Z1~2 비율)
+    static func easyVerdict(lowZoneFraction ratio: Double) -> Verdict {
+        let L = AppLanguage.shared
+        let pct = Int((ratio * 100).rounded())
+        if ratio >= 0.80 {
+            return Verdict(text: L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%", ja: "しっかりイージーペースを守りました"),
+                           isProblem: false, shade: .good)
+        } else if ratio >= 0.50 {
+            // 존 **비율**만 보는 규칙이라 "중간중간 올라갔다"처럼 시간 변화를 말하면 안 된다 —
+            // 심박 곡선이 평평해도(차트 캡션 "끝까지 안정적") 이 문장이 떠서 서로 부딪쳤다.
+            return Verdict(text: L.s("이지 구간이 \(pct)%였습니다. 조금 더 천천히 가도 좋습니다",
+                                     "Easy zones \(pct)% — a little slower would help", ja: "イージー区間が\(pct)%でした。もう少しゆっくりでも大丈夫です"),
+                           isProblem: true, shade: .neutral)
+        } else {
+            return Verdict(text: L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort", ja: "イージーランなのに心拍がかなり高めでした。もっとゆっくり走っても大丈夫です"),
+                           isProblem: true, shade: .caution)
+        }
+    }
+
+    /// 빌드업·템포·LSD/롱런 분기 — 전후반 폼(케이던스·지면접촉) 판정. 폼 탭이 쓴다(리듬 신호로는 내지 않는다).
+    /// 다른 종류이거나 판정할 재료가 없으면 nil.
+    static func typeFormVerdict(workoutType wt: WorkoutType, splits: [SplitData], formBaseline: RunningFormBaseline?) -> Verdict? {
+        let L = AppLanguage.shared
+        let fullSplits = fullSplits(splits)
+        switch wt {
+        case .buildUp:
+            guard fullSplits.count >= 4 else { return nil }
+            let half = fullSplits.count / 2
+            let second = Array(fullSplits.suffix(fullSplits.count - half))
+            guard let sp = halfAvgPace(second),
+                  let sc = halfAvgCadence(second) else { return nil }
+            guard let baseline = formBaseline else { return nil }
+            guard let band = baseline.cutoffs.band(of: sp) else { return nil }
+            guard let bandBl = baseline.bands[band],
+                  let cadStat = bandBl.cadence,
+                  bandBl.sampleCount >= FormBaselineEngine.minSamples else { return nil }
+            let expectedCad = cadStat.median
+            // "끌어올렸다"는 본인 전반 대비 실제로 올랐을 때만 — 기준값만 넘고 전반과 같으면
+            // 폼 추이 카드의 "케이던스는 그대로예요"와 어긋난다.
+            let fc = halfAvgCadence(Array(fullSplits.prefix(half)))
+            if sc >= expectedCad, let fc, sc - fc >= 2 {
+                return Verdict(text: L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"),
+                               isProblem: false, shade: .good, aboutForm: true)
+            } else if sc >= expectedCad {
+                return Verdict(text: L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"),
+                               isProblem: false, shade: .good, aboutForm: true)
+            } else if sc <= expectedCad - 2 {
+                return Verdict(text: L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"),
+                               isProblem: true, shade: .caution, aboutForm: true)
+            } else {
+                return Verdict(text: L.s("평소 패턴대로 페이스를 올렸습니다", "Paced up in your usual pattern", ja: "普段のパターンどおりにペースを上げました"),
+                               isProblem: false, shade: .neutral, aboutForm: true)
+            }
+
+        case .tempo:
+            guard fullSplits.count >= 4 else { return nil }
+            let half = fullSplits.count / 2
+            let first = Array(fullSplits.prefix(half))
+            let second = Array(fullSplits.suffix(fullSplits.count - half))
+            if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
+                let gctRise = sg - fg
+                if gctRise <= -7 {
+                    return Verdict(text: L.s("후반으로 갈수록 지면접촉이 짧아졌습니다. 템포 페이스가 잘 맞았습니다",
+                                             "Ground contact shortened — tempo pace was well-matched", ja: "後半になるほど接地時間が短くなりました。テンポのペースがよく合っていました"),
+                                   isProblem: false, shade: .good, aboutForm: true)
+                } else if gctRise < 8 {
+                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
+                                   isProblem: false, shade: .good, aboutForm: true)
+                } else {
+                    let rise = Int(gctRise.rounded())
+                    return Verdict(text: L.s("후반에 지면접촉이 +\(rise)ms 늘었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
+                                             "Ground contact +\(rise)ms in second half — pace may be slightly high", ja: "後半に接地時間が+\(rise)ms増えました。テンポのペースが少し速いかもしれません"),
+                                   isProblem: true, shade: .caution, aboutForm: true)
+                }
+            } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
+                let cadDrop = fc - sc
+                if cadDrop < 2 {
+                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
+                                   isProblem: false, shade: .good, aboutForm: true)
+                } else {
+                    let drop = Int(cadDrop.rounded())
+                    return Verdict(text: L.s("후반에 발걸음이 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
+                                             "Cadence dropped \(drop)spm — pace may be slightly high", ja: "後半にピッチが\(drop)spm落ちました。テンポのペースが少し速いかもしれません"),
+                                   isProblem: true, shade: .caution, aboutForm: true)
+                }
+            } else {
+                return nil
+            }
+
+        case .lsd, .longRun:
+            guard fullSplits.count >= 4 else { return nil }
+            let half = fullSplits.count / 2
+            let first = Array(fullSplits.prefix(half))
+            let second = Array(fullSplits.suffix(fullSplits.count - half))
+            let heavier = Verdict(text: L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"),
+                                  isProblem: true, shade: .neutral, aboutForm: true)
+            let held = Verdict(text: FormNarrative.formHeldCaption(type: wt), isProblem: false, shade: .good, aboutForm: true)
+            if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
+                let gctRise = sg - fg
+                if gctRise <= -7 {
+                    return Verdict(text: L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened through the long run", ja: "長い距離なのに後半になるほど接地時間が短くなりました"),
+                                   isProblem: false, shade: .good, aboutForm: true)
+                } else if gctRise < 10 {
+                    return held
+                } else {
+                    return heavier
+                }
+            } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
+                return fc - sc < 2 ? held : heavier
+            } else {
+                return nil
+            }
+
+        default:
+            return nil
+        }
+    }
+
+    /// 거리주·일반 분기 — 전후반 페이스·기복(CV) 판정. 일반 분기의 접지 개선/폼 무거움은 `aboutForm`.
+    /// `altitudeProfile`은 일반 분기의 경사 혼입(전후반 오르내림 차) 판단용 — 카드가 넘기던 그대로.
+    static func paceShapeVerdict(splits: [SplitData], workoutType wt: WorkoutType,
+                                 altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Verdict? {
+        let L = AppLanguage.shared
+        let fullSplits = fullSplits(splits)
+        switch wt {
+        case .distanceRun:
+            guard fullSplits.count >= 4 else { return nil }
+            let half = fullSplits.count / 2
+            let first = Array(fullSplits.prefix(half))
+            let second = Array(fullSplits.suffix(fullSplits.count - half))
+            guard let fp = halfAvgPace(first), let sp = halfAvgPace(second) else { return nil }
+            let paceDelta = sp - fp
+            var result: Verdict
+            if paceDelta <= 0 {
+                result = Verdict(text: L.s("후반에도 페이스가 떨어지지 않았습니다", "Pace held through the finish", ja: "後半もペースが落ちませんでした"),
+                                 isProblem: false, shade: .good)
+            } else if paceDelta <= 25 {
+                result = Verdict(text: L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌습니다", "Pace slipped \(Int(paceDelta.rounded()))s in second half", ja: "後半にペースが\(Int(paceDelta.rounded()))秒落ちました"),
+                                 isProblem: false, shade: .neutral)
+            } else {
+                result = Verdict(text: L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast", ja: "後半のペースが大きく落ちました。序盤が速かったのかもしれません"),
+                                 isProblem: true, shade: .caution)
+            }
+            // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
+            if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second), (sg - fg) <= -7 {
+                let delta = Int(abs((sg - fg).rounded()))
+                result = Verdict(text: result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
+                                 isProblem: result.isProblem, shade: result.shade)
+            }
+            return result
+
+        case .general:
+            guard fullSplits.count >= 4 else { return nil }
+            let half = fullSplits.count / 2
+            let first = Array(fullSplits.prefix(half))
+            let second = Array(fullSplits.suffix(fullSplits.count - half))
+            let paces = fullSplits.map(\.paceSecPerKm)
+            let mean = paces.reduce(0, +) / Double(paces.count)
+            var cv = 0.0
+            if mean > 0 {
+                let sd = sqrt(paces.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(paces.count))
+                cv = sd / mean * 100
+            }
+            // 전반·후반의 오르내림이 크게 다르면(내려갔다 올라오는 코스 등) 폼 변화가 경사 때문일 수 있다 —
+            // 전후반 폼 비교(⓪①)는 하지 않고 페이스 고르기(②③)만 본다
+            let slopeConfounded: Bool = {
+                guard let c = GradeAdjustedPace.halvesNetClimb(altitudeProfile.map { (x: $0.distanceKm, altitude: $0.altitude) })
+                else { return false }
+                return abs(c.second - c.first) >= GradeAdjustedPace.halvesClimbGapM
+            }()
+            // 분기⓪ GCT 우선, 없으면 케이던스 폴백 (임계값 2)
+            let fGCT = slopeConfounded ? nil : halfAvgGCT(first); let sGCT = slopeConfounded ? nil : halfAvgGCT(second)
+            let firstCad = halfAvgCadence(first); let secondCad = halfAvgCadence(second)
+            let formHeavy: Bool
+            let formImproved: Bool   // ⓪ 후반 GCT ≤ -7ms — 개선
+            if let fg = fGCT, let sg = sGCT {
+                formHeavy    = (sg - fg) >= 10
+                formImproved = (sg - fg) <= -7
+            } else {
+                let cadDrop: Double = (!slopeConfounded && firstCad != nil && secondCad != nil) ? (firstCad! - secondCad!) : 0
+                formHeavy    = cadDrop >= 2
+                formImproved = false  // 케이던스만으론 개선 판정 안 함
+            }
+            if formImproved {
+                return Verdict(text: L.s("후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened as the run progressed", ja: "後半になるほど接地時間が短くなりました"),
+                               isProblem: false, shade: .good, aboutForm: true)
+            } else if formHeavy {
+                return Verdict(text: L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"),
+                               isProblem: true, shade: .neutral, aboutForm: true)
+            } else if cv > 5 {
+                return Verdict(text: L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"),
+                               isProblem: true, shade: .neutral)
+            } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
+                // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
+                return Verdict(text: L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"),
+                               isProblem: true, shade: .neutral)
+            } else if cv <= 3 {
+                return Verdict(text: L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"),
+                               isProblem: false, shade: .good)
+            } else {
+                return nil
+            }
+
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - 리듬 블록 신호 (설계 §4.1)
+
+    private static func line(_ axisLabel: String?, in lines: [RunSummaryLine]) -> RunSummaryLine? {
+        guard let lbl = axisLabel else { return nil }
+        return lines.first { $0.axis == lbl }
+    }
+
+    /// 총평 줄 문장 — 상태어 + 근거(있으면 " — " 뒤에)
+    private static func statement(_ l: RunSummaryLine) -> String {
+        guard let e = l.evidence, !e.isEmpty else { return l.state }
+        return l.state + " — " + e
+    }
+
+    static func signals(context c: RunSummaryBuilder.Context, input i: RunSummaryInput, lines: [RunSummaryLine]) -> [TabDigest.Signal] {
+        var out: [TabDigest.Signal] = []
+        func problem(_ p: Int, _ family: TabDigest.Family, _ text: String, _ direction: String?) {
+            out.append(TabDigest.Signal(tab: .rhythm, kind: .problem, priority: p, family: family, text: text,
+                                        tone: .caution, direction: direction))
+        }
+        func good(_ p: Int, _ family: TabDigest.Family, _ text: String) {
+            out.append(TabDigest.Signal(tab: .rhythm, kind: .good, priority: p, family: family, text: text, tone: .good))
+        }
+
+        let heart = line(RunHeadline.Axis.heart.label, in: lines)
+
+        // R1/R2 — 이지 의도인데 심박 높음 / 회복·테이퍼·대회 후 주인데 고강도 (총평 심박 줄 그대로)
+        var heartProblem = false
+        if let h = heart, h.tone == .neutral {
+            let planEasy = i.workoutType != .race && i.planPhase.map { RunSummary.planEasyPhases.contains($0) } == true
+            let easyIntent = RunSummary.easyIntentTypes.contains(i.workoutType)
+            if planEasy || easyIntent {
+                problem(planEasy ? 2 : 1, .unique, statement(h), h.next)
+                heartProblem = true
+            }
+        }
+
+        // R3 — 후반 진단(롱런 60분↑)
+        var hasLate = false
+        if let r = i.lateRun, r.kind != .held {
+            let late = line(RunSummary.lateAxisLabel, in: lines)
+            let text = late.map(statement) ?? {
+                let e = LateRunDiagnosis.evidence(r, heatDeltaBpm: i.heatDeltaBpm)
+                return e.isEmpty ? LateRunDiagnosis.state(r) : LateRunDiagnosis.state(r) + " — " + e
+            }()
+            problem(3, (r.kind == .cardio || r.kind == .combined) ? .lateHR : .latePace, text, late?.next)
+            hasLate = true
+        }
+
+        // R4 — 후반 심박 상승(빌드업·오르막 아님) — 카드 심박 캡션과 같은 판정
+        let hr = hrVerdict(samples: c.hrSamples, hrMax: c.hrMax, age: c.age, workoutType: c.workoutType,
+                           activity: c.activity, detail: c.detail, history: c.history)
+        if !hasLate, let hr, hr.kind == .secondHalfRise {
+            problem(4, .lateHR, hr.text, nil)
+        }
+
+        // R5 — 의도 없는 템포 구간 머묾 / 고강도 많음 (R1/R2가 같은 심박 강도를 이미 말했으면 생략)
+        let zoneFractions = Dictionary(c.hrZones.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)
+        let zone = zoneVerdict(fractions: zoneFractions, workoutType: c.workoutType,
+                               heatSuffix: zoneHeatSuffix(heatHRModel: c.heatHRModel, temperatureC: c.activity.temperatureC))
+        if !heartProblem, let zone, zone.isProblem {
+            problem(5, .unique, zone.text, heart?.next)
+        }
+
+        // R6 — 페이스: 후반 많이 떨어짐(거리주) / 기복 / 후반 느려짐
+        let pace = paceShapeVerdict(splits: c.detail?.splits ?? [], workoutType: c.workoutType,
+                                    altitudeProfile: c.detail?.altitudeProfile ?? [])
+        if let pace, pace.isProblem, !pace.aboutForm {
+            problem(6, .latePace, pace.text, nil)
+        }
+
+        // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
+        if c.workoutType == .easy, let f = easyLowZoneFraction(zones: c.hrZones) {
+            let v = easyVerdict(lowZoneFraction: f)
+            if v.isGood { good(1, .unique, v.text) }
+        } else if let zone, zone.isGood {
+            good(1, .unique, zone.text)
+        }
+        if let hr, hr.kind == .steady || hr.kind == .easedOff {
+            good(2, .unique, hr.text)
+        }
+        if i.distanceRank == 1, let n = i.distanceSampleCount, n >= 5,
+           let text = distanceRankPhrase(rank: 1, sampleCount: n) {
+            good(3, .distanceRank, text)
+        }
+        return out
+    }
+
+    /// 리듬 블록 기본 방향 — 거리 적응 줄의 next
+    static func defaultDirection(lines: [RunSummaryLine]) -> String? {
+        line(RunHeadline.Axis.distance.label, in: lines)?.next
+    }
+}

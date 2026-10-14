@@ -22,6 +22,8 @@ enum RunSummaryBuilder {
         let hrZonesFn: ((UUID) -> [HRZoneData]?)?
         /// 수면 HRV 밤별 중앙값(엔진 스토어 `hrvNights`). 비어 있으면 HRV 문장·근거 모두 빠진다.
         var hrvNights: [(date: Date, value: Double)] = []
+        /// 관측 최대심박(엔진 산출) — 리듬 심박 캡션(`TabDigestRhythm.hrVerdict`)의 "최고 강도" 판정용. nil이면 나이(Tanaka)로.
+        var hrMax: Double? = nil
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만일 때의 한 줄 칩 폴백은 호출부(카드) 몫.

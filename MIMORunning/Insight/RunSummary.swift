@@ -118,10 +118,13 @@ enum RunSummary {
         [formLine(i), distanceLine(i), heartRateLine(i), lateLine(i), loadLine(i), aerobicLine(i)].compactMap { $0 }
     }
 
+    /// '후반' 줄 축 이름 — 요약(TabDigestRhythm)이 이 줄을 찾을 때도 쓴다
+    static var lateAxisLabel: String { AppLanguage.shared.s("후반", "Late run", ja: "後半") }
+
     /// 후반 — 무엇이 먼저 무너졌나(다리·심박·에너지·둘 다) 또는 끝까지 유지. 유지만 초록.
     private static func lateLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         guard let r = i.lateRun else { return nil }
-        var line = RunSummaryLine(axis: AppLanguage.shared.s("후반", "Late run", ja: "後半"),
+        var line = RunSummaryLine(axis: lateAxisLabel,
                                   state: LateRunDiagnosis.state(r),
                                   tone: r.kind == .held ? .good : .neutral)
         line.evidence = LateRunDiagnosis.evidence(r, heatDeltaBpm: i.heatDeltaBpm)

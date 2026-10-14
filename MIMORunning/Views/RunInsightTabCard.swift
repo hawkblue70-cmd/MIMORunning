@@ -2147,410 +2147,36 @@ private struct RhythmInsightCard: View {
         // 대회: RaceInsightCard가 전용 분석 담당
         guard wt != .race else { return nil }
 
-        let L = AppLanguage.shared
-        let fullSplits = det.splits.filter { $0.distanceM >= 900 }
-        let typePrefix: (text: String, color: Color) = (wt.koreanLabel + " · ", Color.white.opacity(0.5))
-
-        #if DEBUG
-        func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s)/60, Int(s)%60) }
-        let wtName = wt.koreanLabel
-        // 같은 activity.id 로 여러 탭 인스턴스가 중복 호출될 때 1회만 출력
-        let _fkDbg: Bool = {
-            if Self._formKindLogLastId == activity.id { return false }
-            Self._formKindLogLastId = activity.id
-            return true
-        }()
-        func print(_ msg: String) { if _fkDbg { Swift.print(msg) } }
-        #endif
-
-        func halfAvgPace(_ s: [SplitData]) -> Double? {
-            let p = s.map(\.paceSecPerKm); guard !p.isEmpty else { return nil }
-            return p.reduce(0, +) / Double(p.count)
-        }
-        func halfAvgCadence(_ s: [SplitData]) -> Double? {
-            let c = s.compactMap(\.avgCadence).map(Double.init); guard !c.isEmpty else { return nil }
-            return c.reduce(0, +) / Double(c.count)
-        }
-        func halfAvgGCT(_ s: [SplitData]) -> Double? {
-            let g = s.compactMap(\.avgGroundContactTime); guard !g.isEmpty else { return nil }
-            return g.reduce(0, +) / Double(g.count)
-        }
-
+        // 판정은 TabDigestRhythm 하나 — 오늘의 인사이트 요약과 같은 문장(카드 = 요약 단일 출처)
+        let verdict: TabDigestRhythm.Verdict?
         switch wt {
-        case .buildUp:
-            guard fullSplits.count >= 4 else {
-                #if DEBUG
-                print("[Form:종류] 생략 — splits \(fullSplits.count)개 (4개 미만), type=\(wtName)")
-                #endif
-                return nil
-            }
-            let half = fullSplits.count / 2
-            let second = Array(fullSplits.suffix(fullSplits.count - half))
-            guard let sp = halfAvgPace(second),
-                  let sc = halfAvgCadence(second) else {
-                #if DEBUG
-                print("[Form:종류] 생략 — 후반 페이스/케이던스 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            guard let baseline = formBaseline else {
-                #if DEBUG
-                print("[Form:종류] 생략 — baseline 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            guard let band = baseline.cutoffs.band(of: sp) else {
-                #if DEBUG
-                print("[Form:종류] 생략 — 후반 페이스 범위밖, type=\(wtName)")
-                #endif
-                return nil
-            }
-            guard let bandBl = baseline.bands[band],
-                  let cadStat = bandBl.cadence,
-                  bandBl.sampleCount >= FormBaselineEngine.minSamples else {
-                #if DEBUG
-                print("[Form:종류] 생략 — 후반 구간 baseline 부족, type=\(wtName) band=\(band.rawValue)")
-                #endif
-                return nil
-            }
-            let expectedCad = cadStat.median
-            // "끌어올렸다"는 본인 전반 대비 실제로 올랐을 때만 — 기준값만 넘고 전반과 같으면
-            // 폼 추이 카드의 "케이던스는 그대로예요"와 어긋난다.
-            let fc = halfAvgCadence(Array(fullSplits.prefix(half)))
-            let result: (text: String, color: Color)
-            if sc >= expectedCad, let fc, sc - fc >= 2 {
-                result = (L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"), Theme.positive)
-            } else if sc >= expectedCad {
-                result = (L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"), Theme.positive)
-            } else if sc <= expectedCad - 2 {
-                result = (L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"), Color(hex: "FFD166"))
-            } else {
-                result = (L.s("평소 패턴대로 페이스를 올렸습니다", "Paced up in your usual pattern", ja: "普段のパターンどおりにペースを上げました"), Color.white.opacity(0.75))
-            }
-            #if DEBUG
-            print("[Form:종류] type=\(wtName) 후반P=\(pf(sp)) 구간=\(band.rawValue) 기대C=\(Int(expectedCad)) 전반C=\(fc.map { Int($0) } ?? -1) 실제C=\(Int(sc)) → \"\(result.text)\"")
-            #endif
-            return [typePrefix, result]
-
-        case .tempo:
-            guard fullSplits.count >= 4 else {
-                #if DEBUG
-                print("[Form:종류] 생략 — splits \(fullSplits.count)개 (4개 미만), type=\(wtName)")
-                #endif
-                return nil
-            }
-            let half = fullSplits.count / 2
-            let first = Array(fullSplits.prefix(half))
-            let second = Array(fullSplits.suffix(fullSplits.count - half))
-            let result: (text: String, color: Color)
-            if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
-                let gctRise = sg - fg
-                if gctRise <= -7 {
-                    result = (L.s("후반으로 갈수록 지면접촉이 짧아졌습니다. 템포 페이스가 잘 맞았습니다",
-                                  "Ground contact shortened — tempo pace was well-matched", ja: "後半になるほど接地時間が短くなりました。テンポのペースがよく合っていました"), Theme.positive)
-                } else if gctRise < 8 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"), Theme.positive)
-                } else {
-                    let rise = Int(gctRise.rounded())
-                    result = (L.s("후반에 지면접촉이 +\(rise)ms 늘었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
-                                  "Ground contact +\(rise)ms in second half — pace may be slightly high", ja: "後半に接地時間が+\(rise)ms増えました。テンポのペースが少し速いかもしれません"), Color(hex: "FFD166"))
-                }
-                #if DEBUG
-                let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
-                let sp0 = halfAvgPace(second).map { pf($0) } ?? "-"
-                let sign = gctRise >= 0 ? "+" : ""
-                print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(fp0) 후반P=\(sp0) 전반GCT=\(Int(fg)) 후반GCT=\(Int(sg)) 차이=\(sign)\(Int(gctRise.rounded()))ms (GCT기준) → \"\(result.text)\"")
-                #endif
-            } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
-                let cadDrop = fc - sc
-                if cadDrop < 2 {
-                    result = (L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"), Theme.positive)
-                } else {
-                    let drop = Int(cadDrop.rounded())
-                    result = (L.s("후반에 발걸음이 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
-                                  "Cadence dropped \(drop)spm — pace may be slightly high", ja: "後半にピッチが\(drop)spm落ちました。テンポのペースが少し速いかもしれません"), Color(hex: "FFD166"))
-                }
-                #if DEBUG
-                let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
-                let sp0 = halfAvgPace(second).map { pf($0) } ?? "-"
-                print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(fp0) 후반P=\(sp0) 전반C=\(Int(fc)) 후반C=\(Int(sc)) 차이=\(Int((fc-sc).rounded())) (케이던스 폴백·GCT없음) → \"\(result.text)\"")
-                #endif
-            } else {
-                #if DEBUG
-                print("[Form:종류] 생략 — GCT/케이던스 모두 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            return [typePrefix, result]
-
-        case .lsd, .longRun:
-            guard fullSplits.count >= 4 else {
-                #if DEBUG
-                print("[Form:종류] 생략 — splits \(fullSplits.count)개 (4개 미만), type=\(wtName)")
-                #endif
-                return nil
-            }
-            let half = fullSplits.count / 2
-            let first = Array(fullSplits.prefix(half))
-            let second = Array(fullSplits.suffix(fullSplits.count - half))
-            let result: (text: String, color: Color)
-            if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second) {
-                let gctRise = sg - fg
-                if gctRise <= -7 {
-                    result = (L.s("장거리인데 후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened through the long run", ja: "長い距離なのに後半になるほど接地時間が短くなりました"), Theme.positive)
-                } else if gctRise < 10 {
-                    result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
-                } else {
-                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
-                }
-                #if DEBUG
-                let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
-                let sp0 = halfAvgPace(second).map { pf($0) } ?? "-"
-                let sign = gctRise >= 0 ? "+" : ""
-                print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(fp0) 후반P=\(sp0) 전반GCT=\(Int(fg)) 후반GCT=\(Int(sg)) 차이=\(sign)\(Int(gctRise.rounded()))ms (GCT기준) → \"\(result.text)\"")
-                #endif
-            } else if let fc = halfAvgCadence(first), let sc = halfAvgCadence(second) {
-                let cadDrop = fc - sc
-                if cadDrop < 2 {
-                    result = (FormNarrative.formHeldCaption(type: wt), Theme.positive)
-                } else {
-                    result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
-                }
-                #if DEBUG
-                let fp0 = halfAvgPace(first).map { pf($0) } ?? "-"
-                let sp0 = halfAvgPace(second).map { pf($0) } ?? "-"
-                print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(fp0) 후반P=\(sp0) 전반C=\(Int(fc)) 후반C=\(Int(sc)) 차이=\(Int((fc-sc).rounded())) (케이던스 폴백·GCT없음) → \"\(result.text)\"")
-                #endif
-            } else {
-                #if DEBUG
-                print("[Form:종류] 생략 — GCT/케이던스 모두 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            return [typePrefix, result]
-
-        case .interval:
-            let allSegs = det.intervalSegments
-            let workSegs = allSegs.filter { $0.stepLabel == "운동" }
-            let cadences = workSegs.compactMap(\.avgCadence).map(Double.init)
-            guard cadences.count >= 3 else {
-                #if DEBUG
-                if allSegs.isEmpty {
-                    print("[Form:종류] type=\(wtName) 생략 — 세그먼트 없음")
-                } else {
-                    print("[Form:종류] type=\(wtName) 생략 — 고강도 구간 \(cadences.count)회 (3회 미만)")
-                }
-                #endif
-                return nil
-            }
-            let n = cadences.count
-            let mean = cadences.reduce(0, +) / Double(n)
-            guard mean > 0 else { return nil }
-            let sd = sqrt(cadences.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(n))
-
-            // (A) 추세: 선형회귀 기울기(spm/회)
-            let xMean = Double(n - 1) / 2
-            let slopeNum = cadences.enumerated().reduce(0.0) { acc, e in
-                acc + (Double(e.offset) - xMean) * (e.element - mean)
-            }
-            let slopeDen = cadences.enumerated().reduce(0.0) { acc, e in
-                acc + (Double(e.offset) - xMean) * (Double(e.offset) - xMean)
-            }
-            let slope = slopeDen > 0 ? slopeNum / slopeDen : 0.0
-
-            let result: (text: String, color: Color)
-            let branch: String
-
-            if slope <= -1.5 {
-                result = (L.s("반복이 진행될수록 발걸음이 느려졌습니다", "Cadence faded as reps progressed", ja: "本数が進むほどピッチが落ちました"), Color.white.opacity(0.75))
-                branch = "(A) 기울기 하락"
-            } else if slope >= 1.0 {
-                result = (L.s("뒤로 갈수록 발걸음이 더 살아났습니다", "Cadence grew stronger through the reps", ja: "後になるほどピッチが上がりました"), Theme.positive)
-                branch = "(A) 기울기 상승"
-            } else if sd > 2.0 {
-                // (B) 산포 — 추세 평탄할 때만
-                result = (L.s("회차마다 발걸음 편차가 있었습니다", "Cadence varied across reps", ja: "本ごとにピッチのばらつきがありました"), Color.white.opacity(0.75))
-                branch = "(B) 산포"
-            } else {
-                // (C) 수준 — baseline 최고 구간(fast) 중앙 케이던스와 비교
-                let fastCadMedian: Double? = formBaseline.flatMap { bl in
-                    guard let bandBl = bl.bands[.fast],
-                          let stat = bandBl.cadence,
-                          bandBl.sampleCount >= FormBaselineEngine.minSamples else { return nil }
-                    return stat.median
-                }
-                if let ref = fastCadMedian {
-                    let diff = Int((mean - ref).rounded())
-                    if mean >= ref + 3 {
-                        result = (L.s("\(n)회 내내 균일했고, 발걸음이 평소 최고보다 \(diff) spm 높았습니다",
-                                      "\(n) reps consistent — cadence \(diff) spm above personal best band", ja: "\(n)本を通して均一で、ピッチが普段の最高より\(diff) spm高かったです"), Theme.positive)
-                        branch = "(C) 수준↑↑"
-                    } else if mean >= ref {
-                        result = (L.s("\(n)회 내내 균일했고, 평소 최고 수준까지 올렸습니다",
-                                      "\(n) reps consistent — matched personal best cadence band", ja: "\(n)本を通して均一で、普段の最高水準まで上げました"), Theme.positive)
-                        branch = "(C) 수준↑"
-                    } else if mean < ref - 2 {
-                        result = (L.s("전력 구간인데 발걸음이 평소만큼 올라오지 않았습니다",
-                                      "Hard effort, but cadence didn't reach usual high", ja: "本練習区間なのにピッチが普段ほど上がりませんでした"), Color.white.opacity(0.75))
-                        branch = "(C) 수준↓"
-                    } else {
-                        result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps", ja: "\(n)本を通してピッチが均一でした"), Theme.positive)
-                        branch = "(C) 기준 내"
-                    }
-                } else {
-                    result = (L.s("\(n)회 반복 내내 발걸음이 균일했습니다", "Cadence consistent across \(n) reps", ja: "\(n)本を通してピッチが均一でした"), Theme.positive)
-                    branch = "(C) baseline없음→폴백"
-                }
-            }
-            #if DEBUG
-            let fastRef = formBaseline.flatMap { $0.bands[.fast]?.cadence }.map { Int($0.median) } ?? -1
-            print("[Form:종류] type=\(wtName) 구간=\(n)회 평균C=\(Int(mean)) SD=\(String(format: "%.1f", sd)) 기울기=\(String(format: "%.1f", slope))/회 최고구간중앙=\(fastRef) → \(branch) \"\(result.text)\"")
-            #endif
-            return [typePrefix, result]
-
-        case .distanceRun:
-            guard fullSplits.count >= 4 else {
-                #if DEBUG
-                print("[Form:종류] 생략 — splits \(fullSplits.count)개 (4개 미만), type=\(wtName)")
-                #endif
-                return nil
-            }
-            let half = fullSplits.count / 2
-            let first = Array(fullSplits.prefix(half))
-            let second = Array(fullSplits.suffix(fullSplits.count - half))
-            guard let fp = halfAvgPace(first), let sp = halfAvgPace(second) else {
-                #if DEBUG
-                print("[Form:종류] 생략 — 페이스 splits 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            let paceDelta = sp - fp
-            var result: (text: String, color: Color)
-            if paceDelta <= 0 {
-                result = (L.s("후반에도 페이스가 떨어지지 않았습니다", "Pace held through the finish", ja: "後半もペースが落ちませんでした"), Theme.positive)
-            } else if paceDelta <= 25 {
-                result = (L.s("후반에 페이스가 \(Int(paceDelta.rounded()))초 떨어졌습니다", "Pace slipped \(Int(paceDelta.rounded()))s in second half", ja: "後半にペースが\(Int(paceDelta.rounded()))秒落ちました"), Color.white.opacity(0.75))
-            } else {
-                result = (L.s("후반 페이스가 많이 떨어졌습니다. 초반이 빨랐을 수 있습니다", "Big pace drop — may have gone out too fast", ja: "後半のペースが大きく落ちました。序盤が速かったのかもしれません"), Color(hex: "FFD166"))
-            }
-            // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
-            let fGCT = halfAvgGCT(first); let sGCT = halfAvgGCT(second)
-            if let fg = fGCT, let sg = sGCT, (sg - fg) <= -7 {
-                let delta = Int(abs((sg - fg).rounded()))
-                result = (result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
-                          result.color)
-            }
-            #if DEBUG
-            let gctNote = (fGCT != nil && sGCT != nil)
-                ? " GCT\(Int(fGCT!))→\(Int(sGCT!))ms(\(sGCT! - fGCT! >= 0 ? "+" : "")\(Int((sGCT! - fGCT!).rounded())))"
-                : ""
-            print("[Form:종류] type=\(wtName) splits=\(fullSplits.count) 전반P=\(pf(fp)) 후반P=\(pf(sp)) 차이=\(Int(paceDelta.rounded()))초\(gctNote) → \"\(result.text)\"")
-            #endif
-            return [typePrefix, result]
-
-        case .general:
-            guard fullSplits.count >= 4 else {
-                #if DEBUG
-                print("[Form:종류] 생략 — splits \(fullSplits.count)개 (4개 미만), type=\(wtName)")
-                #endif
-                return nil
-            }
-            let half = fullSplits.count / 2
-            let first = Array(fullSplits.prefix(half))
-            let second = Array(fullSplits.suffix(fullSplits.count - half))
-            let paces = fullSplits.map(\.paceSecPerKm)
-            let mean = paces.reduce(0, +) / Double(paces.count)
-            var cv = 0.0
-            if mean > 0 {
-                let sd = sqrt(paces.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(paces.count))
-                cv = sd / mean * 100
-            }
-            // 전반·후반의 오르내림이 크게 다르면(내려갔다 올라오는 코스 등) 폼 변화가 경사 때문일 수 있다 —
-            // 전후반 폼 비교(⓪①)는 하지 않고 페이스 고르기(②③)만 본다
-            let slopeConfounded: Bool = {
-                guard let c = GradeAdjustedPace.halvesNetClimb((detail?.altitudeProfile ?? []).map { (x: $0.distanceKm, altitude: $0.altitude) })
-                else { return false }
-                return abs(c.second - c.first) >= GradeAdjustedPace.halvesClimbGapM
-            }()
-            // 분기⓪ GCT 우선, 없으면 케이던스 폴백 (임계값 2)
-            let fGCT = slopeConfounded ? nil : halfAvgGCT(first); let sGCT = slopeConfounded ? nil : halfAvgGCT(second)
-            let firstCad = halfAvgCadence(first); let secondCad = halfAvgCadence(second)
-            let formHeavy: Bool
-            let formImproved: Bool   // ⓪ 후반 GCT ≤ -7ms — 개선
-            let formHeavyMethod: String
-            if let fg = fGCT, let sg = sGCT {
-                formHeavy    = (sg - fg) >= 10
-                formImproved = (sg - fg) <= -7
-                let sign = (sg - fg) >= 0 ? "+" : ""
-                formHeavyMethod = "GCT \(Int(fg))→\(Int(sg))ms(\(sign)\(Int((sg - fg).rounded())))"
-            } else {
-                let cadDrop: Double = (!slopeConfounded && firstCad != nil && secondCad != nil) ? (firstCad! - secondCad!) : 0
-                formHeavy    = cadDrop >= 2
-                formImproved = false  // 케이던스만으론 개선 판정 안 함
-                formHeavyMethod = "케이던스폴백 \(firstCad.map{Int($0)} ?? 0)→\(secondCad.map{Int($0)} ?? 0)(\(Int(cadDrop.rounded()))spm)"
-            }
-            let result: (text: String, color: Color)?
-            let branch: Int
-            if formImproved {
-                result = (L.s("후반으로 갈수록 지면접촉이 짧아졌습니다", "Ground contact shortened as the run progressed", ja: "後半になるほど接地時間が短くなりました"), Theme.positive)
-                branch = 0
-            } else if formHeavy {
-                result = (L.s("후반에 폼이 조금 무거워졌습니다", "Form got a bit heavier in the second half", ja: "後半にフォームが少し重くなりました"), Color.white.opacity(0.75))
-                branch = 1
-            } else if cv > 5 {
-                result = (L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"), Color.white.opacity(0.75))
-                branch = 2
-            } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
-                // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
-                result = (L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"), Color.white.opacity(0.75))
-                branch = 5
-            } else if cv <= 3 {
-                result = (L.s("처음부터 끝까지 고르게 달렸습니다", "Even effort from start to finish", ja: "最初から最後まで均等に走りました"), Theme.positive)
-                branch = 3
-            } else {
-                result = nil
-                branch = 4
-            }
-            #if DEBUG
-            if branch == 4 {
-                print("[Form:종류] type=\(wtName) CV=\(String(format: "%.1f", cv))% \(formHeavyMethod) → 분기④ 출력없음")
-            } else {
-                print("[Form:종류] type=\(wtName) CV=\(String(format: "%.1f", cv))% \(formHeavyMethod) → 분기\(branch) \"\(result!.text)\"")
-            }
-            #endif
-            return result.map { [typePrefix, $0] }
-
+        case .buildUp, .tempo, .lsd, .longRun:
+            verdict = TabDigestRhythm.typeFormVerdict(workoutType: wt, splits: det.splits, formBaseline: formBaseline)
+        case .distanceRun, .general:
+            verdict = TabDigestRhythm.paceShapeVerdict(splits: det.splits, workoutType: wt, altitudeProfile: det.altitudeProfile)
         case .easy:
-            let visibleZones = hrZones.filter { $0.fraction > 0.01 }
-            guard !visibleZones.isEmpty else {
-                #if DEBUG
-                print("[Form:종류] 생략 — hrZones 없음, type=\(wtName)")
-                #endif
-                return nil
-            }
-            let totalFrac = visibleZones.map(\.fraction).reduce(0, +)
-            let z2BelowFrac = hrZones.filter { $0.id <= 2 }.map(\.fraction).reduce(0, +)
-            let ratio = totalFrac > 0 ? z2BelowFrac / totalFrac : 0
-            let pct = Int((ratio * 100).rounded())
-            let result: (text: String, color: Color)
-            if ratio >= 0.80 {
-                result = (L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%", ja: "しっかりイージーペースを守りました"), Theme.positive)
-            } else if ratio >= 0.50 {
-                // 존 **비율**만 보는 규칙이라 "중간중간 올라갔다"처럼 시간 변화를 말하면 안 된다 —
-                // 심박 곡선이 평평해도(차트 캡션 "끝까지 안정적") 이 문장이 떠서 서로 부딪쳤다.
-                result = (L.s("이지 구간이 \(pct)%였습니다. 조금 더 천천히 가도 좋습니다",
-                              "Easy zones \(pct)% — a little slower would help", ja: "イージー区間が\(pct)%でした。もう少しゆっくりでも大丈夫です"), Color.white.opacity(0.75))
-            } else {
-                result = (L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort", ja: "イージーランなのに心拍がかなり高めでした。もっとゆっくり走っても大丈夫です"), Color(hex: "FFD166"))
-            }
-            #if DEBUG
-            print("[Form:종류] type=\(wtName) Z2이하비율=\(pct)% → \"\(result.text)\"")
-            #endif
-            return [typePrefix, result]
+            verdict = TabDigestRhythm.easyLowZoneFraction(zones: hrZones).map { TabDigestRhythm.easyVerdict(lowZoneFraction: $0) }
+        case .interval, .race:
+            verdict = nil
+        }
+        #if DEBUG
+        // 같은 activity.id 로 여러 탭 인스턴스가 중복 호출될 때 1회만 출력
+        if Self._formKindLogLastId != activity.id {
+            Self._formKindLogLastId = activity.id
+            print("[Form:종류] type=\(wt.koreanLabel) → \(verdict.map { "\"\($0.text)\"" } ?? "생략")")
+        }
+        #endif
+        guard let v = verdict else { return nil }
+        let typePrefix: (text: String, color: Color) = (wt.koreanLabel + " · ", Color.white.opacity(0.5))
+        return [typePrefix, (v.text, Self.verdictColor(v.shade))]
+    }
 
-        case .race:
-            // 대회 분석은 Race 탭의 RaceInsightCard가 담당 — 여기서는 생략
-            return nil
+    /// 판정 단계 → 원래 글자색 (초록 · 흰색 0.75 · 노랑)
+    private static func verdictColor(_ shade: TabDigestRhythm.Verdict.Shade) -> Color {
+        switch shade {
+        case .good:    return Theme.positive
+        case .neutral: return Color.white.opacity(0.75)
+        case .caution: return Color(hex: "FFD166")
         }
     }
 
@@ -2671,33 +2297,9 @@ private struct RhythmInsightCard: View {
     }
 
     private var zoneVerdictLabel: String {
-        let L = AppLanguage.shared
-        let visible = hrZones.filter { $0.fraction > 0.01 }
-        let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
-        let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
-        if z2frac >= 0.60 { return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました") }
-        // 총평과 같은 규칙 — Zone 4+5 합이 가장 큰 존 이상(35%↑)이면 고강도 캡션
-        guard let v = FormNarrative.verdictZone(fractions: Dictionary(visible.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)) else { return "" }
-        let dom = (id: v.zone, fraction: v.frac)
-        let heatDelta = heatHRModel?.delta(activity.temperatureC) ?? 0
-        let heatSuffix: String = {
-            guard heatDelta >= RunSummary.heatNoteMinBpm else { return "" }
-            let n = Int(heatDelta.rounded())
-            return (heatHRModel?.isFallback == true)
-                ? L.s(" · 더위로 +\(n)bpm 정도", " · about +\(n) bpm from heat", ja: " · 暑さで+\(n)bpmほど")
-                : L.s(" · 더위로 +\(n)bpm", " · +\(n) bpm from heat", ja: " · 暑さで+\(n)bpm")
-        }()
-        switch dom.id {
-        case 1: return L.s("가벼운 회복 강도였습니다", "Light recovery run", ja: "軽い回復強度でした")
-        case 2: return L.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました")
-        case 3:
-            // 인터벌은 운동·회복이 섞인 평균이라 "템포 구간에 머물렀다"가 아니다 — 총평 "의도한 고강도"와도 부딪혔다
-            if rhythmWorkoutType == .interval {
-                return L.s("운동·회복이 섞인 평균이 Zone 3입니다", "Zone 3 on average — work and recovery mixed", ja: "本練習と回復が混ざった平均がゾーン3です") + heatSuffix
-            }
-            return L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone", ja: "心拍はテンポ域にとどまりました") + heatSuffix
-        default: return FormNarrative.highIntensityZoneCaption(type: rhythmWorkoutType) + heatSuffix
-        }
+        TabDigestRhythm.zoneVerdict(fractions: Dictionary(hrZones.map { ($0.id, $0.fraction) }, uniquingKeysWith: +),
+                                    workoutType: rhythmWorkoutType,
+                                    heatSuffix: TabDigestRhythm.zoneHeatSuffix(heatHRModel: heatHRModel, temperatureC: activity.temperatureC))?.text ?? ""
     }
 
     private var zoneVerdictColor: Color {
@@ -2798,12 +2400,8 @@ private struct RhythmInsightCard: View {
     /// 거리 문맥 원라이너 — 총평 거리 적응 근거와 같은 헬퍼(`RunSummaryBuilder.distanceRankInfo`)를 쓴다.
     private var distanceContext: String? {
         guard let info = RunSummaryBuilder.distanceRankInfo(activity: activity, history: history),
-              info.rank <= 3 else { return nil }
-        let L = AppLanguage.shared
-        if info.rank == 1 {
-            return L.s("↑ 최근 \(info.sampleCount)회 중 가장 긴 거리", "↑ Longest of last \(info.sampleCount) runs", ja: "↑ 直近\(info.sampleCount)回で最長の距離")
-        }
-        return L.s("↑ 최근 \(info.sampleCount)회 중 \(info.rank)번째로 긴 거리", "↑ #\(info.rank) of last \(info.sampleCount) by distance", ja: "↑ 直近\(info.sampleCount)回で\(info.rank)番目に長い距離")
+              let phrase = TabDigestRhythm.distanceRankPhrase(rank: info.rank, sampleCount: info.sampleCount) else { return nil }
+        return "↑ " + phrase
     }
 
     private var vo2Info: RunInsightEngine.VO2FitnessInfo? {
@@ -2812,46 +2410,17 @@ private struct RhythmInsightCard: View {
     }
 
     private var hrVerdictText: (text: String, color: Color)? {
-        guard hrSamples.count >= 10 else { return nil }
-        let L = AppLanguage.shared
-        // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
-        // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
-        // 러닝 중간 튐(hrMidRunSpikeCleaned)도 주변 값으로 바꿔 판정한다 — 존 분포와 같은 규칙
-        let samples = hrMidRunSpikeCleaned(hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples)
-        guard samples.count >= 10 else { return nil }
-        let n = samples.count
-        let half = n / 2
-        let avgFirst  = samples.prefix(half).map { Double($0.bpm) }.reduce(0, +) / Double(half)
-        let avgSecond = samples.suffix(n - half).map { Double($0.bpm) }.reduce(0, +) / Double(n - half)
-        let diff = avgSecond - avgFirst
-        // 220−나이는 쓰지 않는다 — 엔진과 같은 규칙(관측 최대 → Tanaka)
-        // "최고 강도"는 최대심박 90% 이상에 2분 이상 머물렀을 때만 — 오르막 끝에서 한 번 스친 최고치로는 말하지 않는다.
-        // (존 도넛 "Zone 2 중심"·총평과 부딪혔다.) 평활한 값으로 재서 광학 튐도 거른다.
-        if let mhr = RunInsightEngine.estimatedHRMax(hrMax: hrMax, age: age), mhr > 0 {
-            let thr = 0.90 * Double(mhr)
-            let sm = hrChartSmoothed(samples.map(\.bpm))
-            var secAbove: TimeInterval = 0
-            for i in 0..<(samples.count - 1) where sm[i] >= thr {
-                secAbove += min(max(samples[i + 1].offset - samples[i].offset, 0), 30)
-            }
-            if secAbove >= 120 {
-                return (L.s("최고 강도까지 올렸습니다", "Pushed to max intensity", ja: "最高強度まで上げました"), Color(hex: "FF9A3C"))
-            }
+        // 판정은 TabDigestRhythm.hrVerdict 하나 — 색만 카드가 정한다
+        guard let v = TabDigestRhythm.hrVerdict(samples: hrSamples, hrMax: hrMax, age: age, workoutType: rhythmWorkoutType,
+                                                activity: activity, detail: detail, history: history) else { return nil }
+        let color: Color
+        switch v.kind {
+        case .maxIntensity, .secondHalfRise: color = Color(hex: "FF9A3C")
+        case .lateClimb:                     color = Color.white.opacity(0.75)
+        case .easedOff:                      color = Color(hex: "4C8DFF")
+        case .steady:                        color = Theme.positive
         }
-        // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저
-        if diff >= 8, rhythmWorkoutType != .buildUp,
-           let climb = GradeAdjustedPace.halvesNetClimb(detail?.altitudeTimeProfile.map { (x: $0.offset, altitude: $0.altitude) } ?? []),
-           climb.second - climb.first >= GradeAdjustedPace.halvesClimbGapM, climb.second > 0 {
-            return (L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb", ja: "後半の上りで心拍が上がりました"), Color.white.opacity(0.75))
-        }
-        // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
-        // 전후반 평균으로는 8bpm 안이어도 총평이 "심박이 먼저 오름"이면 같은 말을 한다 — 반으로 나누면
-        // 중반이 섞여 마지막 구간 상승(149→161)이 묻혀 "끝까지 안정적"과 총평이 엇갈렸다(2026-10-08)
-        let lateRose = RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail,
-                                                         workoutType: rhythmWorkoutType, history: history)
-        if diff >= 8 || lateRose { return (FormNarrative.hrSecondHalfRiseCaption(type: rhythmWorkoutType), Color(hex: "FF9A3C")) }
-        if diff <= -5 { return (L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"), Color(hex: "4C8DFF")) }
-        return (FormNarrative.hrSteadyCaption(type: rhythmWorkoutType), Theme.positive)
+        return (v.text, color)
     }
 
     private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
@@ -2877,7 +2446,7 @@ private struct RhythmInsightCard: View {
             effortIndex: effortIndex, heatHRModel: heatHRModel,
             age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
             planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
-            hrvNights: hrvNights
+            hrvNights: hrvNights, hrMax: hrMax
         ))
     }
 
