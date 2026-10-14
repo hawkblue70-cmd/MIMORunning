@@ -71,4 +71,9 @@ enum TabDigest {
         }
         return out
     }
+
+    /// 세 탭 수집기 결과를 한 번에 조합 — `make(rhythm + form + performance)`와 같다.
+    static func assemble(rhythm: [Signal], form: [Signal], performance: [Signal], defaults: Defaults = .init()) -> [Block] {
+        make(rhythm + form + performance, defaults: defaults)
+    }
 }

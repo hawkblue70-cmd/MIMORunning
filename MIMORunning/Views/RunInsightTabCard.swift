@@ -833,7 +833,15 @@ struct RunInsightTabCard: View {
     /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 1·2분 평소 낙폭 범위.
     var recoveryBands: MRRecoveryBands? = nil
 
-    @State private var tab: InsightTabKind = .rhythm
+    /// 선택 탭 — 상세 화면이 넘기면 그 바인딩(맨 위 요약 블록 탭으로 이동), 없으면 카드 자체 상태.
+    var selection: Binding<InsightTabKind>? = nil
+    @State private var localTab: InsightTabKind = .rhythm
+    private var tab: InsightTabKind {
+        get { selection?.wrappedValue ?? localTab }
+        nonmutating set {
+            if let s = selection { s.wrappedValue = newValue } else { localTab = newValue }
+        }
+    }
     /// 퍼포먼스 카드가 강도 분포를 실제로 그렸는지 — 각주(문헌값 설명)를 차트가 있을 때만 붙이기 위해 자식이 알려준다.
     @State private var performanceHasIntensity = false
     @State private var showExport = false
@@ -1018,18 +1026,7 @@ struct RunInsightTabCard: View {
                 guard !cads.isEmpty else { return detail?.avgCadence }
                 return Int((Double(cads.reduce(0, +)) / Double(cads.count)).rounded())
             }()
-            let hasFormGap: Bool = {
-                let cal = Calendar.current
-                guard let threeMonthsAgo = cal.date(byAdding: .month, value: -3, to: activity.date) else { return false }
-                let recent = history
-                    .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
-                    .sorted { $0.date < $1.date }
-                for (a, b) in zip(recent, recent.dropFirst()) {   // 0·1건이면 루프 없음 (0..<-1 크래시 방지)
-                    let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
-                    if gap >= 14 { return true }
-                }
-                return false
-            }()
+            let hasFormGap = TabDigestForm.hasRecentGap(activity: activity, history: history)
             RunFormCardView(
                 activity: activity,
                 splits: detail?.splits ?? [],

@@ -105,6 +105,10 @@ struct ActivityDetailView: View {
     @State private var runInsights: [RunInsight] = []
     /// 오늘의 인사이트 요약(RunHeadline) — 입력이 바뀔 때 한 번 계산(렌더마다 계산하지 않음)
     @State private var headline: RunHeadline?
+    /// 오늘의 인사이트 탭 요약 블록(리듬·폼·퍼포먼스) — 비면 맨 위 카드는 예전 사실·다음 줄을 그린다
+    @State private var digest: [TabDigest.Block] = []
+    /// 인사이트 탭 카드의 선택 탭 — 맨 위 요약 블록을 누르면 그 탭으로 바꾼다
+    @State private var selectedInsightTab: InsightTabKind = .rhythm
     /// 사용자 입력(중복 workoutID는 최신 우선) + Apple(manager 맵 > detail 캐시)
     private var effortIndex: EffortIndex { EffortIndex(stories: panelAllStories, apple: manager.effortMap) }
     private var appleEffortForRun: AppleEffort? { manager.appleEffort(for: activity.id) ?? detail?.appleEffort }
@@ -243,19 +247,24 @@ struct ActivityDetailView: View {
     }
 
     /// 총평 5줄 입력 조립 — RunInsightSection과 같은 값들로, 공유 카드 "총평" 칩 전용.
-    private var summaryContext: RunSummaryBuilder.Context {
+    private var summaryContext: RunSummaryBuilder.Context { summaryContext(workoutType: nil) }
+
+    /// `workoutType`을 주면 그 유형으로(퍼포먼스 카드 디커플링이 쓰는 유형과 맞출 때), nil이면 탭 카드와 같은 규칙.
+    private func summaryContext(workoutType override: WorkoutType?) -> RunSummaryBuilder.Context {
         RunSummaryBuilder.Context(
             activity: activity, detail: detail, history: manager.activities,
             hrZones: effectiveHRZones, hrSamples: hrSamples,
             formBaseline: formBaseline, formShifts: formShifts,
-            workoutType: summaryWorkoutType(for: activity.id) ?? .general,
+            workoutType: override ?? summaryWorkoutType(for: activity.id) ?? .general,
             workoutTypeFn: summaryWorkoutType,
             effortIndex: effortIndex, heatHRModel: engine.heatHR,
             age: userAge, isMale: manager.userIsMale, easyPaceLookup: engine.easyPaceLookup,
             planPhase: matchedPlanWeek()?.phase,
             raceDetailFn: manager.detailFromCache,
             hrZonesFn: manager.hrZonesFromCache,
-            hrvNights: engine.hrvNights
+            hrvNights: engine.hrvNights,
+            // 리듬 카드(RunInsightSection hrMax)와 같은 값 — 요약 블록과 카드 심박 캡션이 같은 판정
+            hrMax: engine.phys.hrMax?.value
         )
     }
 
@@ -264,17 +273,56 @@ struct ActivityDetailView: View {
     /// headline 재계산 트리거 — 인사이트·총평 재료가 바뀌면 달라지는 값들
     private var headlineKey: String {
         "\(insight?.title ?? "")|\(insight?.detail ?? "")|\(hrSamples.count)|\(formBaseline == nil ? 0 : 1)|" +
-        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.points.count ?? 0)|\(level.rawValue)"
+        "\(effectiveHRZones.count)|\(runInsights.count)|\(detail == nil ? 0 : 1)|\(engine.thresholdTrend?.points.count ?? 0)|\(level.rawValue)|" +
+        "\(formShifts.count)|\(formRunCadenceResidual ?? 0)"
     }
 
     private func recomputeHeadline() {
-        guard activity.type == .running else { headline = nil; return }
+        guard activity.type == .running else { headline = nil; digest = []; return }
         let input = RunSummaryBuilder.input(summaryContext)
         let lines = RunSummary.lines(input)
         let eff = RunInsight.efficiencyComparison(in: runInsights)
         let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff,
                                  threshold: thresholdContext)
         if h != headline { withAnimation(.easeInOut(duration: 0.3)) { headline = h } }
+        let d = computeDigest(context: summaryContext, input: input, lines: lines)
+        if d != digest { withAnimation(.easeInOut(duration: 0.3)) { digest = d } }
+    }
+
+    /// 오늘의 인사이트 탭 요약 — 탭 카드들이 받는 것과 같은 재료로 세 수집기를 부른다.
+    /// 설계: docs/superpowers/specs/2026-10-14-today-insight-tab-digest-design.md
+    private func computeDigest(context c: RunSummaryBuilder.Context, input: RunSummaryInput,
+                               lines: [RunSummaryLine]) -> [TabDigest.Block] {
+        let history = manager.activities
+        let rhythm = TabDigestRhythm.signals(context: c, input: input, lines: lines)
+
+        // 폼 — 폼 탭이 보일 때만(RunInsightTabCard.visibleTabs: 케이던스 있음). 재료는 폼 카드와 같은 출처.
+        var form: [TabDigest.Signal] = []
+        var formDefault: String? = nil
+        if detail?.avgCadence != nil {
+            let x = TabDigestForm.Inputs(
+                activity: activity, detail: detail, baseline: formBaseline, formShifts: formShifts,
+                workoutType: c.workoutType,
+                typicalKm: RunSummaryBuilder.typicalRunDistanceKm(activity: activity, history: history),
+                fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
+                hasRecentGap: TabDigestForm.hasRecentGap(activity: activity, history: history),
+                runCadenceResidual: formRunCadenceResidual)
+            form = TabDigestForm.signals(x, lines: lines)
+            formDefault = TabDigestForm.defaultDirection(x)
+        }
+
+        // 퍼포먼스 — 디커플링은 카드처럼 `workoutTypeFn ?? detail.workoutType` 유형으로 판정
+        let perfType = summaryWorkoutType(for: activity.id) ?? detail?.workoutType ?? .general
+        let perfContext = perfType == c.workoutType ? c : summaryContext(workoutType: perfType)
+        let performance = TabDigestPerformance.signals(context: perfContext, input: input, lines: lines,
+                                                       insights: runInsights, easyAlertText: nil)
+
+        var directions: [TabDigest.Tab: String] = [:]
+        directions[.rhythm] = TabDigestRhythm.defaultDirection(lines: lines)
+        directions[.form] = formDefault
+        directions[.performance] = TabDigestPerformance.defaultDirection(lines: lines)
+        return TabDigest.assemble(rhythm: rhythm, form: form, performance: performance,
+                                  defaults: .init(directions: directions))
     }
 
     /// 역치 맥락 — 중수 이상 러닝만. 이 러닝 직전·직후 기준 역치 페이스와, 이 러닝 페이스의 직전 역치 대비 차이.
@@ -390,7 +438,12 @@ struct ActivityDetailView: View {
                         InsightCard(activity: activity, insight: insight, headline: headline, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
                                     effortValue: resolvedEffort?.value,
-                                    comparisonLine: raceComparison?.headline)
+                                    comparisonLine: raceComparison?.headline,
+                                    digest: digest,
+                                    onSelectTab: { t in
+                                        withAnimation(.easeInOut(duration: 0.18)) { selectedInsightTab = t }
+                                        withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("insightTabs", anchor: .top) }
+                                    })
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
@@ -442,9 +495,11 @@ struct ActivityDetailView: View {
                             planPhase: matchedPlanWeek()?.phase,
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
-                            recoveryBands: recoveryBands
+                            recoveryBands: recoveryBands,
+                            selectedTab: $selectedInsightTab
                         )
                     }
+                    .id("insightTabs")
                     // 표시할 상세 지표가 하나도 없으면(걷기 등) 섹션째 숨긴다.
                     // 로딩 중에는 유지 — 칩이 사라졌다 나타나는 깜빡임 방지.
                     if isLoadingDetail || !selectablePanels.isEmpty {
@@ -1711,6 +1766,79 @@ private struct InsightCard: View {
     var effortValue: Int? = nil
     /// 대회 해마다 비교 한 문장 — 있으면 대회 러닝(.raceDay)의 부연 줄을 이것으로 바꾸고 종목은 깃발 줄로 옮긴다.
     var comparisonLine: String? = nil
+    /// 탭 요약 블록 — 비어 있지 않으면 사실·다음 줄 대신 블록을 그린다(비면 예전 표시 그대로)
+    var digest: [TabDigest.Block] = []
+    /// 블록을 누르면 그 인사이트 탭으로
+    var onSelectTab: (InsightTabKind) -> Void = { _ in }
+
+    private static func kind(_ t: TabDigest.Tab) -> InsightTabKind {
+        switch t {
+        case .rhythm:      return .rhythm
+        case .form:        return .form
+        case .performance: return .performance
+        }
+    }
+
+    private static func dotColor(_ tone: TabDigest.Tone) -> Color {
+        switch tone {
+        case .caution: return Theme.caution          // 총평(RunSummaryLinesView) 주의 줄과 같은 색
+        case .good:    return Theme.positive
+        case .neutral: return .secondary
+        }
+    }
+
+    private func blockView(_ b: TabDigest.Block) -> some View {
+        let tab = Self.kind(b.tab)
+        return Button { onSelectTab(tab) } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 4) {
+                    Text(tab.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                ForEach(Array(b.statements.enumerated()), id: \.offset) { _, st in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Circle()
+                            .fill(Self.dotColor(st.tone))
+                            .frame(width: 6, height: 6)
+                            .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 1 }
+                        Text(st.text)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                if let dir = b.direction {
+                    Text("→ " + dir)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.violet)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLanguage.shared.s("\(tab.title) 탭으로 이동합니다", "Opens the \(tab.title) tab", ja: "\(tab.title)タブに移動します"))
+    }
+
+    @ViewBuilder
+    private var digestBlocks: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(digest.enumerated()), id: \.offset) { i, b in
+                if i > 0 {
+                    Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
+                }
+                blockView(b)
+            }
+        }
+        .contentTransition(.opacity)
+    }
 
     private var showsComparison: Bool { insight?.theme == .raceDay && comparisonLine != nil }
 
@@ -1804,17 +1932,20 @@ private struct InsightCard: View {
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .contentTransition(.opacity)
-                    // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
-                    if let next = headline?.next {
-                        Text(next)
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.55))
-                            .fixedSize(horizontal: false, vertical: true)
+                    // 탭 요약 블록이 있으면 사실·다음 줄은 블록으로 옮겨져 여기선 그리지 않는다(중복 방지)
+                    if digest.isEmpty {
+                        Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.72))
                             .contentTransition(.opacity)
+                        // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
+                        if let next = headline?.next {
+                            Text(next)
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.55))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .contentTransition(.opacity)
+                        }
                     }
                     if let race = confirmedRace {
                         let division = showsComparison ? " · " + InsightEngine.raceDistanceDivision(km: race.distanceKm) : ""
@@ -1851,6 +1982,12 @@ private struct InsightCard: View {
                     .padding(.top, 2)
                     .transition(.scale(scale: 0.7).combined(with: .opacity))
                 }
+            }
+
+            // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 미니미 옆 좁은 칸이 아니라 카드 폭 전체 ──
+            if !digest.isEmpty {
+                digestBlocks
+                    .padding(.top, 2)
             }
 
             // ── Condition row (weather chip + sleep/recovery line) ──

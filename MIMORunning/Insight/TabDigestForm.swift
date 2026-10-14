@@ -491,4 +491,19 @@ enum TabDigestForm {
 
     /// 폼 블록 기본 방향 — 케이던스-심박 권고
     static func defaultDirection(_ x: Inputs) -> String? { cadenceAdvice(x) }
+
+    /// 최근 3개월 러닝 사이에 14일↑ 공백이 있었는가 — 폼 카드·요약이 추세 문장 침묵에 같은 값을 쓴다.
+    /// (옮김: RunInsightTabCard `case .form:`의 hasFormGap)
+    static func hasRecentGap(activity: Activity, history: [Activity]) -> Bool {
+        let cal = Calendar.current
+        guard let threeMonthsAgo = cal.date(byAdding: .month, value: -3, to: activity.date) else { return false }
+        let recent = history
+            .filter { $0.type == .running && $0.date >= threeMonthsAgo && $0.date <= activity.date }
+            .sorted { $0.date < $1.date }
+        for (a, b) in zip(recent, recent.dropFirst()) {   // 0·1건이면 루프 없음 (0..<-1 크래시 방지)
+            let gap = cal.dateComponents([.day], from: a.date, to: b.date).day ?? 0
+            if gap >= 14 { return true }
+        }
+        return false
+    }
 }
