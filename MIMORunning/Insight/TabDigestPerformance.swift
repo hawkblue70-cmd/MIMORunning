@@ -359,17 +359,23 @@ enum TabDigestPerformance {
             problem(2, .load, text, loadNext)
         }
 
-        // P3 — 디커플링 5%↑(덥지 않음) / g3 ≤5%
+        // P3 — 디커플링. 값이 계산되면 .lateHR 신호를 정확히 1개 낸다(설계 §5: 후반 심박은 퍼포먼스 소유 — 리듬 R4가 다른 말을 하지 않게)
+        //   문제: 5% 넘게 오름(덥지 않음) · 주의색(더운 날 10%↑ 포함) · 5% 안이지만 마지막 구간 심박 상승
+        //   좋음 g3: 지켰다(초록) / 그 밖 중립(더운 날 5~10%, 빌드업): 좋은 신호 최하위(9)·톤 중립
         let distKm = c.activity.distance / 1000
-        var decoupling: TabDigestRhythm.Verdict? = nil
         if let pct = decouplingPct(splits: c.detail?.splits ?? [], workoutType: c.workoutType, distKm: distKm) {
             // 카드처럼 5% 안일 때만 총평 후반 심박 판정을 본다
             let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: c.activity, detail: c.detail,
                                                                          workoutType: c.workoutType, history: c.history)
             let v = decouplingVerdict(pct: pct, workoutType: c.workoutType, temperatureC: c.activity.temperatureC,
                                       lateHRRoseFirst: lateFirst)
-            decoupling = v
-            if v.isProblem { problem(3, .lateHR, v.text, nil) }
+            if v.isProblem || v.shade == .caution || lateFirst {
+                problem(3, .lateHR, v.text, nil)
+            } else if v.isGood {
+                good(3, .lateHR, v.text)
+            } else {
+                out.append(TabDigest.Signal(tab: .performance, kind: .good, priority: 9, family: .lateHR, text: v.text, tone: .neutral))
+            }
         }
 
         // P4 — 같은 페이스 심박 높음(효율 비교, 카디악 드리프트 제외) / g1 낮음
@@ -388,9 +394,8 @@ enum TabDigestPerformance {
             problem(7, .unique, cardio.message, nil)
         }
 
-        // 좋은 신호 — 같은 페이스 심박 낮음 → (역치 상승은 제목이 말하므로 제외) → 디커플링 ≤5% → 복귀 심박 회복 → 후반 유지
+        // 좋은 신호 — 같은 페이스 심박 낮음 → (역치 상승은 제목이 말하므로 제외) → 디커플링 ≤5%(위 P3에서) → 복귀 심박 회복 → 후반 유지
         if let eff, eff.tone == .good { good(1, .efficiency, eff.message) }
-        if let d = decoupling, d.isGood { good(3, .lateHR, d.text) }
         if let rec = ret?.recovered { good(4, .unique, rec) }
         // g5 — 전반 대비 후반 3% 안(네거티브 스플릿 포함). 카드의 '네거티브 스플릿'은 차트 꼬리표뿐이라 지구력 문장을 쓴다.
         if let e = endurance, e.tone == .good { good(5, .latePace, e.message) }

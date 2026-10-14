@@ -130,4 +130,57 @@ struct TabDigestPerformanceTests {
                                              insights: [lower], easyAlertText: nil)
         #expect(g.count == 1 && g[0].kind == .good && g[0].family == .efficiency)
     }
+
+    // MARK: 디커플링 신호 — 값이 있으면 .lateHR 1개 (fix round 1)
+
+    private func decouplingContext(back: Int, tempC: Double?) -> RunSummaryBuilder.Context {
+        let splits = (1...10).map { i in
+            SplitData(id: i, distanceM: 1000, duration: 360, avgHeartRate: i <= 5 ? 140 : back, avgCadence: nil,
+                      avgPower: nil, avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+        let base = RunSummaryBuilder.Context.stub(workoutType: .longRun, detail: detail(splits))
+        let a = Activity(id: UUID(), type: .running, date: Date(), duration: 3600, distance: 10_000,
+                         calories: nil, avgHeartRate: nil, temperatureC: tempC)
+        return RunSummaryBuilder.Context(activity: a, detail: base.detail, history: [], hrZones: [], hrSamples: [],
+                                         formBaseline: nil, formShifts: [], workoutType: .longRun,
+                                         workoutTypeFn: nil, effortIndex: nil, heatHRModel: nil,
+                                         age: nil, isMale: nil, easyPaceLookup: nil, planPhase: nil,
+                                         raceDetailFn: nil, hrZonesFn: nil)
+    }
+
+    /// 더운 날 12%(주의색) → 문제 p3
+    @Test func hotBigDecouplingIsProblem() {
+        // 140 → 160: (1 − 140/160) = 12.5%
+        let s = TabDigestPerformance.signals(context: decouplingContext(back: 160, tempC: 26), input: RunSummaryInput(),
+                                             lines: [], insights: [], easyAlertText: nil)
+        let late = s.filter { $0.family == .lateHR }
+        #expect(late.count == 1)
+        #expect(late.first?.kind == .problem && late.first?.priority == 3 && late.first?.tone == .caution)
+        #expect(late.first?.text == "후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.")
+    }
+
+    /// 더운 날 7% → 중립 good p9
+    @Test func hotMidDecouplingIsNeutralGood() {
+        // 140 → 151: (1 − 140/151) ≈ 7.3%
+        let s = TabDigestPerformance.signals(context: decouplingContext(back: 151, tempC: 26), input: RunSummaryInput(),
+                                             lines: [], insights: [], easyAlertText: nil)
+        let late = s.filter { $0.family == .lateHR }
+        #expect(late.count == 1)
+        #expect(late.first?.kind == .good && late.first?.priority == 9 && late.first?.tone == .neutral)
+        #expect(late.first?.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.")
+    }
+
+    /// 조합기 — 퍼포먼스 중립 디커플링이 있으면 리듬 R4(.lateHR)는 리듬 블록에 나오지 않는다
+    @Test func neutralDecouplingOwnsLateHROverRhythm() {
+        let perf = TabDigestPerformance.signals(context: decouplingContext(back: 151, tempC: 26), input: RunSummaryInput(),
+                                                lines: [], insights: [], easyAlertText: nil)
+        let r4 = TabDigest.Signal(tab: .rhythm, kind: .problem, priority: 4, family: .lateHR,
+                                  text: "후반에 심박이 올랐습니다", tone: .caution)
+        let blocks = TabDigest.make([r4] + perf)
+        let rhythm = blocks.first { $0.tab == .rhythm }
+        #expect(rhythm?.statements.contains { $0.text == r4.text } != true)
+        #expect(blocks.first { $0.tab == .performance }?.statements.contains {
+            $0.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다."
+        } == true)
+    }
 }
