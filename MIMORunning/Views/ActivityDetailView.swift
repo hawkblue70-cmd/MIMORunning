@@ -1785,6 +1785,23 @@ private struct InsightCard: View {
         }
     }
 
+    /// 탭 카테고리 색 — 리듬 = 심박 빨강, 폼 = 페이스 청록, 퍼포먼스 = 브랜드 바이올렛
+    private static func tint(_ t: TabDigest.Tab) -> Color {
+        switch t {
+        case .rhythm:      return Theme.heartRate
+        case .form:        return Theme.pace
+        case .performance: return Theme.violet
+        }
+    }
+
+    private static func icon(_ t: TabDigest.Tab) -> String {
+        switch t {
+        case .rhythm:      return "heart.fill"
+        case .form:        return "figure.run"
+        case .performance: return "chart.line.uptrend.xyaxis"
+        }
+    }
+
     private static func dotColor(_ tone: TabDigest.Tone) -> Color {
         switch tone {
         case .caution: return Theme.caution          // 총평(RunSummaryLinesView) 주의 줄과 같은 색
@@ -1797,14 +1814,18 @@ private struct InsightCard: View {
         let tab = Self.kind(b.tab)
         return Button { onSelectTab(tab) } label: {
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 4) {
+                // 애플 건강 앱 스타일 — 카테고리 아이콘 + 색 제목, 오른쪽 끝 셰브런
+                HStack(spacing: 5) {
+                    Image(systemName: Self.icon(b.tab))
+                        .font(.system(size: 12, weight: .semibold))
                     Text(tab.title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 14, weight: .semibold))
+                    Spacer(minLength: 4)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
+                .foregroundStyle(Self.tint(b.tab))
                 ForEach(Array(b.statements.enumerated()), id: \.offset) { _, st in
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Circle()
@@ -1967,13 +1988,7 @@ private struct InsightCard: View {
                 }
             }
 
-            // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 제목·사실 바로 아래, 카드 폭 전체 ──
-            if !digest.isEmpty {
-                digestBlocks
-                    .padding(.top, 2)
-            }
-
-            // ── 대회·언덕 칩 — 블록 아래 ──
+            // ── 대회·언덕 칩 — 인사이트 사실 아래(예전 카드 순서) ──
             if confirmedRace != nil || hillMatch != nil {
                 VStack(alignment: .leading, spacing: 6) {
                     if let race = confirmedRace {
@@ -2002,7 +2017,7 @@ private struct InsightCard: View {
                 }
             }
 
-            // ── Condition row (weather chip + sleep/recovery line) ──
+            // ── 날씨·수면·기록 줄 — 인사이트 사실 바로 아래, 블록 위 ──
             conditionRow
             HStack(spacing: 4) {
                 Text(activity.formattedDistance)
@@ -2019,6 +2034,13 @@ private struct InsightCard: View {
                 }
             }
             .font(.system(size: 13, weight: .semibold))
+
+            // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 날씨·기록 줄 아래, 카드 폭 전체 ──
+            if !digest.isEmpty {
+                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
+                    .padding(.vertical, 2)
+                digestBlocks
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
