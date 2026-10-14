@@ -1772,7 +1772,7 @@ private struct InsightCard: View {
     var effortValue: Int? = nil
     /// 대회 해마다 비교 한 문장 — 있으면 대회 러닝(.raceDay)의 부연 줄을 이것으로 바꾸고 종목은 깃발 줄로 옮긴다.
     var comparisonLine: String? = nil
-    /// 탭 요약 블록 — 비어 있지 않으면 사실·다음 줄 대신 블록을 그린다(비면 예전 표시 그대로)
+    /// 탭 요약 블록 — 제목·사실·다음 줄 아래에 덧붙인다(사실·다음 줄은 항상 유지)
     var digest: [TabDigest.Block] = []
     /// 블록을 누르면 그 인사이트 탭으로
     var onSelectTab: (InsightTabKind) -> Void = { _ in }
@@ -1818,7 +1818,8 @@ private struct InsightCard: View {
                             .multilineTextAlignment(.leading)
                     }
                 }
-                if let dir = b.direction {
+                // 위 "다음" 줄과 같은 문장이면 블록에서는 생략(같은 권고 두 번 방지)
+                if let dir = b.direction, dir != headline?.next {
                     Text("→ " + dir)
                         .font(.footnote)
                         .foregroundStyle(Theme.violet)
@@ -1938,28 +1939,43 @@ private struct InsightCard: View {
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
-                    // 탭 요약 블록이 있으면 총평 출처 사실(headline.fact)·다음 줄은 블록으로 옮겨져 그리지 않는다(중복 방지).
-                    // 블록이 만들지 않는 사실(드문 사건·대체의 엔진 부연, 대회 해마다 비교, 악조건 체감 강도)은 블록과 함께 남긴다.
-                    if !digest.isEmpty, !usesHeadline || showsComparison {
-                        Text(displayDetail)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.72))
+                    // 사실·다음 줄은 블록 유무와 관계없이 항상 그린다 — 블록이 늦게 도착하면서 이 줄이
+                    // 잠깐 보였다 사라지던 깜빡임 제거(2026-10-15 사용자 요청: 기존 문구를 유지하며 블록을 덧붙임).
+                    Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .contentTransition(.opacity)
+                    // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
+                    if let next = headline?.next {
+                        Text(next)
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
                             .contentTransition(.opacity)
                     }
-                    if digest.isEmpty {
-                        Text(usesHeadline ? (headline?.fact ?? displayDetail) : displayDetail)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.72))
-                            .contentTransition(.opacity)
-                        // 다음 행동 — 총평의 "다음" 한 문장(없으면 숨김). 드문 사건·대체에도 붙인다
-                        if let next = headline?.next {
-                            Text(next)
-                                .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.55))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .contentTransition(.opacity)
-                        }
-                    }
+                }
+
+                // MiniMe — contextual overlays + animations once insight is loaded
+                if insight != nil {
+                    ContextualMiniMeView(
+                        customImage: miniMeStore.image,
+                        variant: miniMeVariant,
+                        size: 58
+                    )
+                    .padding(.top, 2)
+                    .transition(.scale(scale: 0.7).combined(with: .opacity))
+                }
+            }
+
+            // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 제목·사실 바로 아래, 카드 폭 전체 ──
+            if !digest.isEmpty {
+                digestBlocks
+                    .padding(.top, 2)
+            }
+
+            // ── 대회·언덕 칩 — 블록 아래 ──
+            if confirmedRace != nil || hillMatch != nil {
+                VStack(alignment: .leading, spacing: 6) {
                     if let race = confirmedRace {
                         let division = showsComparison ? " · " + InsightEngine.raceDistanceDivision(km: race.distanceKm) : ""
                         Label(AppLanguage.shared.s("대회 러닝 · \(race.raceName)\(division)", "Race · \(race.raceName)\(division)", ja: "レース · \(race.raceName)\(division)"),
@@ -1984,23 +2000,6 @@ private struct InsightCard: View {
                             .overlay(Capsule().stroke(Color(hex: "FFC74D").opacity(0.3), lineWidth: 1))
                     }
                 }
-
-                // MiniMe — contextual overlays + animations once insight is loaded
-                if insight != nil {
-                    ContextualMiniMeView(
-                        customImage: miniMeStore.image,
-                        variant: miniMeVariant,
-                        size: 58
-                    )
-                    .padding(.top, 2)
-                    .transition(.scale(scale: 0.7).combined(with: .opacity))
-                }
-            }
-
-            // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 미니미 옆 좁은 칸이 아니라 카드 폭 전체 ──
-            if !digest.isEmpty {
-                digestBlocks
-                    .padding(.top, 2)
             }
 
             // ── Condition row (weather chip + sleep/recovery line) ──
