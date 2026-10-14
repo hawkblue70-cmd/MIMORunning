@@ -118,14 +118,25 @@ struct RunFormCardView: View {
 
     // MARK: - Computed
 
-    /// 이 러닝의 경사 조정 페이스. 기준선이 GAP으로 계산되므로 구간 조회도 GAP으로 한다.
-    private var runGAP: Double? {
-        GradeAdjustedPace.compute(splits: splits, altitudeProfile: altitudeProfile)
+    /// 판정 재료를 값으로 — 문장 판정(`TabDigestForm`)과 요약이 같은 계산을 쓴다.
+    /// 3단계 결과는 넣지 않는다(파생값 조회마다 계산하지 않도록) — 필요한 판정은 `judgedInputs`.
+    private var inputs: TabDigestForm.Inputs {
+        TabDigestForm.Inputs(activity: activity, splits: splits, avgCadence: avgCadence,
+                             avgStrideLength: avgStrideLength, avgGroundContactTime: avgGroundContactTime,
+                             avgVerticalOscillation: avgVerticalOscillation, altitudeProfile: altitudeProfile,
+                             baseline: baseline, workoutType: workoutType, intervalSegments: intervalSegments,
+                             typicalKm: typicalDistanceKm, formShifts: formShifts, fatigueContext: fatigueContext,
+                             phase: nil, hasRecentGap: hasRecentGap, runCadenceResidual: runCadenceResidual)
     }
 
-    private var bb: BandBaseline? {
-        baseline?.baseline(for: activity, gradeAdjustedPace: runGAP)
+    /// 3단계 결과까지 담은 입력 — 마무리 문장·장거리 폼 변화 판정용
+    private var judgedInputs: TabDigestForm.Inputs {
+        var x = inputs
+        x.phase = formPhaseResult
+        return x
     }
+
+    private var bb: BandBaseline? { inputs.bb }
 
     /// 평지 환산 표기 — 세 카드 공용 함수(GradeAdjustedPace.kpiText) 사용
     private var flatEquivalentText: String? {
@@ -137,10 +148,7 @@ struct RunFormCardView: View {
     /// 가장 가까운 유효 밴드. 평소보다 빠르면 가장 빠른 구간부터, 느리면 가장 느린 구간부터 찾는다.
     /// ⚠ 판정(문장·상태 배지·OOB 강조)에는 절대 쓰지 않는다 — 다른 페이스대 기준이라 오독이 된다.
     ///   판정은 계속 `bb`(nil이면 생략)를 쓰고, 여기서는 "참고 띠"만 그린다.
-    private var referenceBb: BandBaseline? {
-        guard let bl = baseline else { return nil }
-        return Self.referenceBand(in: bl, paceSecPerKm: activity.paceSecPerKm)
-    }
+    private var referenceBb: BandBaseline? { inputs.referenceBb }
 
     /// 참고 밴드 선택 — 순수 함수(테스트 대상).
     /// 페이스가 어느 구간에도 속하지 않을 때만 값을 돌려준다. 벗어난 쪽에서 가장 가까운 밴드부터 찾는다.
@@ -168,17 +176,13 @@ struct RunFormCardView: View {
     }
 
     /// 범위 바·km 차트 띠에 실제로 그릴 밴드 (판정용 `bb`와 구분).
-    private var displayBb: BandBaseline? { bb ?? referenceBb }
+    private var displayBb: BandBaseline? { inputs.displayBb }
 
     /// true = 오늘 페이스가 구간 밖이라 다른 구간을 "참고"로 빌려 그리는 중.
-    private var isReferenceBand: Bool { bb == nil && referenceBb != nil }
+    private var isReferenceBand: Bool { inputs.isReferenceBand }
 
     /// 표시용 GCT 밴드 (참고 모드 포함). 판정용은 `adjustedGctStat`.
-    private var displayGctStat: FormStat? {
-        FormNarrative.driftAdjustedGCT(displayBb?.groundContact,
-                                       baselineResidualMean: baseline?.gctBaselineResidualMean,
-                                       gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
-    }
+    private var displayGctStat: FormStat? { inputs.displayGctStat }
 
     private func bandDisplayName(_ b: PaceBand) -> String {
         let L = AppLanguage.shared
@@ -200,22 +204,12 @@ struct RunFormCardView: View {
     /// GCT는 지난 1년간 9ms 이상 짧아지는 경우가 있어 현재 밴드로 과거 러닝을 판정하면 오류 발생.
     /// drift = (열람 시점 잔차 3개월 평균) − (baseline 계산 시점 잔차 3개월 평균)
     /// 안전장치: recent 표본 20개 미만(gctShift nil) · R²<0.2 · |drift|<2ms → 보정 없음
-    private var adjustedGctStat: FormStat? {
-        FormNarrative.driftAdjustedGCT(bb?.groundContact,
-                                       baselineResidualMean: baseline?.gctBaselineResidualMean,
-                                       gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
-    }
+    private var adjustedGctStat: FormStat? { inputs.adjustedGctStat }
 
     private var isInterval: Bool { workoutType == .interval }
 
     /// true → 장거리 문맥. 장거리에서는 지표 하락이 자주 나타남 — 상태 배지를 숨기고 조언을 유보.
-    private var isLongDistanceContext: Bool {
-        isLongDistanceRunContext(
-            activity: activity,
-            workoutType: workoutType,
-            recentAvgDistanceKm: typicalDistanceKm
-        )
-    }
+    private var isLongDistanceContext: Bool { inputs.isLongDistanceContext }
 
     /// 초·중·말 폼 형태 — 폼 카드·리듬 카드가 이 진입점 하나만 쓴다(`FormPhase.result`).
     private var formPhaseResult: FormPhase.Result? {
@@ -228,9 +222,7 @@ struct RunFormCardView: View {
     //      네 줄 모두 이 값에서 바가 시작 → 축 좌우 끝 픽셀 정렬
     private let barTextColumnWidth: CGFloat = 120
 
-    private var fullSplits: [SplitData] {
-        splits.filter { $0.distanceM >= 900 }
-    }
+    private var fullSplits: [SplitData] { inputs.fullSplits }
 
     private var showTrendSection: Bool {
         guard !isInterval, fullSplits.count >= 3 else { return false }
@@ -241,7 +233,7 @@ struct RunFormCardView: View {
     }
 
     /// 표시 전용 버킷. 판정 계산(전반/후반 비교 등)은 fullSplits를 직접 사용할 것.
-    private func bucketedDisplaySplits(_ splits: [SplitData]) -> [SplitData] {
+    static func bucketedDisplaySplits(_ splits: [SplitData]) -> [SplitData] {
         guard splits.count > 10 else { return splits }
         let step = splits.count > 20 ? 3 : 2
 
@@ -274,10 +266,13 @@ struct RunFormCardView: View {
         return buckets
     }
 
-    private var formSeries: [FormSeries] {
-        guard !isInterval else { return [] }
+    private var formSeries: [FormSeries] { Self.makeFormSeries(inputs) }
+
+    /// 추이 차트 시리즈 — 카드와 장거리 폼 변화 판정(`TabDigestForm.formChangeSentence`)이 함께 쓴다.
+    static func makeFormSeries(_ x: TabDigestForm.Inputs) -> [FormSeries] {
+        guard !x.isInterval else { return [] }
         let L = AppLanguage.shared
-        let fs = fullSplits              // 원본: 판정(전반/후반 비교) 전용
+        let fs = x.fullSplits            // 원본: 판정(전반/후반 비교) 전용
         let bs = bucketedDisplaySplits(fs) // 버킷: 차트 포인트 표시 전용
         guard fs.count >= 3 else { return [] }
 
@@ -295,26 +290,26 @@ struct RunFormCardView: View {
         }
         // 판정가능 → ±1.2SD×factor / 판정불가(표본<minSamples) → P10-P90 관측 범위
         // 참고 밴드(오늘 페이스가 구간 밖)는 판정불가로 취급 — 띠는 그리되 OOB 강조는 끈다
-        let isRefBand     = isReferenceBand
-        let dispBb        = displayBb
-        let bbJudgeable   = isRefBand ? false : (bb?.isJudgeable ?? true)
+        let isRefBand     = x.isReferenceBand
+        let dispBb        = x.displayBb
+        let bbJudgeable   = isRefBand ? false : (x.bb?.isJudgeable ?? true)
         let bbSampleCount = dispBb?.sampleCount ?? 0
         func splitBounds(_ formStat: FormStat?, dir: MetricDir)
             -> (lo: Double, hi: Double)? {
             guard let stat = formStat else { return nil }
             if !bbJudgeable, let p10 = stat.p10, let p90 = stat.p90 {
-                return (lo: roundedDisplay(p10, dir: dir),
-                        hi: roundedDisplay(p90, dir: dir))
+                return (lo: FormNarrative.roundedDisplay(p10, metric: dir),
+                        hi: FormNarrative.roundedDisplay(p90, metric: dir))
             }
             let factor: Double = dir == .groundContact ? 1.2 : 1.5
             let halfWidth = (stat.upper - stat.lower) / 2.0 * factor
-            return (lo: roundedDisplay(stat.median - halfWidth, dir: dir),
-                    hi: roundedDisplay(stat.median + halfWidth, dir: dir))
+            return (lo: FormNarrative.roundedDisplay(stat.median - halfWidth, metric: dir),
+                    hi: FormNarrative.roundedDisplay(stat.median + halfWidth, metric: dir))
         }
         let isOOB: (Double, FormStat?, MetricDir) -> Bool = { v, stat, dir in
             guard bbJudgeable else { return false }
             guard let b = splitBounds(stat, dir: dir) else { return false }
-            let rv = self.roundedDisplay(v, dir: dir)
+            let rv = FormNarrative.roundedDisplay(v, metric: dir)
             return rv < b.lo || rv > b.hi
         }
 
@@ -357,7 +352,7 @@ struct RunFormCardView: View {
         // GCT — [109] adjustedGctStat로 시점 보정 밴드 적용
         let gctPairs: [(Int, Double)] = bs.compactMap { s in s.avgGroundContactTime.map { (s.id, $0) } }
         if !gctPairs.isEmpty {
-            let stat = displayGctStat
+            let stat = x.displayGctStat
             let gb = splitBounds(stat, dir: .groundContact)
             result.append(FormSeries(
                 label: L.s("지면접촉", "GCT", ja: "接地時間"), unit: "ms",
@@ -695,73 +690,15 @@ struct RunFormCardView: View {
     /// 거리문맥 러닝에서 케이던스·보폭·지면접촉이 평소 범위를 벗어난 첫 버킷을 찾아
     /// 관찰 문구를 생성한다. 세 지표 모두 범위 안이면 nil.
     private var longDistanceFormChangeInsight: FormInsightItem? {
-        // 3단계 폼 문장이 나오면 이탈 위치까지 그 문장이 말한다 — 같은 사실을 두 번 적지 않는다.
-        guard isLongDistanceContext, formPhaseResult == nil else { return nil }
+        // 문장 판정은 TabDigestForm(요약과 같은 함수) — 버킷은 onAppear에 계산해 둔 것을 재사용
+        guard let body = TabDigestForm.formChangeSentence(judgedInputs,
+                                                          series: formSeriesCache.isEmpty ? nil : formSeriesCache)
+        else { return nil }
         let L = AppLanguage.shared
-        let all = formSeriesCache.isEmpty ? formSeries : formSeriesCache
-
-        struct BandExit {
-            let dir: MetricDir
-            let kmStart: Double   // 버킷 시작 km
-            let kmEnd: Double     // 버킷 끝 km
-        }
-        var exits: [BandExit] = []
-        // [103] 전체 거리의 40% 이전 이탈은 "처음부터 다른 값" — 변화 판정 제외
-        let totalKm = activity.distance / 1000
-        let minKmForChange = totalKm * 0.40
-
-        for s in all {
-            guard s.dir != .verticalOsc else { continue }
-            guard let bandLo = s.bandLo, let bandHi = s.bandHi,
-                  !s.points.isEmpty else { continue }
-            for (i, pt) in s.points.enumerated() {
-                let exited: Bool
-                switch s.dir {
-                case .cadence, .stride:   exited = pt.value < bandLo
-                case .groundContact:       exited = pt.value > bandHi
-                case .verticalOsc:         exited = false
-                }
-                if exited {
-                    let start = i > 0 ? s.points[i - 1].kmEnd : 0.0
-                    guard start >= minKmForChange else { break }  // [103] 초반 이탈 제외
-                    exits.append(BandExit(dir: s.dir, kmStart: start, kmEnd: pt.kmEnd))
-                    break
-                }
-            }
-        }
-
-        guard !exits.isEmpty else { return nil }
-        let sorted = exits.sorted { $0.kmStart < $1.kmStart }
-
-        // 문구 — 관찰+위치만, 원인 표현 없음 [96 ⚠️]
-        let lines: [String] = sorted.enumerated().compactMap { idx, e in
-            let km = Int(e.kmStart.rounded())
-            switch e.dir {
-            case .cadence:
-                return idx == 0
-                    ? L.s("\(km)km 지점부터 케이던스가 평소 범위 아래로 내려갔습니다.",
-                          "From \(km) km, cadence dropped below its normal range.", ja: "\(km)km地点からケイデンスが普段の範囲を下回りました。")
-                    : L.s("케이던스는 \(km)km부터였습니다.", "Cadence from \(km) km.", ja: "ケイデンスは\(km)kmからでした。")
-            case .stride:
-                return idx == 0
-                    ? L.s("\(km)km 지점부터 보폭이 평소 범위 아래로 내려갔습니다.",
-                          "From \(km) km, stride length dropped below its normal range.", ja: "\(km)km地点からストライドが普段の範囲を下回りました。")
-                    : L.s("보폭은 \(km)km부터였습니다.", "Stride from \(km) km.", ja: "ストライドは\(km)kmからでした。")
-            case .groundContact:
-                return idx == 0
-                    ? L.s("\(km)km 지점부터 지면접촉이 평소 범위 위로 올라갔습니다.",
-                          "From \(km) km, ground contact time rose above its normal range.", ja: "\(km)km地点から接地時間が普段の範囲を上回りました。")
-                    : L.s("지면접촉은 \(km)km부터였습니다.", "Ground contact from \(km) km.", ja: "接地時間は\(km)kmからでした。")
-            case .verticalOsc:
-                return nil
-            }
-        }
-        guard !lines.isEmpty else { return nil }
-
         return FormInsightItem(
             id: .formChange,
             badgeText: L.s("폼 변화", "Form Shift", ja: "フォームの変化"),
-            bodyText: lines.joined(separator: "\n"),
+            bodyText: body,
             badgeColor: Theme.groundContact)
     }
 
@@ -769,29 +706,8 @@ struct RunFormCardView: View {
 
     /// 케이던스–심박 U자 곡선 인사이트. 글로벌 조건 + 퍼액티비티 조건 모두 통과 시 반환.
     private var cadenceHRInsight: FormInsightItem? {
-        guard !isInterval,
-              let diag = baseline?.cadenceHRDiag,
-              diag.isGloballyValid,
-              let vertex = diag.vertexResidual,
-              let bb = bb,
-              let cadStat = bb.cadence,
-              let actCad = avgCadence
-        else { return nil }
-
-        let optimalCadence = Int((cadStat.median + vertex).rounded())
-
-        // 퍼액티비티 조건
-        guard abs(optimalCadence - actCad) >= 2 else { return nil }
-        guard optimalCadence >= 160, optimalCadence <= 190 else { return nil }
-
+        guard let body = TabDigestForm.cadenceAdvice(inputs) else { return nil }
         let L = AppLanguage.shared
-        let direction = optimalCadence > actCad
-            ? L.s("조금 높은", "slightly higher", ja: "少し高い")
-            : L.s("조금 낮은", "slightly lower", ja: "少し低い")
-        let body = L.s(
-            "같은 페이스에서 케이던스 \(optimalCadence) 근처일 때 심박이 가장 낮았습니다. 지금보다 \(direction) 편이 효율적일 수 있습니다.",
-            "HR was lowest around a cadence of \(optimalCadence) at the same pace. A \(direction) cadence than now may be more efficient.", ja: "同じペースでケイデンス\(optimalCadence)前後のとき心拍が最も低かったです。今より\(direction)ほうが効率的かもしれません。"
-        )
         return FormInsightItem(id: .cadenceHR,
                                badgeText: L.s("케이던스", "Cadence", ja: "ケイデンス"),
                                bodyText: body,
@@ -1717,88 +1633,12 @@ struct RunFormCardView: View {
     // MARK: - Narrative
 
     private var narrative: String? {
-        let L = AppLanguage.shared
-        guard let cad = avgCadence else { return nil }
-        let cadD = Double(cad)
-        let paceStr = activity.formattedPace ?? "--"
-        let cadStr  = "\(cad)"
-        let slStr   = avgStrideLength.map { String(format: "%.2f", $0) }
-        let gctStr  = avgGroundContactTime.map { String(format: "%.0f", $0) }
-
-        if cadD < 160 {
-            return L.s("케이던스가 \(cad)spm입니다. 보폭이 큰 편입니다.",
-                        "Cadence is \(cad) spm — stride is on the longer side.", ja: "ケイデンスは\(cad)spmです。ストライドが大きめです。")
+        // 장거리 문장의 거리 접두 생략 여부는 카드가 실제로 보여주는 거리 줄 기준
+        var x = judgedInputs
+        if let c = avgCadence, c >= 160, !isInterval, bb?.isJudgeable == true, isLongDistanceContext {
+            x.hasDistanceInsight = formInsights.contains(where: { $0.id == .distance })
         }
-        // 인터벌: 회복 구간이 포함된 전체 평균이라 개인 기준 비교를 생략한다
-        if isInterval {
-            let base = slStr.map {
-                L.s("케이던스 \(cadStr)spm, 보폭 \($0)m로 \(paceStr) 페이스가 나왔습니다.",
-                     "Cadence \(cadStr) spm and stride \($0) m produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spm、ストライド\($0)mで\(paceStr)のペースになりました。")
-            } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔습니다.",
-                      "A cadence of \(cadStr) spm produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmで\(paceStr)のペースになりました。")
-            return base + " " + L.s(
-                "인터벌은 회복 구간이 섞여 평균만으로는 폼을 판단하기 어렵습니다.",
-                "Mixed with recovery intervals — averages alone don't reflect form.", ja: "インターバルは回復区間が混ざるため、平均だけではフォームを判断しにくいです。"
-            )
-        }
-        guard bb?.isJudgeable == true else {
-            return slStr.map { L.s("케이던스 \(cadStr)spm으로 보폭 \($0)m를 만들어 \(paceStr) 페이스가 나왔습니다.",
-                                   "A cadence of \(cadStr) spm and \($0) m stride produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmでストライド\($0)mをつくり、\(paceStr)のペースになりました。") }
-                ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔습니다.",
-                        "A cadence of \(cadStr) spm produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmで\(paceStr)のペースになりました。")
-        }
-
-        // 장거리 문맥: 장거리에서는 지표 하락이 자주 나타남 — 판단 유보, 사실 서술만 (문장은 FormNarrative 공유)
-        if isLongDistanceContext {
-            let cadSt = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
-            let gctSt: MetricStatus = avgGroundContactTime.map {
-                metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
-            } ?? .unknown
-            let slSt: MetricStatus = avgStrideLength.map {
-                metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
-            } ?? .unknown
-            // 전반/후반 평균 — 실제 변화 서술용
-            let splitMid = fullSplits.count / 2
-            let fHalf = Array(fullSplits.prefix(splitMid))
-            let sHalf = Array(fullSplits.suffix(fullSplits.count - splitMid))
-            func cadAvg(_ arr: [SplitData]) -> Int? {
-                let v = arr.compactMap { $0.avgCadence }
-                return v.isEmpty ? nil : Int((Double(v.reduce(0, +)) / Double(v.count)).rounded())
-            }
-            func slAvg(_ arr: [SplitData]) -> Double? {
-                let v = arr.compactMap { $0.avgStrideLength }
-                return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
-            }
-            let input = FormNarrative.LongDistanceInput(
-                distKm: activity.distance / 1000,
-                typeName: workoutType.koreanLabel,
-                typicalDistanceKm: typicalDistanceKm,
-                hasDistanceInsight: formInsights.contains(where: { $0.id == .distance }),
-                cad: cadSt, gct: gctSt, sl: slSt,
-                firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
-                firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
-                cadStr: cadStr, slStr: slStr, paceStr: paceStr,
-                // 말기가 범위를 벗어났을 때만 "평균으로는"으로 범위를 좁힌다 — 끝까지 유지면 두 문장이 모순되지 않는다
-                hasPhaseSentence: formPhaseResult.map { !$0.isHeld } ?? false)
-            return FormNarrative.longDistanceSentence(input)
-        }
-
-        // 유형별 프레임(이지·빠른·일반)에 따라 톤만 달라지는 마무리 문장 — 판정은 여기서, 문장은 FormNarrative
-        let cadStatus = metricStatus(rawValue: cadD, stat: bb?.cadence, dir: .cadence)
-        let gctStatus: MetricStatus = avgGroundContactTime.map {
-            metricStatus(rawValue: $0, stat: adjustedGctStat, dir: .groundContact)
-        } ?? .unknown
-        let slStatus: MetricStatus = avgStrideLength.map {
-            metricStatus(rawValue: $0, stat: bb?.strideLength, dir: .stride)
-        } ?? .unknown
-        let voStatus: MetricStatus = avgVerticalOscillation.map {
-            metricStatus(rawValue: $0, stat: bb?.verticalOsc, dir: .verticalOsc)
-        } ?? .unknown
-        let input = FormNarrative.Input(
-            cad: cadStatus, gct: gctStatus, sl: slStatus,
-            cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr,
-            vo: voStatus, fatigueContext: fatigueContext)
-        return FormNarrative.sentence(input, frame: FormNarrative.frame(for: workoutType))
+        return TabDigestForm.narrative(x)
     }
 
     // MARK: - Log

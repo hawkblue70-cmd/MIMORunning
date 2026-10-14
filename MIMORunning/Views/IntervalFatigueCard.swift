@@ -11,6 +11,27 @@ struct IntervalFatigueCard: View {
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
     var workoutStart: Date = .distantPast
 
+    /// 해석·제안 판정 — 오늘의 인사이트 요약(`TabDigestForm.intervalPair`)이 카드와 같은 계산을 쓴다.
+    /// 판정은 `segments`만으로 정해진다(심박 표본·시작 시각은 회복 구간 메모에만 쓰인다).
+    struct Verdict: Equatable {
+        let interpretation: String
+        let suggestion: String?
+        /// 근피로·심폐 부담·한계·리듬 붕괴 = 문제 / 유지·후반 상승·네거티브 = 좋음
+        let isProblem: Bool
+    }
+
+    /// 카드가 분석 박스(관찰·해석·제안)를 그리는 조건과 같다 — 운동 구간 3개 이상·전후반 1개 이상. 아니면 nil.
+    static func verdict(segments: [IntervalSegment]) -> Verdict? {
+        let card = IntervalFatigueCard(segments: segments)
+        guard card.workSegs.count >= 3, card.halfCount >= 1 else { return nil }
+        let isProblem: Bool
+        switch card.interpretationType {
+        case .muscFatigue, .cardioStress, .cardioLimit, .rhythmCollapse: isProblem = true
+        case .normal, .lateBoost, .negativeSplit:                         isProblem = false
+        }
+        return Verdict(interpretation: card.interpretation, suggestion: card.suggestion, isProblem: isProblem)
+    }
+
     private var workSegs: [IntervalSegment] { segments.filter { $0.stepLabel == "운동" } }
     private var recSegs:  [IntervalSegment] { segments.filter { $0.stepLabel == "회복" } }
 
