@@ -62,7 +62,8 @@ enum TabDigestPerformance {
         typealias V = TabDigestRhythm.Verdict
         // 요약 개조식 — 같은 pct 값
         let p = String(format: "%.1f", pct)
-        let drift = L.s("후반 심박 드리프트 \(p)%", "Late HR drift \(p)%", ja: "後半の心拍ドリフト\(p)%")
+        // 카드 차트 제목("디커플링")과 같은 이름 — 다른 화면의 '심박 드리프트'(전후반 심박 bpm 차)와 다른 지표다
+        let drift = L.s("디커플링 \(p)%", "Decoupling \(p)%", ja: "デカップリング\(p)%")
         let heatTail = L.s(" · 더위 영향", " · heat", ja: " · 暑さの影響")
         if wt == .buildUp {
             return V(text: L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",

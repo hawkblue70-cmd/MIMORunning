@@ -208,6 +208,6 @@ struct TabDigestPerformanceTests {
                                              input: RunSummaryInput(), lines: [], insights: [], easyAlertText: nil)
         let p3 = d.first { $0.priority == 3 && $0.kind == .problem }
         #expect(isTerse(p3?.short))
-        #expect(p3?.short?.hasPrefix("후반 심박 드리프트") == true)
+        #expect(p3?.short?.hasPrefix("디커플링") == true)
     }
 }
