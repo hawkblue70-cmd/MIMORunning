@@ -438,7 +438,10 @@ struct ActivityDetailView: View {
                             Task { await recomputeInsightWithRaceMatch() }
                         },
                         workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
-                                                                          fastFinish: manager.isFastFinishRun(activity.id))
+                                                                          fastFinish: manager.isFastFinishRun(activity.id)),
+                        miniMeVariant: activity.type == .running
+                            ? insight.map { MiniMeVariant.from(theme: $0.theme, workoutType: $0.workoutType) }
+                            : nil
                     )
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, headline: headline, condition: condition,
@@ -1679,6 +1682,9 @@ private struct DetailHeader: View {
     @State private var showRevokeConfirm = false
     /// 러닝 종류("일반 러닝"·"이지런"·"롱런 · 빌드업") — 머리 큰 제목으로 쓴다. 인사이트 탭 머리 "오늘의 러닝 · ○○"와 같은 값.
     var workoutTypeLabel: String? = nil
+    /// 미니미 — 인사이트가 준비되면 날짜·시간 줄 오른쪽에(러닝만). nil이면 그리지 않는다.
+    var miniMeVariant: MiniMeVariant? = nil
+    @Environment(CustomMiniMeStore.self) private var miniMeStore
 
     private var dateText: Text {
         let L = AppLanguage.shared
@@ -1721,6 +1727,10 @@ private struct DetailHeader: View {
                         .foregroundStyle(.white)
                 }
                 Spacer()
+                if let v = miniMeVariant {
+                    ContextualMiniMeView(customImage: miniMeStore.image, variant: v, size: 52)
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                }
             }
             if let race = confirmedRace {
                 HStack(spacing: 8) {
@@ -1901,7 +1911,6 @@ private struct InsightCard: View {
         return ins.detail
     }
 
-    @Environment(CustomMiniMeStore.self) private var miniMeStore
     @Query private var allStories: [WorkoutStory]
 
     private var storyPhoto: UIImage? {
@@ -1912,11 +1921,6 @@ private struct InsightCard: View {
         var parts = [activity.formattedDistance, activity.formattedDuration]
         if let pace = activity.formattedPace { parts.insert(pace, at: 1) }
         return parts.joined(separator: " · ")
-    }
-
-    private var miniMeVariant: MiniMeVariant {
-        guard let insight else { return .running }
-        return MiniMeVariant.from(theme: insight.theme, workoutType: insight.workoutType)
     }
 
     private func sleepDurationText(_ hours: Double) -> String {
@@ -1966,7 +1970,7 @@ private struct InsightCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // ── Top row: insight text (left) + MiniMe (right) ──
+            // ── Top row: insight text (미니미는 머리 날짜 줄 오른쪽으로 옮김, 2026-10-15) ──
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -1998,17 +2002,6 @@ private struct InsightCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .contentTransition(.opacity)
                     }
-                }
-
-                // MiniMe — contextual overlays + animations once insight is loaded
-                if insight != nil {
-                    ContextualMiniMeView(
-                        customImage: miniMeStore.image,
-                        variant: miniMeVariant,
-                        size: 58
-                    )
-                    .padding(.top, 2)
-                    .transition(.scale(scale: 0.7).combined(with: .opacity))
                 }
             }
 
