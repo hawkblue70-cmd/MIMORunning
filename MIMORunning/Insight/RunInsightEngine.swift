@@ -24,6 +24,14 @@ struct RunInsight: Identifiable {
     let badge: String
     let message: String
     let highlights: [String]
+    /// 같은 `.efficiency` 카테고리라도 카디악 드리프트는 '같은 페이스 비교'가 아니다 — 요약·히어로는 비교만 받는다.
+    var source: Source = .other
+
+    enum Source: Equatable { case efficiencyComparison, other }
+
+    static func efficiencyComparison(in list: [RunInsight]) -> RunInsight? {
+        list.first { $0.source == .efficiencyComparison }
+    }
 }
 
 // MARK: - Segment Types
@@ -1427,7 +1435,8 @@ enum RunInsightEngine {
                 return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
                     message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 낮았습니다.",
                                  "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
-                    highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
+                    highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
+                    source: .efficiencyComparison)
             }
             let cause = heatExplains
                 ? L.s("\(tempStr) 더위 영향일 수 있습니다.", "the \(tempStr) heat may be a factor.", ja: "\(tempStr)の暑さの影響かもしれません。")
@@ -1435,7 +1444,8 @@ enum RunInsightEngine {
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
                 message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                              "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
-                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
+                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
+                source: .efficiencyComparison)
         }
 
         // 양쪽 모두 15°C 환산 — 더운 날의 과거 심박이 "높았던 기준"으로 남지 않게
@@ -1454,12 +1464,14 @@ enum RunInsightEngine {
                 return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
                     message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(rawStr)bpm 높지만 일반적인 더위 영향(\(tempStr))을 감안하면 평소 수준으로 보입니다.",
                                  "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but allowing for typical heat effects (\(tempStr)) it looks like your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、一般的な暑さの影響(\(tempStr))を考慮すると普段の水準とみられます。"),
-                    highlights: [rawStr + "bpm", tempStr])
+                    highlights: [rawStr + "bpm", tempStr],
+                    source: .efficiencyComparison)
             }
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("기온 감안", "Heat-Adjusted", ja: "気温を考慮"),
                 message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(rawStr)bpm 높지만 \(tempStr) 기온을 감안하면 평소 수준입니다.",
                              "HR is \(rawStr) bpm higher vs \(sampleStr) similar-pace runs, but at \(tempStr) that is your usual level.", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(rawStr) bpm高いですが、\(tempStr)の気温を考慮すると普段の水準です。"),
-                highlights: [rawStr + "bpm", tempStr])
+                highlights: [rawStr + "bpm", tempStr],
+                source: .efficiencyComparison)
         }
         guard abs(diff) >= 3 else { return nil }
         let diffStr = "\(Int(abs(diff).rounded()))"
@@ -1470,7 +1482,8 @@ enum RunInsightEngine {
             return RunInsight(category: .efficiency, tone: .good, badge: L.s("효율 향상", "Efficient", ja: "効率向上"),
                 message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 낮았습니다.",
                              "HR was \(diffStr) bpm lower than \(sampleStr) similar-pace runs in the last 8 weeks.", ja: "近いペースの直近8週\(sampleStr)回より心拍が\(diffStr) bpm低かったです。"),
-                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
+                highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
+                source: .efficiencyComparison)
         }
         let cause = Self.efficiencyCause(activity: activity, history: history)
         // 오늘 기온이 설명할 만큼 덥지 않아도, 과거 기록 쪽이 평균적으로 더 더웠다면
@@ -1489,7 +1502,8 @@ enum RunInsightEngine {
         return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
             message: L.s("\(prefix)비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                          "\(prefix)HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "\(prefix)近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
-            highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")])
+            highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
+            source: .efficiencyComparison)
     }
 
     private static func formInsight(detail: ActivityDetail?) -> RunInsight? {

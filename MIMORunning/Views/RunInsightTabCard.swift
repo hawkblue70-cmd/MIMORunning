@@ -3573,7 +3573,7 @@ private struct PerformanceInsightCard: View {
     // MARK: Computed
 
     private var heroContext: String? {
-        if let eff = insights.first(where: { $0.category == .efficiency && $0.tone == .good }),
+        if let eff = RunInsight.efficiencyComparison(in: insights), eff.tone == .good,
            let h = eff.highlights.first {
             // 한 줄에 들어가게 짧게 — 길면 "…"로 잘렸다
             return "↑ " + AppLanguage.shared.s(

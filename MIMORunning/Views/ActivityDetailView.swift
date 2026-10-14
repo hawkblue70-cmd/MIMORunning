@@ -271,7 +271,7 @@ struct ActivityDetailView: View {
         guard activity.type == .running else { headline = nil; return }
         let input = RunSummaryBuilder.input(summaryContext)
         let lines = RunSummary.lines(input)
-        let eff = runInsights.first { $0.category == .efficiency }
+        let eff = RunInsight.efficiencyComparison(in: runInsights)
         let h = RunHeadline.make(insight: insight, summaryInput: input, summaryLines: lines, efficiency: eff,
                                  threshold: thresholdContext)
         if h != headline { withAnimation(.easeInOut(duration: 0.3)) { headline = h } }
