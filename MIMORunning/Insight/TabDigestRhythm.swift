@@ -66,11 +66,11 @@ enum TabDigestRhythm {
             }
             return Verdict(text: L.s("심박은 템포 구간에 머물렀습니다", "Heart rate stayed in tempo zone", ja: "心拍はテンポ域にとどまりました") + heatSuffix,
                            isProblem: !planned,
-                           short: L.s("템포 구간 심박 · Zone 3 \(pct(v.frac))%", "Tempo-zone HR · \(pct(v.frac))% in Zone 3", ja: "テンポ域の心拍 · ゾーン3 \(pct(v.frac))%") + heatSuffix)
+                           short: L.s("템포 구간에 머묾 · Zone 3 \(pct(v.frac))%", "Stayed in tempo zone · \(pct(v.frac))% in Zone 3", ja: "テンポ域にとどまる · ゾーン3 \(pct(v.frac))%") + heatSuffix)
         default:
             let high = pct(((visible[4] ?? 0) + (visible[5] ?? 0)) / total)
             return Verdict(text: FormNarrative.highIntensityZoneCaption(type: workoutType) + heatSuffix, isProblem: !planned,
-                           short: L.s("고강도 구간 · Zone 4~5 \(high)%", "High intensity · \(high)% in Zone 4–5", ja: "高強度域 · ゾーン4~5 \(high)%") + heatSuffix)
+                           short: L.s("고강도 구간 많음 · Zone 4~5 \(high)%", "Lots of high intensity · \(high)% in Zone 4–5", ja: "高強度域が多い · ゾーン4~5 \(high)%") + heatSuffix)
         }
     }
 
@@ -135,7 +135,7 @@ enum TabDigestRhythm {
         }
         if diff <= -5 {
             return HRCaption(kind: .easedOff, text: L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"),
-                             short: L.s("후반 심박 \(dStr)bpm · 전반 대비", "Late HR \(dStr) bpm vs first half", ja: "後半の心拍\(dStr)bpm · 前半比"))
+                             short: L.s("후반 심박 여유 · 전반 대비 \(dStr)bpm", "HR eased late · \(dStr) bpm vs first half", ja: "後半の心拍に余裕 · 前半比\(dStr)bpm"))
         }
         return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType),
                          short: L.s("심박 끝까지 안정 · 전후반 \(dStr)bpm", "HR steady to the end · \(dStr) bpm half to half", ja: "心拍は最後まで安定 · 前後半\(dStr)bpm"))
@@ -195,7 +195,7 @@ enum TabDigestRhythm {
         } else {
             return Verdict(text: L.s("이지런인데 심박이 꽤 높았습니다. 더 천천히 뛰어도 좋습니다", "HR ran high — try slower for true easy effort", ja: "イージーランなのに心拍がかなり高めでした。もっとゆっくり走っても大丈夫です"),
                            isProblem: true, shade: .caution,
-                           short: L.s("이지런 기준 심박 높음 · Zone 1~2 \(pct)%", "High HR for an easy run · \(pct)% in Zone 1–2", ja: "イージーランとしては高い心拍 · ゾーン1~2 \(pct)%"))
+                           short: L.s("이지런 기준 심박 높음 · 이지 구간 \(pct)%뿐", "High HR for an easy run · only \(pct)% in Zone 1–2", ja: "イージーランとしては高い心拍 · イージー域\(pct)%のみ"))
         }
     }
 
@@ -412,7 +412,7 @@ enum TabDigestRhythm {
             } else if cv > 5 {
                 return Verdict(text: L.s("페이스 기복이 있었습니다", "Pace varied through the run", ja: "ペースに波がありました"),
                                isProblem: true, shade: .neutral, paceShape: .varied,
-                               short: L.s("km 페이스 기복 · 변동 \(cvStr)%", "Uneven km pace · \(cvStr)% variation", ja: "kmペースの波 · 変動\(cvStr)%"))
+                               short: L.s("페이스 기복 · km 변동 \(cvStr)%", "Uneven pace · \(cvStr)% km variation", ja: "ペースの波 · km変動\(cvStr)%"))
             } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
                 // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
                 let d = TabDigest.signed(Int((second.overallPaceSecPerKm - first.overallPaceSecPerKm).rounded()))
@@ -463,7 +463,8 @@ enum TabDigestRhythm {
             let planEasy = i.workoutType != .race && i.planPhase.map { RunSummary.planEasyPhases.contains($0) } == true
             let easyIntent = RunSummary.easyIntentTypes.contains(i.workoutType)
             if planEasy || easyIntent {
-                problem(planEasy ? 2 : 1, .unique, statement(h), h.next, short: h.state)
+                problem(planEasy ? 2 : 1, .unique, statement(h), h.next,
+                        short: AppLanguage.shared.s("심박 ", "HR ", ja: "心拍 ") + h.state)
                 heartProblem = true
             }
         }

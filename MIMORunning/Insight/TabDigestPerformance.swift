@@ -135,7 +135,7 @@ enum TabDigestPerformance {
         }
     }
 
-    /// 요약 개조식 — "7일 부하 4주 평균 대비 크게 높음 · 급증". 둘 다 없으면 nil.
+    /// 요약 개조식 — "강도 부하 4주 평균 대비 크게 높음 · 급증". 둘 다 없으면 nil.
     static func loadShort(ratio: EffortLoad.RatioLabel?, kind: EffortLoad.SentenceKind?) -> String? {
         let L = AppLanguage.shared
         let k: String? = kind.map {
@@ -148,7 +148,7 @@ enum TabDigestPerformance {
         }
         let parts = [ratio.map(loadRatioText), k].compactMap { $0 }
         guard !parts.isEmpty else { return nil }
-        return L.s("7일 부하 ", "7-day load ", ja: "7日負荷 ") + parts.joined(separator: " · ")
+        return L.s("강도 부하 ", "Training load ", ja: "強度負荷 ") + parts.joined(separator: " · ")  // 카드 차트 제목("강도 부하")과 같은 이름
     }
 
     /// 라벨과 문장을 카드와 같은 구분자로 잇는다 — 둘 다 없으면 nil.

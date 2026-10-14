@@ -198,7 +198,7 @@ struct TabDigestPerformanceTests {
         let s = TabDigestPerformance.signals(context: .stub(workoutType: .general), input: i, lines: loadLines,
                                              insights: [], easyAlertText: nil)
         let p2 = s.first { $0.kind == .problem && $0.priority == 2 }
-        #expect(p2?.short == "7일 부하 4주 평균 대비 크게 높음 · 급증")
+        #expect(p2?.short == "강도 부하 4주 평균 대비 크게 높음 · 급증")
 
         let splits = (1...10).map { i in
             SplitData(id: i, distanceM: 1000, duration: 360, avgHeartRate: i <= 5 ? 140 : 155, avgCadence: nil,

@@ -217,7 +217,7 @@ struct TabDigestRhythmTests {
         let lines = RunSummary.lines(i)
         let p = TabDigestRhythm.signals(context: .stub(workoutType: .easy), input: i, lines: lines).first { $0.kind == .problem }
         #expect(isTerse(p?.short))
-        #expect(p?.short?.hasPrefix("이지런 기준 높음") == true)   // 총평 심박 줄 상태어 그대로
+        #expect(p?.short?.hasPrefix("심박 이지런 기준 높음") == true)   // "심박 " + 총평 심박 줄 상태어
 
         var r = RunSummaryInput(); r.distanceRank = 1; r.distanceSampleCount = 10; r.distKm = 8
         let g = TabDigestRhythm.signals(context: .stub(workoutType: .general), input: r, lines: []).first { $0.family == .distanceRank }
