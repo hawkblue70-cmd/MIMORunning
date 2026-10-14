@@ -674,12 +674,10 @@ enum RunChartReplayExporter {
         fmt.opaque = true
 
         return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
-            // 여백 = 카드 면 색(이미지 출력과 같음) — 다크에서 검정이면 카드가 회색 상자로 떴다
+            // 여백·지도와 차트 사이 틈 모두 카드 면 색 — 다크에서 검정이면 카드가 회색 상자로 떴다
             UIColor(palette.cardBackground).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
             applyFrameInset(UIGraphicsGetCurrentContext()!)
-            UIColor(palette.background).setFill()
-            UIRectFill(CGRect(origin: .zero, size: size))
 
             func stamp(_ img: CGImage, yTop: Int, h: Int) {
                 UIImage(cgImage: img).draw(in:
