@@ -266,6 +266,18 @@ enum RunChartReplayExporter {
     static let sideInsetPx: CGFloat = 0
     static let cardW: CGFloat = 300   // pt reference width
 
+    /// 프레임 바깥 여백 — 내용 전체를 같은 비율로 줄여 가운데 둔다(4:5 유지).
+    /// 0.92 → 좌우 43px(12pt) · 위아래 54px(15pt). 가장자리까지 붙어 끝 줄이 잘려 보였다(2026-10-14).
+    /// 각 구역의 상대 배치는 그대로라 카드와의 통일성(§5.8)은 깨지지 않는다.
+    static let frameContentScale: CGFloat = 0.92
+
+    /// 배경을 칠한 뒤 호출 — 이후 그리는 모든 것을 여백 안쪽으로 옮긴다.
+    private static func applyFrameInset(_ ctx: CGContext) {
+        let s = frameContentScale
+        ctx.translateBy(x: CGFloat(videoW) * (1 - s) / 2, y: CGFloat(videoH) * (1 - s) / 2)
+        ctx.scaleBy(x: s, y: s)
+    }
+
     // MARK: - Layout
 
     struct SectionLayout {
@@ -664,6 +676,7 @@ enum RunChartReplayExporter {
         return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
             UIColor(palette.background).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
+            applyFrameInset(UIGraphicsGetCurrentContext()!)
 
             func stamp(_ img: CGImage, yTop: Int, h: Int) {
                 UIImage(cgImage: img).draw(in:
@@ -1237,6 +1250,10 @@ enum RunChartReplayExporter {
         let fmt  = UIGraphicsImageRendererFormat()
         fmt.scale = 1; fmt.opaque = true
         return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+            UIColor(palette.background).setFill()
+            UIRectFill(CGRect(origin: .zero, size: size))
+            applyFrameInset(UIGraphicsGetCurrentContext()!)
+            // 1~2px 모자란 줄은 카드 색으로 — 여백 안쪽만
             UIColor(palette.cardBackground).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
             var y: CGFloat = 0
