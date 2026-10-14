@@ -113,14 +113,14 @@ struct ShareChartPalette {
             Color(hex: "FF375F"),  // Z5 pink
         ],
         hrRepColor:      Color(hex: "FF5247"),    // HR chip/tile representative red
-        pace:            Color(hex: "229ACB"),    // 어두운 청록 (2026-10-14: 32ADE6·7ADFFF는 강도 색 막대·심박 Z2 청록과 겹쳐 튀었다)
+        pace:            Theme.splitBarLo,        // 구간 기록 막대와 같은 페이스 청록
         elevation:       Theme.chartElev,         // #8FE04D lime
         elevFill:        Theme.chartElev,
         elevFillMaxOp:   0.12,
         timeLabel:       Color.yellow.opacity(0.85),
         textSecondary:   .white.opacity(0.55),
         axisLabelColor:  .white,
-        paceColFillOp:      0.40,   // 0.30은 검은 배경에서 강도 색이 칙칙했다(알파↓ = 어두워짐)
+        paceColFillOp:      0.30,   // 0.14는 검은 배경에서 회색으로 보였다 — 청록이 읽히게
         paceColBorderOp:    0.45,
         paceColBorderWidth: 1.0,
         lineWidthAdjust:    0.0,
@@ -164,7 +164,7 @@ struct ShareChartPalette {
         timeLabel:       Color(hex: "555555"),
         textSecondary:   Color(hex: "757575"),
         axisLabelColor:  Color(hex: "8A8A8A"),
-        paceColFillOp:      0.30,   // 0.16은 강도 색 막대가 연한 띠로만 보였다
+        paceColFillOp:      0.16,
         paceColBorderOp:    0.35,
         paceColBorderWidth: 0.8,
         lineWidthAdjust:    -0.2,
