@@ -334,6 +334,7 @@ struct RunChartShareSheet: View {
                                 chartHeight: fittedChartH,
                                 palette: shareTheme.palette
                             )
+                            .shareFrameInset(palette: shareTheme.palette)   // 출력과 같은 여백(프리뷰 = 출력)
                             .environment(\.colorScheme, shareTheme == .dark ? .dark : .light)
                             .scaleEffect(scale, anchor: .top)
                             .frame(width: geo.size.width, alignment: .center)
@@ -686,7 +687,7 @@ struct RunChartShareSheet: View {
         )
         // 폭 1080px 고정 (scale 3.6). 높이는 미리보기가 맞춰 둔 4:5 — 영상과 같은 비율이라
         // 인스타그램이 잘라내지 않고, 같은 러닝의 이미지와 영상이 같아 보인다(§5.8).
-        let renderer = ImageRenderer(content: card.environment(\.colorScheme, shareTheme == .dark ? .dark : .light))
+        let renderer = ImageRenderer(content: card.shareFrameInset(palette: palette).environment(\.colorScheme, shareTheme == .dark ? .dark : .light))
         renderer.scale = 1080.0 / cardW   // 정확히 1080px 폭
         renderer.proposedSize = ProposedViewSize(width: cardW, height: nil)
         renderedImage = renderer.uiImage
@@ -699,6 +700,17 @@ struct RunChartShareSheet: View {
         #endif
         isRendering = false
         if renderedImage != nil { showActivitySheet = true }
+    }
+}
+
+// MARK: - 출력 여백
+
+extension View {
+    /// 영상 프레임과 같은 바깥 여백 — 카드를 `frameContentScale`배로 줄여 가운데 두고 카드 면 색을 깐다.
+    /// 레이아웃 크기는 그대로라 4:5 출력 크기(1080×1350)가 바뀌지 않는다.
+    func shareFrameInset(palette: ShareChartPalette) -> some View {
+        scaleEffect(RunChartReplayExporter.frameContentScale)
+            .background(palette.cardBackground)   // 카드 면과 같은 색 — 다크에서 검정 여백이면 카드(15151A)가 회색 상자로 떴다
     }
 }
 

@@ -674,9 +674,12 @@ enum RunChartReplayExporter {
         fmt.opaque = true
 
         return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
-            UIColor(palette.background).setFill()
+            // 여백 = 카드 면 색(이미지 출력과 같음) — 다크에서 검정이면 카드가 회색 상자로 떴다
+            UIColor(palette.cardBackground).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
             applyFrameInset(UIGraphicsGetCurrentContext()!)
+            UIColor(palette.background).setFill()
+            UIRectFill(CGRect(origin: .zero, size: size))
 
             func stamp(_ img: CGImage, yTop: Int, h: Int) {
                 UIImage(cgImage: img).draw(in:
@@ -1250,12 +1253,10 @@ enum RunChartReplayExporter {
         let fmt  = UIGraphicsImageRendererFormat()
         fmt.scale = 1; fmt.opaque = true
         return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
-            UIColor(palette.background).setFill()
-            UIRectFill(CGRect(origin: .zero, size: size))
-            applyFrameInset(UIGraphicsGetCurrentContext()!)
-            // 1~2px 모자란 줄은 카드 색으로 — 여백 안쪽만
+            // 여백도 카드 면 색 — 카드와 이어져 경계가 보이지 않는다
             UIColor(palette.cardBackground).setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
+            applyFrameInset(UIGraphicsGetCurrentContext()!)
             var y: CGFloat = 0
             for img in [header, chart, tiles].compactMap({ $0 }) {
                 let h = CGFloat(img.height)
