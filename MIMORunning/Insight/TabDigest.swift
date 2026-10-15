@@ -49,7 +49,12 @@ enum TabDigest {
     /// 탭마다 문제 없을 때 쓰는 기본 방향(설계 §4 각 '기본 방향')
     struct Defaults: Equatable { var directions: [Tab: String] = [:] }
 
-    struct Statement: Equatable { let text: String; let tone: Tone }
+    struct Statement: Equatable {
+        let text: String
+        let tone: Tone
+        /// 짧은 표현(short)을 썼을 때 카드 원문 — 공유 카드에서 한 줄 아래 조금 자세히 보여 준다. 같으면 nil.
+        var detail: String? = nil
+    }
 
     struct Block: Equatable { let tab: Tab; let statements: [Statement]; let direction: String? }
 
@@ -71,7 +76,8 @@ enum TabDigest {
             var dir = problems.first?.direction ?? good?.direction ?? defaults.directions[tab]
             if let d = dir, used.contains(d) { dir = nil }
             if let d = dir { used.insert(d) }
-            out.append(Block(tab: tab, statements: chosen.map { Statement(text: $0.short ?? $0.text, tone: $0.tone) }, direction: dir))
+            out.append(Block(tab: tab, statements: chosen.map { Statement(text: $0.short ?? $0.text, tone: $0.tone,
+                                                                              detail: ($0.short != nil && $0.short != $0.text) ? $0.text : nil) }, direction: dir))
         }
         return out
     }

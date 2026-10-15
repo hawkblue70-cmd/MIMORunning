@@ -76,6 +76,8 @@ struct TabDigestBlocksView: View {
     /// 위 "다음" 줄 — 블록 방향이 같은 문장이면 블록에서는 생략(같은 권고 두 번 방지)
     var headlineNext: String? = nil
     var onSelect: ((InsightTabKind) -> Void)? = nil
+    /// 짧은 줄 아래 카드 원문을 한 줄 더(공유 카드 — 탭을 열어 볼 수 없으니 조금 자세히). 앱 화면은 끔.
+    var showsDetail: Bool = false
 
     static func kind(_ t: TabDigest.Tab) -> InsightTabKind {
         switch t {
@@ -157,11 +159,20 @@ struct TabDigestBlocksView: View {
                         .fill(Self.dotColor(st.tone))
                         .frame(width: 6, height: 6)
                         .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 1 }
-                    Text(st.text)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(st.text)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        if showsDetail, let d = st.detail {
+                            Text(d)
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
                 }
             }
             if let dir = b.direction, dir != headlineNext {
@@ -357,9 +368,21 @@ struct RunDayShareCard: View {
     var condition: ActivityCondition? = nil
     var digest: [TabDigest.Block] = []
     var morning: InsightMorning? = nil
+    /// 이 러닝까지의 이번 주(월요일 시작)·이번 달 러닝 거리(km) — 날짜 밑 한 줄
+    var weekKm: Double? = nil
+    var monthKm: Double? = nil
 
     private var divider: some View {
         Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
+    }
+
+    /// "이번 주 16.2km · 이번 달 87.3km"
+    private var distanceLine: String? {
+        let L = AppLanguage.shared
+        var parts: [String] = []
+        if let w = weekKm { parts.append(L.s("이번 주 ", "This week ", ja: "今週 ") + String(format: "%.1fkm", w)) }
+        if let m = monthKm { parts.append(L.s("이번 달 ", "This month ", ja: "今月 ") + String(format: "%.1fkm", m)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     var body: some View {
@@ -371,10 +394,19 @@ struct RunDayShareCard: View {
             HStack(alignment: .center, spacing: 8) {
                 MIMOWordmark(size: 9)
                 Spacer(minLength: 4)
-                ShareDateText.text(for: activity.date)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                VStack(alignment: .trailing, spacing: 2) {
+                    ShareDateText.text(for: activity.date)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    if let line = distanceLine {
+                        Text(line)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
             }
 
             // ── 오늘의 러닝 — 앱 오늘의 인사이트 카드와 같은 글·같은 뷰 ──
@@ -402,7 +434,7 @@ struct RunDayShareCard: View {
                 RunStatsRow(activity: activity)
                 if !digest.isEmpty {
                     divider.padding(.vertical, 2)
-                    TabDigestBlocksView(digest: digest, headlineNext: text.next)
+                    TabDigestBlocksView(digest: digest, headlineNext: text.next, showsDetail: true)
                 }
             }
 
@@ -428,6 +460,8 @@ struct RunDayShareSheet: View {
     var condition: ActivityCondition? = nil
     var digest: [TabDigest.Block] = []
     var morning: InsightMorning? = nil
+    var weekKm: Double? = nil
+    var monthKm: Double? = nil
 
     @State private var exportImage: UIImage? = nil
     @State private var isRendering = false
@@ -436,7 +470,8 @@ struct RunDayShareSheet: View {
 
     private var card: RunDayShareCard {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
-                        condition: condition, digest: digest, morning: morning)
+                        condition: condition, digest: digest, morning: morning,
+                        weekKm: weekKm, monthKm: monthKm)
     }
 
     var body: some View {

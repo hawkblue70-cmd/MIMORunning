@@ -154,6 +154,19 @@ struct ActivityDetailView: View {
 
     /// 러닝 하루 공유 카드의 아침 제안 — 공유 시트를 열 때 한 번 조립(설계 2026-10-15 run-day-share-card).
     /// 그날 아침 = 첫 러닝 전 스냅샷 → 재계산, 다음 날 = 그 날 스냅샷 → 재계산(그 밤 HRV 없으면 방향 줄).
+    /// 이 러닝까지(포함)의 이번 주(월요일 시작)·이번 달 러닝 거리(km) — 러닝 하루 공유 카드 날짜 밑 한 줄
+    private func runDayDistance(month: Bool) -> Double? {
+        let cal = Calendar.current
+        let start: Date? = month
+            ? cal.dateInterval(of: .month, for: activity.date)?.start
+            : MRPlanGovernance.weekMonday(of: activity.date, calendar: cal)
+        guard let from = start else { return nil }
+        let m = manager.activities
+            .filter { $0.type == .running && $0.date >= from && $0.date <= activity.date }
+            .reduce(0.0) { $0 + $1.distance }
+        return m / 1000
+    }
+
     private func makeInsightMorning() -> InsightMorning? {
         guard activity.type == .running else { return nil }
         let cal = Calendar.current
@@ -523,7 +536,8 @@ struct ActivityDetailView: View {
                                                       effortValue: resolvedEffort?.value),
                                 condition: condition,
                                 digest: digest,
-                                morning: payload.morning)
+                                morning: payload.morning,
+                                weekKm: runDayDistance(month: false), monthKm: runDayDistance(month: true))
                         }
                     }
                     StorySection(workoutID: activity.id.uuidString,
