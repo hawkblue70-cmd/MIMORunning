@@ -397,7 +397,7 @@ struct RecordBarChart: View {
                         p.move(to: CGPoint(x: plot.maxX, y: plot.minY)); p.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
                         p.move(to: CGPoint(x: plot.minX, y: plot.maxY)); p.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
                     }
-                    .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
+                    .stroke(Color.primary.opacity(0.22), lineWidth: 0.5)   // 다크 = 흰색 그대로, 라이트 내보내기(흐름·인사이트)에선 검정
                     .allowsHitTesting(false)
                 }
             }
