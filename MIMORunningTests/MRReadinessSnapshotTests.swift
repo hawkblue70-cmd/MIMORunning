@@ -32,4 +32,19 @@ final class MRReadinessSnapshotTests: XCTestCase {
         XCTAssertEqual(all[0].computedAt, t1.addingTimeInterval(5))
         XCTAssertNotNil(MRReadinessSnapshotStore.fetch(dateKey: MRReadinessSnapshot.key(for: t1), context: c))
     }
+
+    func testUpsertSameContentDoesNotBumpComputedAt() throws {
+        let c = try ctx()
+        let t1 = Date()
+        let r = MRReadiness(level: .go, reasons: [], hrvPending: false, why: "첫째", data: ["a"])
+        MRReadinessSnapshotStore.upsert(r, at: t1, context: c)
+        MRReadinessSnapshotStore.upsert(r, at: t1.addingTimeInterval(600), context: c)
+        let key = MRReadinessSnapshot.key(for: t1)
+        XCTAssertEqual(MRReadinessSnapshotStore.fetch(dateKey: key, context: c)?.computedAt, t1)
+        let r2 = MRReadiness(level: .go, reasons: [], hrvPending: false, why: "달라짐", data: ["a"])
+        MRReadinessSnapshotStore.upsert(r2, at: t1.addingTimeInterval(900), context: c)
+        let s = MRReadinessSnapshotStore.fetch(dateKey: key, context: c)
+        XCTAssertEqual(s?.computedAt, t1.addingTimeInterval(900))
+        XCTAssertEqual(s?.why, "달라짐")
+    }
 }

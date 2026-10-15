@@ -59,6 +59,25 @@ struct InsightMorningTests {
         #expect(asOfs == [runStart.addingTimeInterval(-1)])
     }
 
+    @Test func noMorningOfHidesActualAndBlock() {
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 14, hour: 9),
+            snapshotFor: { _ in nil }, recompute: { _ in nil }, firstRunStart: { _ in nil },
+            actual: "이지 페이스 유지", direction: "내일은 쉬어 가세요", calendar: cal)
+        #expect(m.morningOf == nil)
+        #expect(m.actual == nil)
+        #expect(m.isEmpty)
+    }
+
+    @Test func morningOfKeepsActualAndNotEmpty() {
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 14, hour: 9),
+            snapshotFor: { _ in nil }, recompute: { _ in readiness(.go) }, firstRunStart: { _ in nil },
+            actual: "이지 페이스 유지", direction: nil, calendar: cal)
+        #expect(m.actual == "이지 페이스 유지")
+        #expect(!m.isEmpty)
+    }
+
     @Test func nextDayBeforeMidnightGivesDirection() {
         var asOfs: [Date] = []
         let m = InsightMorning.make(

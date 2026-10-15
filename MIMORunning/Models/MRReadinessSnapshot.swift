@@ -50,7 +50,12 @@ enum MRReadinessSnapshotStore {
     static func upsert(_ r: MRReadiness, at: Date, context: ModelContext) {
         let key = MRReadinessSnapshot.key(for: at)
         let snap: MRReadinessSnapshot
+        let newData = r.data.joined(separator: " · ")
         if let existing = fetch(dateKey: key, context: context) {
+            // 내용이 같으면 쓰지 않는다 — computedAt이 러닝 시작 뒤로 밀려 진짜 러닝 전 스냅샷이 버려지고, 매번 저장·CloudKit 내보내기가 일어나는 것을 막는다
+            if existing.level == levelString(r.level), existing.line == r.line, existing.why == r.why,
+               existing.data == newData, existing.planLine == (r.planLine ?? ""),
+               existing.hrvPending == r.hrvPending { return }
             snap = existing
         } else {
             snap = MRReadinessSnapshot(dateKey: key)
@@ -59,7 +64,7 @@ enum MRReadinessSnapshotStore {
         snap.level = levelString(r.level)
         snap.line = r.line
         snap.why = r.why
-        snap.data = r.data.joined(separator: " · ")
+        snap.data = newData
         snap.planLine = r.planLine ?? ""
         snap.computedAt = at
         snap.hrvPending = r.hrvPending

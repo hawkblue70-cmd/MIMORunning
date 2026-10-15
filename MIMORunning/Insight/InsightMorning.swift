@@ -27,7 +27,8 @@ struct InsightMorning: Equatable {
     /// 다음 날 없을 때 "→ 다음" 줄
     var nextDirection: String?
 
-    var isEmpty: Bool { morningOf == nil && nextMorning == nil && nextDirection == nil }
+    /// 제안(그날·다음 날)이 하나도 없으면 블록을 숨긴다 — 실제·다음 줄만 덩그러니 나오지 않게
+    var isEmpty: Bool { morningOf == nil && nextMorning == nil }
 
     /// - snapshotFor: 날짜 키("yyyy-MM-dd") → 홈이 저장한 스냅샷
     /// - recompute: asOf → 그 시각 아침 제안 재계산(엔진 준비 전이면 nil)
@@ -71,7 +72,7 @@ struct InsightMorning: Equatable {
 
         let dir = direction.flatMap { $0.isEmpty ? nil : $0 }
         let act = actual.flatMap { $0.isEmpty ? nil : $0 }
-        return InsightMorning(morningOf: morningOf, actual: act, nextMorning: nextMorning,
+        return InsightMorning(morningOf: morningOf, actual: morningOf == nil ? nil : act, nextMorning: nextMorning,
                               nextDirection: nextMorning == nil ? dir : nil)
     }
 
