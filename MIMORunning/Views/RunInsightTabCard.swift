@@ -48,6 +48,31 @@ private enum IC {
     static func zone(_ id: Int) -> Color { Theme.hrZoneColor(id) }
 }
 
+/// `IC`의 라이트 짝 — `ink.ic.x`. 다크(기본)는 `IC.x` 그대로.
+private struct ICInk {
+    let light: Bool
+    var green: Color      { light ? Color(hex: "2FA84F") : IC.green }
+    var greenBg: Color    { light ? Color(hex: "2FA84F").opacity(0.12) : IC.greenBg }
+    var greenText: Color  { light ? Color(hex: "1E7A38") : IC.greenText }
+    var violet: Color     { light ? Color(hex: "5B3FD9") : IC.violet }
+    var violetBg: Color   { IC.violetBg }
+    var violetText: Color { light ? Color(hex: "5B3FD9") : IC.violetText }
+    var label: Color      { light ? Color(hex: "757575") : IC.label }
+    var hrRed: Color      { light ? Color(hex: "E0242B") : IC.hrRed }
+    var cadCyan: Color    { light ? Color(hex: "E0A800") : IC.cadCyan }
+    var todayDot: Color   { light ? Color(hex: "7CC000") : IC.todayDot }
+    var vo2Colors: [Color] {
+        light ? [Color(hex: "E0242B"), Color(hex: "E07800"), Color(hex: "D4A700"), Color(hex: "2FA84F")]
+              : IC.vo2Colors
+    }
+    var zoneColors: [Color] { light ? ShareChartPalette.light.hrZones : IC.zoneColors }
+    func zone(_ id: Int) -> Color { light ? zoneColors[min(max(id - 1, 0), 4)] : IC.zone(id) }
+}
+
+extension InsightInk {
+    fileprivate var ic: ICInk { ICInk(light: light) }
+}
+
 // MARK: - Card Number Font
 
 enum CardNumberFont {
@@ -71,24 +96,28 @@ func cardNumFont(_ size: CGFloat) -> Font {
 // MARK: - Shared Subviews
 
 struct KPICell: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let label: String
     let value: String
     var unit: String? = nil
-    var color: Color = .white
+    /// nil = 기본 글자색(다크 흰색 · 라이트 검정)
+    var color: Color? = nil
     var context: String? = nil
-    var contextColor: Color = IC.green
+    /// nil = 기본 초록(`IC.green`)
+    var contextColor: Color? = nil
 
     var body: some View {
         VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(cardNumFont(15)).foregroundStyle(color)
+                Text(value).font(cardNumFont(15)).foregroundStyle(color ?? ink.primary)
                 if let u = unit {
-                    Text(u).font(.system(size: 10)).foregroundStyle(IC.label)
+                    Text(u).font(.system(size: 10)).foregroundStyle(ink.ic.label)
                 }
             }
-            Text(label).font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.70))
+            Text(label).font(.system(size: 8.5)).foregroundStyle(ink.fg(0.70))
             if let ctx = context {
-                Text(ctx).font(.system(size: 8)).foregroundStyle(contextColor)
+                Text(ctx).font(.system(size: 8)).foregroundStyle(contextColor ?? ink.ic.green)
             }
         }
         .frame(maxWidth: .infinity)
@@ -96,6 +125,8 @@ struct KPICell: View {
 }
 
 private struct ZoneDonutView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let zones: [HRZoneData]
 
     private let thickness: CGFloat = 10
@@ -111,7 +142,7 @@ private struct ZoneDonutView: View {
                 var bg = Path()
                 bg.addArc(center: center, radius: r,
                           startAngle: .degrees(-90), endAngle: .degrees(270), clockwise: false)
-                ctx.stroke(bg, with: .color(.white.opacity(0.08)),
+                ctx.stroke(bg, with: .color(ink.fg(0.08)),
                            style: StrokeStyle(lineWidth: thickness))
                 var startDeg: Double = -90
                 for zone in visible {
@@ -121,7 +152,7 @@ private struct ZoneDonutView: View {
                                startAngle: .degrees(startDeg),
                                endAngle:   .degrees(startDeg + sweep),
                                clockwise: false)
-                    ctx.stroke(arc, with: .color(IC.zone(zone.id)),
+                    ctx.stroke(arc, with: .color(ink.ic.zone(zone.id)),
                                style: StrokeStyle(lineWidth: thickness, lineCap: .butt))
                     startDeg += sweep
                 }
@@ -131,10 +162,10 @@ private struct ZoneDonutView: View {
                 VStack(spacing: 1) {
                     Text("\(pct)%")
                         .font(cardNumFont(20))
-                        .foregroundStyle(IC.zone(dom.id))
+                        .foregroundStyle(ink.ic.zone(dom.id))
                     Text("Zone \(dom.id)")
                         .font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(ink.fg(0.75))
                 }
             }
         }
@@ -142,6 +173,8 @@ private struct ZoneDonutView: View {
 }
 
 private struct CadenceTrackView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let cadence: Int
 
     private let trackMin: CGFloat = 130
@@ -160,19 +193,19 @@ private struct CadenceTrackView: View {
 
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(ink.fg(0.08))
                     .frame(height: 10)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(IC.green.opacity(0.32))
+                    .fill(ink.ic.green.opacity(0.32))
                     .frame(width: bandW, height: 10)
                     .offset(x: bandX)
                 // shadow outline
                 Circle()
-                    .fill(Theme.cardBackground)
+                    .fill(ink.card)
                     .frame(width: 13, height: 13)
                     .offset(x: max(0, min(w - 13, mX - 6.5)))
                 Circle()
-                    .fill(IC.cadCyan)
+                    .fill(ink.ic.cadCyan)
                     .frame(width: 11, height: 11)
                     .offset(x: max(0, min(w - 11, mX - 5.5)))
             }
@@ -185,6 +218,8 @@ private struct CadenceTrackView: View {
 private let insightGaugeScale: CGFloat = 0.75  // 0.9 → 0.75(2026-10-08 사용자: 2×2에서 아래 반원이 커 보여 어색 — 기존의 약 83%)
 
 private struct CadenceRPMGaugeView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let cadence: Int
     /// 반원 전체 배율 — 리듬 카드는 0.9로 10% 축소해 쓴다. 1 = 원래 크기.
     var scale: CGFloat = 1
@@ -238,9 +273,9 @@ private struct CadenceRPMGaugeView: View {
         let (axMin, axMax) = axisRange
         let (pLower, pUpper, absoluteWarning) = personalBand
         let c = Double(cadence)
-        let nc: Color = (absoluteWarning != nil && c < 160) ? Color(hex: "FF6B6B")
-            : (c >= pLower && c <= pUpper) ? .white
-            : Color(hex: "F0913C")
+        let nc: Color = (absoluteWarning != nil && c < 160) ? ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B"))
+            : (c >= pLower && c <= pUpper) ? ink.primary
+            : ink.pick(Color(hex: "F0913C"), Color(hex: "E07800"))
 
         VStack(alignment: .leading, spacing: 6 * scale) {
             Canvas { ctx, size in
@@ -252,8 +287,8 @@ private struct CadenceRPMGaugeView: View {
 
                 // 3구간 아크 — 개인 밴드 기반, clockwise:false = 상단 반원
                 let segs: [(Double, Double, Color)] = [
-                    (axMin,  pLower, Color(hex: "5AC8FA")),
-                    (pLower, pUpper, Theme.positive),
+                    (axMin,  pLower, ink.pick(Color(hex: "5AC8FA"), Color(hex: "0A84FF"))),
+                    (pLower, pUpper, ink.positive),
                     (pUpper, axMax,  Color(hex: "3A7BD5")),
                 ]
                 for s in segs where s.0 < s.1 {
@@ -274,10 +309,10 @@ private struct CadenceRPMGaugeView: View {
                                         y: center.y + (r - 7 * scale) * CGFloat(sin(wRad))))
                     mp.addLine(to: CGPoint(x: center.x + (r + 7 * scale) * CGFloat(cos(wRad)),
                                            y: center.y + (r + 7 * scale) * CGFloat(sin(wRad))))
-                    ctx.stroke(mp, with: .color(Color(hex: "FF6B6B")),
+                    ctx.stroke(mp, with: .color(ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B"))),
                                style: StrokeStyle(lineWidth: 2 * scale))
                     ctx.draw(
-                        Text("160").font(.system(size: 8 * scale)).foregroundStyle(Color(hex: "FF6B6B")),
+                        Text("160").font(.system(size: 8 * scale)).foregroundStyle(ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B"))),
                         at: CGPoint(x: center.x + (r - 14 * scale) * CGFloat(cos(wRad)),
                                     y: center.y + (r - 14 * scale) * CGFloat(sin(wRad))),
                         anchor: .center
@@ -299,14 +334,14 @@ private struct CadenceRPMGaugeView: View {
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
                                           width: dotR * 2, height: dotR * 2)),
-                    with: .color(.white)
+                    with: .color(ink.primary)
                 )
 
                 // 값 텍스트
                 ctx.draw(
                     Text("\(cadence)")
                         .font(cardNumFont(17 * scale))
-                        .foregroundStyle(Theme.cadence),
+                        .foregroundStyle(ink.cadence),
                     at: CGPoint(x: cx, y: cy - 34 * scale),
                     anchor: .center
                 )
@@ -314,9 +349,9 @@ private struct CadenceRPMGaugeView: View {
             .frame(width: 146 * scale, height: 87 * scale)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text("\(Int(axMin))").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
+                    Text("\(Int(axMin))").font(.system(size: 8 * scale)).foregroundStyle(ink.fg(0.65))
                     Spacer()
-                    Text("\(Int(axMax))").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
+                    Text("\(Int(axMax))").font(.system(size: 8 * scale)).foregroundStyle(ink.fg(0.65))
                 }
                 .frame(width: 146 * scale)
                 .offset(y: 10 * scale)
@@ -332,6 +367,8 @@ private struct CadenceBar: Identifiable {
 }
 
 private struct CadenceEqualizerView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let bars: [CadenceBar]
     let avgCadence: Double
     let totalKm: Double
@@ -361,15 +398,15 @@ private struct CadenceEqualizerView: View {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(String(format: "%.0f", avgCadence))
                     .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(IC.cadCyan)
-                Text("spm").font(.system(size: 9)).foregroundStyle(IC.label)
+                    .foregroundStyle(ink.ic.cadCyan)
+                Text("spm").font(.system(size: 9)).foregroundStyle(ink.ic.label)
                 Spacer()
                 if steadyRatio >= 0.70 {
                     Text(L.s("일정하게 유지", "Steady", ja: "一定を維持"))
                         .font(.system(size: 8.5, weight: .medium))
-                        .foregroundStyle(IC.green)
+                        .foregroundStyle(ink.ic.green)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(IC.green.opacity(0.16))
+                        .background(ink.ic.green.opacity(0.16))
                         .clipShape(Capsule())
                 }
             }
@@ -390,7 +427,7 @@ private struct CadenceEqualizerView: View {
                     ctx.fill(
                         Path(CGRect(x: 0, y: bandTopY,
                                    width: size.width, height: bandBotY - bandTopY)),
-                        with: .color(Theme.positive.opacity(0.07))
+                        with: .color(ink.positive.opacity(0.07))
                     )
                 }
                 // bars
@@ -401,8 +438,8 @@ private struct CadenceEqualizerView: View {
                     let inBand = !bar.isOutlier &&
                         abs(bar.value - avgCadence) / max(1, avgCadence) <= 0.05
                     let col: Color = bar.isOutlier
-                        ? Color(hex: "4A5560")
-                        : inBand ? Theme.cadence : Theme.cadence.opacity(0.45)
+                        ? ink.pick(Color(hex: "4A5560"), Color(hex: "C4C8CE"))
+                        : inBand ? ink.cadence : ink.cadence.opacity(0.45)
                     ctx.fill(
                         Path(roundedRect: CGRect(x: x, y: size.height - h, width: barW, height: h),
                              cornerRadius: 2.5),
@@ -431,11 +468,13 @@ private struct CadenceEqualizerView: View {
 }
 
 private struct VO2GaugeView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let fi: RunInsightEngine.VO2FitnessInfo
     let vo2: Double
     var prevVo2: Double? = nil
 
-    private let segColors: [Color] = IC.vo2Colors
+    private var segColors: [Color] { ink.ic.vo2Colors }
 
     var body: some View {
         GeometryReader { geo in
@@ -453,17 +492,17 @@ private struct VO2GaugeView: View {
                 if let pv = prevVo2 {
                     let px = xPos(vo2: pv, w: w)
                     Circle()
-                        .fill(Color.white.opacity(0.35))
+                        .fill(ink.fg(0.35))
                         .frame(width: 9, height: 9)
                         .offset(x: max(0, min(w - 9, px - 4.5)))
                 }
                 let cx = xPos(vo2: vo2, w: w)
                 Circle()
-                    .fill(Theme.cardBackground)
+                    .fill(ink.card)
                     .frame(width: 13, height: 13)
                     .offset(x: max(0, min(w - 13, cx - 6.5)))
                 Circle()
-                    .fill(IC.green)
+                    .fill(ink.ic.green)
                     .frame(width: 11, height: 11)
                     .offset(x: max(0, min(w - 11, cx - 5.5)))
             }
@@ -486,6 +525,8 @@ private struct VO2GaugeView: View {
 }
 
 private struct VO2RPMGaugeView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let fi: RunInsightEngine.VO2FitnessInfo
     let vo2: Double
     /// 반원 전체 배율 — 리듬 카드는 0.9로 10% 축소해 쓴다. 1 = 원래 크기(퍼포먼스 카드).
@@ -493,12 +534,12 @@ private struct VO2RPMGaugeView: View {
 
     // 하드코딩 경계값으로 4구간 렌더 검증 (이후 fi 규준값으로 교체)
     private let bounds: [Double]   = [15, 26, 33, 41, 57]
-    private let segColors: [Color] = [
-        Color(hex: "E8564A"),  // 낮음
-        Color(hex: "F0913C"),  // 평균이하
-        Color(hex: "EDC84B"),  // 평균이상
-        Theme.positive,  // 높음
-    ]
+    private var segColors: [Color] { [
+        ink.pick(Color(hex: "E8564A"), Color(hex: "E0242B")),  // 낮음
+        ink.pick(Color(hex: "F0913C"), Color(hex: "E07800")),  // 평균이하
+        ink.pick(Color(hex: "EDC84B"), Color(hex: "D4A700")),  // 평균이상
+        ink.positive,  // 높음
+    ] }
     private let segLabels   = ["낮음", "평균 이하", "평균 이상", "높음"]
     private let segLabelsEn = ["Low", "Below avg", "Above avg", "High"]
 
@@ -548,7 +589,7 @@ private struct VO2RPMGaugeView: View {
                 var needle = Path()
                 needle.move(to: center)
                 needle.addLine(to: tip)
-                ctx.stroke(needle, with: .color(.white.opacity(0.9)),
+                ctx.stroke(needle, with: .color(ink.fg(0.9)),
                            style: StrokeStyle(lineWidth: 2.4 * scale, lineCap: .round))
 
                 // 중심 원
@@ -556,7 +597,7 @@ private struct VO2RPMGaugeView: View {
                 ctx.fill(
                     Path(ellipseIn: CGRect(x: cx - dotR, y: cy - dotR,
                                           width: dotR*2, height: dotR*2)),
-                    with: .color(.white)
+                    with: .color(ink.primary)
                 )
 
                 // 값 텍스트 — 현재값 구간 색
@@ -571,9 +612,9 @@ private struct VO2RPMGaugeView: View {
             .frame(width: 146 * scale, height: 87 * scale)
             .overlay(alignment: .bottom) {
                 HStack {
-                    Text("15").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
+                    Text("15").font(.system(size: 8 * scale)).foregroundStyle(ink.fg(0.65))
                     Spacer()
-                    Text("57").font(.system(size: 8 * scale)).foregroundStyle(.white.opacity(0.65))
+                    Text("57").font(.system(size: 8 * scale)).foregroundStyle(ink.fg(0.65))
                 }
                 .frame(width: 146 * scale).offset(y: 10 * scale)
             }
@@ -583,19 +624,22 @@ private struct VO2RPMGaugeView: View {
 }
 
 private struct MetricRow: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let label: String
     let value: String
     var context: String? = nil
-    var contextColor: Color = IC.label
+    /// nil = 기본 라벨 회색(`IC.label`)
+    var contextColor: Color? = nil
 
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 11)).foregroundStyle(IC.label)
+            Text(label).font(.system(size: 11)).foregroundStyle(ink.ic.label)
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(value).font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+                Text(value).font(.system(size: 13, weight: .medium)).foregroundStyle(ink.primary)
                 if let ctx = context {
-                    Text(ctx).font(.system(size: 9)).foregroundStyle(contextColor)
+                    Text(ctx).font(.system(size: 9)).foregroundStyle(contextColor ?? ink.ic.label)
                 }
             }
         }
@@ -631,11 +675,12 @@ private enum AchievementBadgeKind {
         }
     }
 
-    var fgColor: Color {
+    /// 다크(기본)는 원래 색 — 라이트는 흰 배경용 짙은 짝
+    func fgColor(_ ink: InsightInk) -> Color {
         switch self {
-        case .longestEver, .longestThisMonth: return Color(hex: "F5C542")
-        case .bestPace:                       return Color(hex: "B5A9FF")
-        case .streak:                         return Color(hex: "FF9A3C")
+        case .longestEver, .longestThisMonth: return ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700"))
+        case .bestPace:                       return ink.pick(Color(hex: "B5A9FF"), Color(hex: "5B3FD9"))
+        case .streak:                         return ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800"))
         }
     }
 }
@@ -694,12 +739,14 @@ func computeRunningStreak(activity: Activity, history: [Activity]) -> Int {
 }
 
 private struct AchievementBadgeView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let badge: AchievementBadgeKind
 
     var body: some View {
         Text(badge.text)
             .font(.system(size: 9, weight: .medium))
-            .foregroundStyle(badge.fgColor)
+            .foregroundStyle(badge.fgColor(ink))
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(badge.bgColor)
             .clipShape(Capsule())
@@ -709,6 +756,8 @@ private struct AchievementBadgeView: View {
 /// 히어로 우측 블록(이번 주·이번 달 누적 + 배지 + 경로 아트).
 /// 리듬·퍼포먼스 카드가 **이 컴포넌트 하나만** 쓴다 — 카드별 별도 레이아웃 작성 금지.
 private struct HeroSideBlockView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     let history: [Activity]
     let coords: [CLLocationCoordinate2D]
@@ -740,7 +789,7 @@ private struct HeroSideBlockView: View {
                     coords: coords,
                     lineWidth: 2.2,
                     color: routeColor,
-                    casingColor: Theme.cardBackground
+                    casingColor: ink.card
                 )
                 .frame(width: routeSize.width, height: routeSize.height)
             }
@@ -751,14 +800,14 @@ private struct HeroSideBlockView: View {
         HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 9.5))
-                .foregroundStyle(.white.opacity(0.70))
+                .foregroundStyle(ink.fg(0.70))
             Text(String(format: "%.1f", km))
                 .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(ink.primary)
                 .monospacedDigit()
             Text("km")
                 .font(.system(size: 8.5))
-                .foregroundStyle(.white.opacity(0.70))
+                .foregroundStyle(ink.fg(0.70))
         }
     }
 }
@@ -781,6 +830,8 @@ private func heroMonthlyLoadKm(activity: Activity, history: [Activity]) -> Doubl
 // MARK: - RunInsightTabCard (entry point)
 
 struct RunInsightTabCard: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     var detail: ActivityDetail? = nil
     var history: [Activity] = []
@@ -934,9 +985,9 @@ struct RunInsightTabCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .foregroundStyle(Theme.violetText)
+                    .foregroundStyle(ink.violetText)
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Theme.violet.opacity(0.12))
+                    .background(ink.violet.opacity(0.12))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -944,7 +995,7 @@ struct RunInsightTabCard: View {
             if let desc = workoutTypeDescription {
                 Text(desc)
                     .font(.caption2)
-                    .foregroundStyle(Color.white.opacity(0.5))
+                    .foregroundStyle(ink.fg(0.5))
                     .lineLimit(1)
             }
         }
@@ -982,9 +1033,9 @@ struct RunInsightTabCard: View {
                 } label: {
                     Text(t.title)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(tab == t ? Theme.violetText : Color.white.opacity(0.50))
+                        .foregroundStyle(tab == t ? ink.violetText : ink.fg(0.50))
                         .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(tab == t ? Theme.violet.opacity(0.22) : Color.clear)
+                        .background(tab == t ? ink.violet.opacity(0.22) : Color.clear)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -1127,6 +1178,8 @@ func shouldDrawElevationBackdrop(cumulativeGainM: Double,
 }
 
 private struct HRTimeSeriesView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let samples: [(offset: TimeInterval, bpm: Int)]
     var zones: [HRZoneData] = []
     /// 시간축 고도 — 심박 뒤에 옅은 면적으로 깔아 "언덕 때문에 오른 심박"이 보이게 한다.
@@ -1152,8 +1205,8 @@ private struct HRTimeSeriesView: View {
 
     /// 고도 배경 — 회색 계열로 둔다. 초록(고도 지표색)을 쓰면 심박선의 Zone 2 초록과
     /// 섞여 어느 쪽이 고도인지 구분이 안 된다. 시인성은 채도가 아니라 윤곽선으로 올린다.
-    private static let elevFill = Color.white.opacity(0.17)
-    private static let elevStroke = Color.white.opacity(0.32)
+    private var elevFill: Color { ink.fg(0.17) }
+    private var elevStroke: Color { ink.fg(0.32) }
 
     /// GPS 고도 노이즈 제거 — 5점 이동 평균. 누적 상승을 이 값으로 재야 노이즈가 쌓이지 않는다.
     private func smoothAltitude(_ pts: [(offset: TimeInterval, altitude: Double)])
@@ -1170,11 +1223,11 @@ private struct HRTimeSeriesView: View {
     }
 
     private func zoneColor(for bpm: Double) -> Color {
-        guard !zones.isEmpty else { return Color(hex: "FF6B6B") }
+        guard !zones.isEmpty else { return ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B")) }
         for z in zones.sorted(by: { $0.id < $1.id }) {
-            if bpm <= Double(z.maxBPM) { return IC.zone(z.id) }
+            if bpm <= Double(z.maxBPM) { return ink.ic.zone(z.id) }
         }
-        return IC.zone(5)
+        return ink.ic.zone(5)
     }
 
     var body: some View {
@@ -1182,7 +1235,7 @@ private struct HRTimeSeriesView: View {
             return AnyView(
                 Text(AppLanguage.shared.s("심박 데이터 없음", "No HR data", ja: "心拍データなし"))
                     .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(ink.fg(0.35))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             )
         }
@@ -1252,12 +1305,12 @@ private struct HRTimeSeriesView: View {
                 var xAxisPath = Path()
                 xAxisPath.move(to: CGPoint(x: xPad, y: chartH))
                 xAxisPath.addLine(to: CGPoint(x: chartRight, y: chartH))
-                ctx.stroke(xAxisPath, with: .color(.white.opacity(0.35)),
+                ctx.stroke(xAxisPath, with: .color(ink.fg(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
                 var yAxisPath = Path()
                 yAxisPath.move(to: CGPoint(x: xPad, y: 0))
                 yAxisPath.addLine(to: CGPoint(x: xPad, y: chartH))
-                ctx.stroke(yAxisPath, with: .color(.white.opacity(0.35)),
+                ctx.stroke(yAxisPath, with: .color(ink.fg(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
 
                 // 고도 면적 (심박선 뒤 배경) — 자체 y축을 쓰되 눈금은 그리지 않는다.
@@ -1274,7 +1327,7 @@ private struct HRTimeSeriesView: View {
                     }
                     area.addLine(to: CGPoint(x: chartRight, y: chartH))
                     area.closeSubpath()
-                    ctx.fill(area, with: .color(Self.elevFill))
+                    ctx.fill(area, with: .color(elevFill))
                     // 윤곽선 — 면적만으로는 어두운 배경에서 형태가 뭉개진다
                     var ridge = Path()
                     var started = false
@@ -1284,12 +1337,12 @@ private struct HRTimeSeriesView: View {
                         if started { ridge.addLine(to: CGPoint(x: x, y: y)) }
                         else { ridge.move(to: CGPoint(x: x, y: y)); started = true }
                     }
-                    ctx.stroke(ridge, with: .color(Self.elevStroke), style: StrokeStyle(lineWidth: 1.0))
+                    ctx.stroke(ridge, with: .color(elevStroke), style: StrokeStyle(lineWidth: 1.0))
 
                     // "고도" 이름표 — 회색 면적이 무엇인지 알 수 없다는 피드백. 차트 안 오른쪽 아래(고도 면적 안,
                     // 러닝 끝이라 심박선은 보통 위쪽). 최고 높이 숫자는 회복 점이 있으면 접히므로 거기에 붙이지 않는다.
                     ctx.draw(Text(AppLanguage.shared.s("고도", "Elev", ja: "標高")).font(.system(size: 7.5))
-                        .foregroundStyle(.white.opacity(0.5)),
+                        .foregroundStyle(ink.fg(0.5)),
                         at: CGPoint(x: chartRight - 3, y: chartH - 2), anchor: .bottomTrailing)
 
                     // 최고 높이 라벨 — 면적 꼭대기 높이에 맞춰 오른쪽 바깥에.
@@ -1298,7 +1351,7 @@ private struct HRTimeSeriesView: View {
                         let peakY = chartH - chartH * elevTopRatio
                         let peak = Int((elevMin + elevSpan).rounded())
                         ctx.draw(Text("\(peak)m").font(.system(size: 8))
-                            .foregroundStyle(.white.opacity(0.58)),
+                            .foregroundStyle(ink.fg(0.58)),
                             at: CGPoint(x: chartRight + 3, y: peakY), anchor: .leading)
                     }
                 }
@@ -1350,7 +1403,7 @@ private struct HRTimeSeriesView: View {
                     var link = Path()
                     link.move(to: CGPoint(x: last.x, y: last.y))
                     for d in dots { link.addLine(to: CGPoint(x: d.x, y: ry(d.bpm))) }
-                    ctx.stroke(link, with: .color(.white.opacity(0.45)),
+                    ctx.stroke(link, with: .color(ink.fg(0.45)),
                                style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
                     // 평소 범위 띠 — 같은 심박으로 끝낸 러닝들의 낙폭 25~75 백분위.
                     // 오늘 점이 띠 위(덜 떨어짐)/안(평소대로)/아래(더 떨어짐) 어디인지가 판단 근거다.
@@ -1364,8 +1417,8 @@ private struct HRTimeSeriesView: View {
                         let rect = CGRect(x: x - 4, y: min(yTop, yBot),
                                           width: 8, height: max(2, abs(yBot - yTop)))
                         let shape = Path(roundedRect: rect, cornerRadius: 2)
-                        ctx.fill(shape, with: .color(Theme.heartRate.opacity(0.22)))
-                        ctx.stroke(shape, with: .color(Theme.heartRate.opacity(0.55)),
+                        ctx.fill(shape, with: .color(ink.heartRate.opacity(0.22)))
+                        ctx.stroke(shape, with: .color(ink.heartRate.opacity(0.55)),
                                    style: StrokeStyle(lineWidth: 0.8))
                     }
                     drawBand(recoveryBands?.minute1, at: x1)
@@ -1387,20 +1440,20 @@ private struct HRTimeSeriesView: View {
                     }
                     for l in labels {
                         ctx.draw(Text("−\(l.drop)").font(.system(size: 7))
-                            .foregroundStyle(.white.opacity(0.72)),
+                            .foregroundStyle(ink.fg(0.72)),
                             at: CGPoint(x: x2 + 5, y: l.y), anchor: .leading)
                     }
                     ctx.draw(Text(AppLanguage.shared.s("1·2분", "1·2m", ja: "1·2分")).font(.system(size: 7))
-                        .foregroundStyle(.white.opacity(0.55)),
+                        .foregroundStyle(ink.fg(0.55)),
                         at: CGPoint(x: x1, y: h), anchor: .bottomLeading)
                 }
 
                 // Y축 라벨
                 ctx.draw(Text("\(Int(maxBPM.rounded()))").font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.70)),
+                    .foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: xPad - 3, y: 0), anchor: .topTrailing)
                 ctx.draw(Text("\(Int(minBPM.rounded()))").font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.70)),
+                    .foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: xPad - 3, y: chartH), anchor: .bottomTrailing)
 
                 // X축 라벨
@@ -1408,13 +1461,13 @@ private struct HRTimeSeriesView: View {
                     let s = Int(t); return String(format: "%d:%02d", s / 60, s % 60)
                 }
                 ctx.draw(Text("0:00").font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.70)),
+                    .foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: xPad, y: h), anchor: .bottomLeading)
                 ctx.draw(Text(fmt(totalDur / 2)).font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.70)),
+                    .foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: xPad + chartW / 2, y: h), anchor: .bottom)
                 ctx.draw(Text(fmt(totalDur)).font(.system(size: 8))
-                    .foregroundStyle(.white.opacity(0.70)),
+                    .foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: chartRight, y: h), anchor: .bottomTrailing)
             }
         )
@@ -1424,12 +1477,14 @@ private struct HRTimeSeriesView: View {
 // MARK: - Week Strip
 
 private struct WeekStripView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     let history: [Activity]
 
     private let cellSize: CGFloat = 12
     private let gap: CGFloat = 3
-    private let streakColor = Color(hex: "FF9F0A")
+    private var streakColor: Color { ink.pick(Color(hex: "FF9F0A"), Color(hex: "E07800")) }
 
     private struct DayInfo: Identifiable {
         let id: Int
@@ -1461,7 +1516,7 @@ private struct WeekStripView: View {
     }
 
     private func cellColor(km: Double, isFuture: Bool) -> Color {
-        if isFuture { return Color.white.opacity(0.04) }
+        if isFuture { return ink.fg(0.04) }
         if km == 0  { return streakColor.opacity(0.10) }
         if km < 3   { return streakColor.opacity(0.32) }
         if km < 6   { return streakColor.opacity(0.56) }
@@ -1478,7 +1533,7 @@ private struct WeekStripView: View {
                         .frame(width: cellSize, height: cellSize)
                         .overlay(
                             RoundedRectangle(cornerRadius: 2)
-                                .stroke(info.isToday ? Color.white.opacity(0.70) : Color.clear,
+                                .stroke(info.isToday ? ink.fg(0.70) : Color.clear,
                                         lineWidth: 1)
                         )
                 }
@@ -1487,7 +1542,7 @@ private struct WeekStripView: View {
                 ForEach(dayInfos) { info in
                     Text(info.isToday ? AppLanguage.shared.s("오늘", "Today", ja: "今日") : "")
                         .font(.system(size: 6, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(ink.fg(0.65))
                         .frame(width: cellSize)
                 }
             }
@@ -1498,6 +1553,8 @@ private struct WeekStripView: View {
 // MARK: - Rhythm Card
 
 private struct RhythmInsightCard: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     var detail: ActivityDetail? = nil
     var history: [Activity] = []
@@ -1600,13 +1657,13 @@ private struct RhythmInsightCard: View {
                 RunSummaryLinesView(lines: summary, allowsExpansion: summaryAllowsExpansion)
             } else if let line = oneLiner {
                 divider
-                oneLiner(text: line, bg: IC.greenBg, fg: IC.greenText, accent: IC.green)
+                oneLiner(text: line, bg: ink.ic.greenBg, fg: ink.ic.greenText, accent: ink.ic.green)
             }
         }
         .padding(.horizontal, 16)
         // 내보내기: 주간 스트립이 헤더에 붙도록 위 여백만 줄인다(아래는 총평 박스 여백 유지)
         .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
-        .background(Theme.cardBackground)
+        .background(ink.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
             #if DEBUG
@@ -1684,11 +1741,11 @@ private struct RhythmInsightCard: View {
                     Text(kmStr)
                         .font(cardNumFont(40))
                         .tracking(-1.6)
-                    Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+                    Text("km").font(.system(size: 16)).foregroundStyle(ink.ic.label)
                 }
-                .foregroundStyle(Color.white)
+                .foregroundStyle(ink.primary)
                 if let ctx = distanceContext {
-                    Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+                    Text(ctx).font(.system(size: 10)).foregroundStyle(ink.ic.green)
                 }
             }
             Spacer(minLength: 8)
@@ -1699,7 +1756,7 @@ private struct RhythmInsightCard: View {
                 history: history,
                 coords: hasRoute ? coords : [],
                 badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
-                routeColor: Theme.positive,
+                routeColor: ink.positive,
                 routeSize: CGSize(width: 52, height: 62)
             )
         }
@@ -1712,11 +1769,11 @@ private struct RhythmInsightCard: View {
             kpiSep
             KPICell(label: AppLanguage.shared.s("페이스", "Pace", ja: "ペース"),
                     value: activity.formattedPace ?? "--'--\"",
-                    context: flatEquivalentText, contextColor: IC.label)
+                    context: flatEquivalentText, contextColor: ink.ic.label)
             kpiSep
             if let hr = activity.avgHeartRate {
                 KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
-                        value: "\(hr)", unit: "bpm", color: IC.hrRed)
+                        value: "\(hr)", unit: "bpm", color: ink.ic.hrRed)
             } else {
                 KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "--", color: .secondary)
@@ -1724,10 +1781,10 @@ private struct RhythmInsightCard: View {
             kpiSep
             if let workCad = intervalWorkCadence {
                 KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)", ja: "ケイデンス(本練習区間)"),
-                        value: "\(Int(workCad.rounded()))", unit: "spm", color: IC.cadCyan)
+                        value: "\(Int(workCad.rounded()))", unit: "spm", color: ink.ic.cadCyan)
             } else if let cad = detail?.avgCadence {
                 KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
-                        value: "\(cad)", unit: "spm", color: IC.cadCyan)
+                        value: "\(cad)", unit: "spm", color: ink.ic.cadCyan)
             } else {
                 KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "--", color: .secondary)
@@ -1790,7 +1847,7 @@ private struct RhythmInsightCard: View {
         }
         .font(.system(size: 10, weight: .semibold))
         .tracking(0.5)
-        .foregroundStyle(.white.opacity(0.90))
+        .foregroundStyle(ink.fg(0.90))
         .lineLimit(1)
         .minimumScaleFactor(0.75)
         // 제목 하나면 가운데. 둘이면 각자 자기 영역(러닝 / 러닝후) 위에 놓여야 해서 양끝으로 민다.
@@ -1803,7 +1860,7 @@ private struct RhythmInsightCard: View {
         let visibleZones = hrZones.filter { $0.fraction > 0.01 }
         let hasZones = !visibleZones.isEmpty
         let hasHR = hrSamples.count >= 5
-        let sep = Color.white.opacity(0.1)
+        let sep = ink.fg(0.1)
 
         // 2×2 그리드: [심박존 | 심박수] / [케이던스 | 유산소]
         return VStack(spacing: 0) {
@@ -1880,7 +1937,7 @@ private struct RhythmInsightCard: View {
                         if let caption = recoveryCaption {
                             Text(caption)
                                 .font(.system(size: 8.5))
-                                .foregroundStyle(Color.white.opacity(0.6))
+                                .foregroundStyle(ink.fg(0.6))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                         }
@@ -1916,7 +1973,7 @@ private struct RhythmInsightCard: View {
                         VStack(spacing: 2) {
                             Text(cadenceBottomLabel)
                                 .font(.system(size: 8.5))
-                                .foregroundStyle(Color.white.opacity(0.6))
+                                .foregroundStyle(ink.fg(0.6))
                             // 장거리 문맥이면 상대 평가 문구 생략 (절대 기준 위반 시 cadenceVerdictInfo가 처리)
                             if workoutTypeFn?(activity.id) != .interval && !rhythmIsLongDistanceContext {
                                 let v = cadenceVerdictInfo(cad: cad)
@@ -2014,7 +2071,7 @@ private struct RhythmInsightCard: View {
                     slStr: det.avgStrideLength.map { String(format: "%.2f", $0) },
                     paceStr: activity.formattedPace ?? "--")
                 let text = FormNarrative.longDistanceSentence(input)
-                return [(text: text, color: Color.white.opacity(0.75))]
+                return [(text: text, color: ink.fg(0.75))]
             }
         }
 
@@ -2070,7 +2127,7 @@ private struct RhythmInsightCard: View {
         // "비슷한 페이스 기준"은 바로 위 케이던스 게이지 캡션이 이미 말한다 — 여기서 반복하지 않는다.
         // 해석 문구가 이미 숫자로 보인 지표(케이던스·보폭·지면접촉)를 다시 말하면 뺀다.
         var pieces: [(text: String, color: Color)] = top.map { dev in
-            (dev.label, dev.isAbsWarn ? Color(hex: "FF6B6B") : Color.white.opacity(0.75))
+            (dev.label, dev.isAbsWarn ? ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B")) : ink.fg(0.75))
         }
         let metricWords = [L.s("케이던스", "Cadence", ja: "ケイデンス"), L.s("보폭", "Stride", ja: "ストライド"), L.s("지면접촉", "Contact", ja: "接地時間")]
         let interpRepeats = metricWords.contains { w in
@@ -2080,7 +2137,7 @@ private struct RhythmInsightCard: View {
 
         var parts: [(text: String, color: Color)] = []
         for (idx, p) in pieces.enumerated() {
-            if idx > 0 { parts.append((" · ", Color.white.opacity(0.55))) }
+            if idx > 0 { parts.append((" · ", ink.fg(0.55))) }
             parts.append(p)
         }
         return parts
@@ -2093,28 +2150,28 @@ private struct RhythmInsightCard: View {
 
         // 1. 케이던스 절대 기준 (최우선)
         if let cad = det.avgCadence, cad < 160 {
-            return (L.s("보폭이 큰 편입니다", "Wide stride tendency", ja: "ストライドが大きめです"), Color(hex: "FF6B6B"))
+            return (L.s("보폭이 큰 편입니다", "Wide stride tendency", ja: "ストライドが大きめです"), ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B")))
         }
 
         // 2. 지면접촉 (가장 민감한 상대 신호)
         if let stat = bb.groundContact, let gc = det.avgGroundContactTime {
             let delta = gc - stat.median
-            if delta <= -10 { return (L.s("지면접촉이 평소보다 짧았습니다", "Shorter ground contact than usual", ja: "接地時間が普段より短かったです"), Theme.positive) }
-            if delta >= 10  { return (L.s("지면접촉이 평소보다 길었습니다", "Longer ground contact than usual", ja: "接地時間が普段より長かったです"), Color.white.opacity(0.75)) }
+            if delta <= -10 { return (L.s("지면접촉이 평소보다 짧았습니다", "Shorter ground contact than usual", ja: "接地時間が普段より短かったです"), ink.positive) }
+            if delta >= 10  { return (L.s("지면접촉이 평소보다 길었습니다", "Longer ground contact than usual", ja: "接地時間が普段より長かったです"), ink.fg(0.75)) }
         }
 
         // 3. 케이던스 상대 신호
         if let stat = bb.cadence, let cad = det.avgCadence {
             let delta = Double(cad) - stat.median
-            if delta >= 3  { return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual", ja: "ケイデンスが普段より高かったです"), Theme.positive) }
-            if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), Color.white.opacity(0.75)) }
+            if delta >= 3  { return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual", ja: "ケイデンスが普段より高かったです"), ink.positive) }
+            if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), ink.fg(0.75)) }
         }
 
         // 4. 보폭
         if let stat = bb.strideLength, let sl = det.avgStrideLength {
             let delta = sl - stat.median
-            if delta >= 0.03  { return (L.s("보폭이 평소보다 넓었습니다", "Longer stride than usual", ja: "ストライドが普段より広かったです"), Theme.positive) }
-            if delta <= -0.03 { return (L.s("보폭이 짧았습니다", "Shorter stride", ja: "ストライドが短かったです"), Color.white.opacity(0.75)) }
+            if delta >= 0.03  { return (L.s("보폭이 평소보다 넓었습니다", "Longer stride than usual", ja: "ストライドが普段より広かったです"), ink.positive) }
+            if delta <= -0.03 { return (L.s("보폭이 짧았습니다", "Shorter stride", ja: "ストライドが短かったです"), ink.fg(0.75)) }
         }
 
         // 5. 심박
@@ -2123,11 +2180,11 @@ private struct RhythmInsightCard: View {
             let delta = todayHR - stat.median
             let rawDelta = Double(hr) - stat.median
             // 개선 주장은 원본도 낮을 때만 — 9a64c3b와 같은 규칙
-            if delta <= -4, rawDelta <= 0 { return (L.s("같은 페이스인데 심박이 낮았습니다", "Lower HR for this pace", ja: "同じペースで心拍が低かったです"), Theme.positive) }
-            if delta >= 5  { return (L.s("평소보다 심박이 높았습니다", "Higher HR than usual", ja: "普段より心拍が高かったです"), Color.white.opacity(0.75)) }
+            if delta <= -4, rawDelta <= 0 { return (L.s("같은 페이스인데 심박이 낮았습니다", "Lower HR for this pace", ja: "同じペースで心拍が低かったです"), ink.positive) }
+            if delta >= 5  { return (L.s("평소보다 심박이 높았습니다", "Higher HR than usual", ja: "普段より心拍が高かったです"), ink.fg(0.75)) }
         }
 
-        return (L.s("폼이 평소대로 안정적이었습니다", "Form right on baseline", ja: "フォームは普段どおり安定していました"), Theme.positive)
+        return (L.s("폼이 평소대로 안정적이었습니다", "Form right on baseline", ja: "フォームは普段どおり安定していました"), ink.positive)
     }
 
     /// 러닝 종류별 전·후반 폼 판정. splits 4개 미만이거나 판정 불필요 종류면 nil.
@@ -2164,16 +2221,16 @@ private struct RhythmInsightCard: View {
         }
         #endif
         guard let v = verdict else { return nil }
-        let typePrefix: (text: String, color: Color) = (wt.koreanLabel + " · ", Color.white.opacity(0.5))
-        return [typePrefix, (v.text, Self.verdictColor(v.shade))]
+        let typePrefix: (text: String, color: Color) = (wt.koreanLabel + " · ", ink.fg(0.5))
+        return [typePrefix, (v.text, verdictColor(v.shade))]
     }
 
     /// 판정 단계 → 원래 글자색 (초록 · 흰색 0.75 · 노랑)
-    private static func verdictColor(_ shade: TabDigestRhythm.Verdict.Shade) -> Color {
+    private func verdictColor(_ shade: TabDigestRhythm.Verdict.Shade) -> Color {
         switch shade {
-        case .good:    return Theme.positive
-        case .neutral: return Color.white.opacity(0.75)
-        case .caution: return Color(hex: "FFD166")
+        case .good:    return ink.positive
+        case .neutral: return ink.fg(0.75)
+        case .caution: return ink.pick(Color(hex: "FFD166"), Color(hex: "D4A700"))
         }
     }
 
@@ -2239,7 +2296,7 @@ private struct RhythmInsightCard: View {
             "Analyzing form data… \(progress.done)/\(progress.total)", ja: "フォームデータを分析中… \(progress.done)/\(progress.total)"
         ))
         .font(.system(size: 8.5))
-        .foregroundStyle(Color.white.opacity(0.4))
+        .foregroundStyle(ink.fg(0.4))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -2273,23 +2330,23 @@ private struct RhythmInsightCard: View {
                 : cad < 160
                     ? L.s("일반 범위보다 낮습니다", "Below typical", ja: "一般的な範囲より低いです")
                     : L.s("일반 범위보다 높습니다", "Above typical", ja: "一般的な範囲より高いです")
-            return (text, inRange ? IC.green : IC.label)
+            return (text, inRange ? ink.ic.green : ink.ic.label)
         }
         let (lower, upper, warning) = bl.cadenceBand(for: activity, gradeAdjustedPace: runGAP)
         let c = Double(cad)
         if warning != nil && c < 160 {
-            return (L.s("보폭이 큰 편입니다", "Wide stride", ja: "ストライドが大きめです"), IC.hrRed)
+            return (L.s("보폭이 큰 편입니다", "Wide stride", ja: "ストライドが大きめです"), ink.ic.hrRed)
         }
         // 판정은 폼 카드와 같은 반올림 규칙 (FormNarrative.status) — 하단 라벨 "lo–hi"와 경계가 일치
         let cadStat = bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence
             ?? FormStat(median: (lower + upper) / 2, sd: (upper - lower) / 2.4, count: 0, p10: nil, p90: nil)
         switch FormNarrative.status(rawValue: c, stat: cadStat, metric: .cadence) {
         case .inRange, .unknown:
-            return (L.s("평소 범위입니다", "Typical range", ja: "普段の範囲です"), IC.green)
+            return (L.s("평소 범위입니다", "Typical range", ja: "普段の範囲です"), ink.ic.green)
         case .above:
             return (L.s("평소보다 빨랐습니다", "Higher than usual", ja: "普段より高かったです"), Color(hex: "3A7BD5"))
         case .below:
-            return (L.s("평소보다 낮았습니다", "Lower than usual", ja: "普段より低かったです"), Color(hex: "5AC8FA"))
+            return (L.s("평소보다 낮았습니다", "Lower than usual", ja: "普段より低かったです"), ink.pick(Color(hex: "5AC8FA"), Color(hex: "0A84FF")))
         }
     }
 
@@ -2303,9 +2360,9 @@ private struct RhythmInsightCard: View {
         let visible = hrZones.filter { $0.fraction > 0.01 }
         let total = max(1e-9, visible.map(\.fraction).reduce(0, +))
         let z2frac = (hrZones.first(where: { $0.id == 2 })?.fraction ?? 0) / total
-        if z2frac >= 0.60 { return IC.zone(2) }
-        guard let v = FormNarrative.verdictZone(fractions: Dictionary(visible.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)) else { return IC.label }
-        return IC.zone(v.zone)
+        if z2frac >= 0.60 { return ink.ic.zone(2) }
+        guard let v = FormNarrative.verdictZone(fractions: Dictionary(visible.map { ($0.id, $0.fraction) }, uniquingKeysWith: +)) else { return ink.ic.label }
+        return ink.ic.zone(v.zone)
     }
 
     private func cadenceSection(_ cadence: Int) -> some View {
@@ -2316,18 +2373,18 @@ private struct RhythmInsightCard: View {
             : cadence < 160
                 ? L.s("일반 범위보다 낮습니다", "Below typical", ja: "一般的な範囲より低いです")
                 : L.s("일반 범위보다 높습니다", "Above typical", ja: "一般的な範囲より高いです")
-        let statusColor: Color = inRange ? IC.green : IC.label
+        let statusColor: Color = inRange ? ink.ic.green : ink.ic.label
 
         return VStack(alignment: .leading, spacing: 6) {
             Text(AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"))
-                .font(.system(size: 10)).foregroundStyle(IC.label)
+                .font(.system(size: 10)).foregroundStyle(ink.ic.label)
             CadenceTrackView(cadence: cadence)
             HStack {
-                Text("130").font(.system(size: 8.5)).foregroundStyle(IC.label)
+                Text("130").font(.system(size: 8.5)).foregroundStyle(ink.ic.label)
                 Spacer()
                 Text(statusText).font(.system(size: 9)).foregroundStyle(statusColor)
                 Spacer()
-                Text("195+").font(.system(size: 8.5)).foregroundStyle(IC.label)
+                Text("195+").font(.system(size: 8.5)).foregroundStyle(ink.ic.label)
             }
         }
     }
@@ -2346,13 +2403,13 @@ private struct RhythmInsightCard: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(String(format: "%.1f", vo2))
-                    .font(.system(size: 17, weight: .medium)).foregroundStyle(IC.green)
-                Text("mL/kg·min").font(.system(size: 9)).foregroundStyle(IC.label)
+                    .font(.system(size: 17, weight: .medium)).foregroundStyle(ink.ic.green)
+                Text("mL/kg·min").font(.system(size: 9)).foregroundStyle(ink.ic.label)
                 Spacer()
                 Text(info.levelLabel)
-                    .font(.system(size: 10, weight: .medium)).foregroundStyle(IC.green)
+                    .font(.system(size: 10, weight: .medium)).foregroundStyle(ink.ic.green)
                     .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(IC.green.opacity(0.18))
+                    .background(ink.ic.green.opacity(0.18))
                     .clipShape(Capsule())
             }
             VO2GaugeView(fi: info, vo2: vo2)
@@ -2361,15 +2418,15 @@ private struct RhythmInsightCard: View {
                     VStack(spacing: 2) {
                         Text(levelLabels[i])
                             .font(.system(size: 7.5))
-                            .foregroundStyle(IC.vo2Colors[i])
+                            .foregroundStyle(ink.ic.vo2Colors[i])
                         Text(thresholds[i])
                             .font(.system(size: 7))
-                            .foregroundStyle(IC.label)
+                            .foregroundStyle(ink.ic.label)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
-            Text(refNote).font(.system(size: 9)).foregroundStyle(IC.label)
+            Text(refNote).font(.system(size: 9)).foregroundStyle(ink.ic.label)
         }
     }
 
@@ -2385,11 +2442,11 @@ private struct RhythmInsightCard: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+        Rectangle().fill(ink.fg(0.08)).frame(height: 0.5)
     }
 
     private var kpiSep: some View {
-        Rectangle().fill(Color.white.opacity(0.10)).frame(width: 0.5, height: 40)
+        Rectangle().fill(ink.fg(0.10)).frame(width: 0.5, height: 40)
     }
 
     // MARK: Computed
@@ -2412,10 +2469,10 @@ private struct RhythmInsightCard: View {
                                                 activity: activity, detail: detail, history: history) else { return nil }
         let color: Color
         switch v.kind {
-        case .maxIntensity, .secondHalfRise: color = Color(hex: "FF9A3C")
-        case .lateClimb:                     color = Color.white.opacity(0.75)
-        case .easedOff:                      color = Color(hex: "4C8DFF")
-        case .steady:                        color = Theme.positive
+        case .maxIntensity, .secondHalfRise: color = ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800"))
+        case .lateClimb:                     color = ink.fg(0.75)
+        case .easedOff:                      color = ink.pick(Color(hex: "4C8DFF"), Color(hex: "2F7BFF"))
+        case .steady:                        color = ink.positive
         }
         return (v.text, color)
     }
@@ -2423,7 +2480,7 @@ private struct RhythmInsightCard: View {
     private func vo2SubLabel(fi: RunInsightEngine.VO2FitnessInfo, vo2: Double) -> (text: String, color: Color) {
         let L = AppLanguage.shared
         // 등급 경계·이름은 RunSummary.vo2Level 하나 — 총평 유산소 줄과 같은 값. 색 배열은 그 index 순서와 같다.
-        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
+        let levelColors: [Color] = [ink.pick(Color(hex: "E8564A"), Color(hex: "E0242B")), ink.pick(Color(hex: "F0913C"), Color(hex: "E07800")), ink.pick(Color(hex: "EDC84B"), Color(hex: "D4A700")), ink.positive]
         let level = RunSummary.vo2Level(vo2)
         let idx = level.index
         let g = fi.genderLabel.isEmpty ? "" : " \(fi.genderLabel)"
@@ -2511,6 +2568,8 @@ private struct IntensityTickLine: Shape {
 }
 
 private struct PerformanceInsightCard: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     var detail: ActivityDetail? = nil
     var history: [Activity] = []
@@ -2609,6 +2668,11 @@ private struct PerformanceInsightCard: View {
 
     /// 산점도 점 색·크기. 22회가 좁은 영역에 모이면 점이 겹쳐 덩어리가 되므로
     /// 카드 배경색 테두리를 둘러 경계를 만든다 — 색보다 이게 개수 읽기에 크게 작용한다.
+    /// 산점도 세 색 — 라이트는 흰 배경용 짙은 짝(다크는 `ScatterStyle` 값 그대로)
+    private var scatterPast: Color   { ink.pick(ScatterStyle.past, Color(hex: "8A96A6")) }
+    private var scatterRecent: Color { ink.pick(ScatterStyle.recent, Color(hex: "9B3BFF")) }
+    private var scatterToday: Color  { ink.ic.todayDot }
+
     private enum ScatterStyle {
         static let past   = Color(hex: "A9B6C4")   // 밝은 한색 회색 — 흰색 반투명은 검은 배경에서 묻혔다
         static let recent = Color(hex: "C77DFF")   // 형광 보라 — 브랜드 보라는 검은 배경에서 가장 어두웠다
@@ -2672,7 +2736,7 @@ private struct PerformanceInsightCard: View {
                                 .frame(maxWidth: .infinity)
                         }
                         if showScatter, intensDist != nil {
-                            Rectangle().fill(.white.opacity(0.08))
+                            Rectangle().fill(ink.fg(0.08))
                                 .frame(width: 0.5)
                                 .padding(.vertical, 2)
                         }
@@ -2700,7 +2764,7 @@ private struct PerformanceInsightCard: View {
                 if let vi = voInf, let vd = voDet {
                     HStack(alignment: .top, spacing: 10) {
                         cardioSection(info: vi, vo2: vd).frame(maxWidth: .infinity)
-                        Rectangle().fill(.white.opacity(0.08)).frame(width: 0.5).padding(.vertical, 2)
+                        Rectangle().fill(ink.fg(0.08)).frame(width: 0.5).padding(.vertical, 2)
                         intervalBarSection(segments: s).frame(maxWidth: .infinity)
                     }
                 } else {
@@ -2717,7 +2781,7 @@ private struct PerformanceInsightCard: View {
             }
             if let line = oneLiner {
                 divider
-                oneLiner(text: line, bg: IC.violetBg, fg: IC.violetText, accent: IC.violet)
+                oneLiner(text: line, bg: ink.ic.violetBg, fg: ink.ic.violetText, accent: ink.ic.violet)
             }
             if let ri = returnInsight {
                 if let recovered = ri.recovered {
@@ -2732,7 +2796,7 @@ private struct PerformanceInsightCard: View {
         .padding(.horizontal, 16)
         // 내보내기: 위 여백만 줄여 헤더에 붙인다 (리듬·폼 카드와 동일 값)
         .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
-        .background(Theme.cardBackground)
+        .background(ink.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onChange(of: intensityDistData != nil, initial: true) { _, shown in
             hasIntensityDist?.wrappedValue = shown
@@ -2774,11 +2838,11 @@ private struct PerformanceInsightCard: View {
                     Text(kmStr)
                         .font(cardNumFont(40))
                         .tracking(-1.6)
-                    Text("km").font(.system(size: 16)).foregroundStyle(IC.label)
+                    Text("km").font(.system(size: 16)).foregroundStyle(ink.ic.label)
                 }
-                .foregroundStyle(Color.white)
+                .foregroundStyle(ink.primary)
                 if let ctx = heroContext {
-                    Text(ctx).font(.system(size: 10)).foregroundStyle(IC.green)
+                    Text(ctx).font(.system(size: 10)).foregroundStyle(ink.ic.green)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2791,7 +2855,7 @@ private struct PerformanceInsightCard: View {
                 history: history,
                 coords: hasRoute ? coords : [],
                 badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
-                routeColor: Color(hex: "8B7FF0")
+                routeColor: ink.pick(Color(hex: "8B7FF0"), Color(hex: "5B3FD9"))
             )
         }
     }
@@ -2810,11 +2874,11 @@ private struct PerformanceInsightCard: View {
             kpiSep
             KPICell(label: AppLanguage.shared.s("페이스", "Pace", ja: "ペース"),
                     value: activity.formattedPace ?? "--'--\"",
-                    context: flatEquivalentText, contextColor: IC.label)
+                    context: flatEquivalentText, contextColor: ink.ic.label)
             kpiSep
             if let hr = activity.avgHeartRate {
                 KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
-                        value: "\(hr)", unit: "bpm", color: IC.hrRed)
+                        value: "\(hr)", unit: "bpm", color: ink.ic.hrRed)
             } else {
                 KPICell(label: AppLanguage.shared.s("심박", "HR", ja: "心拍"),
                         value: "--", color: .secondary)
@@ -2824,10 +2888,10 @@ private struct PerformanceInsightCard: View {
             if workoutTypeFn?(activity.id) == .interval,
                let wc = IntervalSegment.workAverage(detail?.intervalSegments ?? [], { $0.avgCadence.map(Double.init) }) {
                 KPICell(label: AppLanguage.shared.s("케이던스 (전력 구간)", "Cadence (work)", ja: "ケイデンス(本練習区間)"),
-                        value: "\(Int(wc.rounded()))", unit: "spm", color: IC.cadCyan)
+                        value: "\(Int(wc.rounded()))", unit: "spm", color: ink.ic.cadCyan)
             } else if let cad = detail?.avgCadence {
                 KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
-                        value: "\(cad)", unit: "spm", color: IC.cadCyan)
+                        value: "\(cad)", unit: "spm", color: ink.ic.cadCyan)
             } else {
                 KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                         value: "--", color: .secondary)
@@ -2862,18 +2926,18 @@ private struct PerformanceInsightCard: View {
                 Spacer()
                 if let d = hrDelta, d > 0 {
                     (Text(L.s("심박 효율: ", "HR Efficiency: ", ja: "心拍効率: "))
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.90))
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(ink.fg(0.90))
                     + Text("↓\(d) bpm")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(IC.green)
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(ink.ic.green)
                     + Text(scatterIsHeatAdjusted
                            ? L.s(" (동일 페이스 · 15°C 기준)", " (vs. similar pace · at 15°C)", ja: " (同じペース · 15°C基準)")
                            : L.s(" (동일 페이스 기준)", " (vs. similar pace)", ja: " (同じペース基準)"))
-                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)))
+                        .font(.system(size: 8)).foregroundStyle(ink.fg(0.55)))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 } else {
                     Text(L.s("심박 효율", "HR Efficiency", ja: "心拍効率"))
-                        .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 }
                 Spacer()
             }
@@ -2902,11 +2966,11 @@ private struct PerformanceInsightCard: View {
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: leftPad, y: topPad + chartH))
                 xAxis.addLine(to: CGPoint(x: w, y: topPad + chartH))
-                ctx.stroke(xAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
+                ctx.stroke(xAxis, with: .color(ink.fg(0.35)), style: StrokeStyle(lineWidth: 0.8))
                 var yAxis = Path()
                 yAxis.move(to: CGPoint(x: leftPad, y: topPad))
                 yAxis.addLine(to: CGPoint(x: leftPad, y: topPad + chartH))
-                ctx.stroke(yAxis, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 0.8))
+                ctx.stroke(yAxis, with: .color(ink.fg(0.35)), style: StrokeStyle(lineWidth: 0.8))
 
                 // 평소 범위 띠 — 점·화살표보다 뒤에, 축 안쪽으로만 (SD가 크면 축 밖으로 나가므로 클립)
                 if let band {
@@ -2920,11 +2984,11 @@ private struct PerformanceInsightCard: View {
                         fill.addLine(to: CGPoint(x: xR, y: cy(eR - band.sd)))
                         fill.addLine(to: CGPoint(x: xL, y: cy(eL - band.sd)))
                         fill.closeSubpath()
-                        layer.fill(fill, with: .color(.white.opacity(0.07)))
+                        layer.fill(fill, with: .color(ink.fg(0.07)))
                         var mid = Path()
                         mid.move(to:    CGPoint(x: xL, y: cy(eL)))
                         mid.addLine(to: CGPoint(x: xR, y: cy(eR)))
-                        layer.stroke(mid, with: .color(.white.opacity(0.28)),
+                        layer.stroke(mid, with: .color(ink.fg(0.28)),
                                      style: StrokeStyle(lineWidth: 0.8, dash: [2, 2]))
                     }
                 }
@@ -2948,7 +3012,7 @@ private struct PerformanceInsightCard: View {
                         }
                         return meanResidual(recentPts) <= meanResidual(pastPts) - 2
                     }()
-                    let arrowColor: Color = improved ? IC.green : .white.opacity(0.35)
+                    let arrowColor: Color = improved ? ink.ic.green : ink.fg(0.35)
 
                     var arrowLine = Path()
                     arrowLine.move(to: CGPoint(x: pCX, y: pCY))
@@ -2984,7 +3048,7 @@ private struct PerformanceInsightCard: View {
                     ctx.fill(
                         Path(ellipseIn: CGRect(x: center.x-r-c, y: center.y-r-c,
                                                width: (r+c)*2, height: (r+c)*2)),
-                        with: .color(Theme.cardBackground)
+                        with: .color(ink.card)
                     )
                     ctx.fill(
                         Path(ellipseIn: CGRect(x: center.x-r, y: center.y-r, width: r*2, height: r*2)),
@@ -2995,12 +3059,12 @@ private struct PerformanceInsightCard: View {
                 // Past dots — 오늘 점과 대비를 벌리려고 한 단계 뒤로 물린다
                 for pt in pastPts {
                     scatterDot(CGPoint(x: cx(pt.pace), y: cy(pt.hr)),
-                               radius: ScatterStyle.rPast, color: ScatterStyle.past)
+                               radius: ScatterStyle.rPast, color: scatterPast)
                 }
                 // Recent dots
                 for pt in recentPts {
                     scatterDot(CGPoint(x: cx(pt.pace), y: cy(pt.hr)),
-                               radius: ScatterStyle.rRecent, color: ScatterStyle.recent)
+                               radius: ScatterStyle.rRecent, color: scatterRecent)
                 }
                 // Today dot (ring + fill) — drawn last. 오늘이 주인공이라 가장 밝은 색.
                 for pt in todayPts {
@@ -3008,18 +3072,18 @@ private struct PerformanceInsightCard: View {
                     let rO: CGFloat = 8.6
                     ctx.stroke(
                         Path(ellipseIn: CGRect(x: center.x-rO, y: center.y-rO, width: rO*2, height: rO*2)),
-                        with: .color(ScatterStyle.today.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
+                        with: .color(scatterToday.opacity(0.35)), style: StrokeStyle(lineWidth: 1)
                     )
-                    scatterDot(center, radius: 5.4, color: ScatterStyle.today)
+                    scatterDot(center, radius: 5.4, color: scatterToday)
                 }
 
                 // Y-axis labels — 플롯 왼쪽 여백, 위·아래 끝
                 ctx.draw(
-                    Text("\(Int(rawHMax))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    Text("\(Int(rawHMax))").font(.system(size: 8)).foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: leftPad - 2, y: topPad), anchor: .topTrailing
                 )
                 ctx.draw(
-                    Text("\(Int(rawHMin))").font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    Text("\(Int(rawHMin))").font(.system(size: 8)).foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: leftPad - 2, y: topPad + chartH), anchor: .bottomTrailing
                 )
 
@@ -3029,11 +3093,11 @@ private struct PerformanceInsightCard: View {
                     return String(format: "%d'%02d\"", m, s)
                 }
                 ctx.draw(
-                    Text(fmtPace(rawPMax)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    Text(fmtPace(rawPMax)).font(.system(size: 8)).foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: leftPad, y: topPad + chartH + 3), anchor: .topLeading
                 )
                 ctx.draw(
-                    Text(fmtPace(rawPMin)).font(.system(size: 8)).foregroundStyle(.white.opacity(0.70)),
+                    Text(fmtPace(rawPMin)).font(.system(size: 8)).foregroundStyle(ink.fg(0.70)),
                     at: CGPoint(x: w - 3, y: topPad + chartH + 3), anchor: .topTrailing
                 )
             }
@@ -3041,24 +3105,24 @@ private struct PerformanceInsightCard: View {
 
             // 범례 — 한 줄 고정. 반폭 열에서 15°C 표기까지 붙으면 폭이 빠듯해
             // 항목별 뷰 대신 Text 하나로 합쳐, 모자라면 글자를 줄이고(≥0.75) 절대 자르지 않는다.
-            let legendLabel = Color.white.opacity(0.70)
+            let legendLabel = ink.fg(0.70)
             let legend: Text = {
-                var t = Text("●").foregroundStyle(ScatterStyle.past)
+                var t = Text("●").foregroundStyle(scatterPast)
                     + Text(" \(L.s("4~8주 전", "4–8w ago", ja: "4~8週前"))   ").foregroundStyle(legendLabel)   // 과거 무리 = 4~8주 전 · 최근 = 4주
-                    + Text("●").foregroundStyle(ScatterStyle.recent)
+                    + Text("●").foregroundStyle(scatterRecent)
                     + Text(" \(L.s("최근", "Recent", ja: "最近"))   ").foregroundStyle(legendLabel)
                 if scatterTodayExcluded {
                     t = t + Text(L.s("오늘은 인터벌·빌드업이라 제외", "Today excluded (interval/build-up)", ja: "今日はインターバル・ビルドアップのため除外")).foregroundStyle(legendLabel)
                 } else {
-                    t = t + Text("●").foregroundStyle(ScatterStyle.today)
+                    t = t + Text("●").foregroundStyle(scatterToday)
                         + Text(" \(L.s("오늘", "Today", ja: "今日"))").foregroundStyle(legendLabel)
                 }
                 if band != nil {
-                    t = t + Text("   ▬").foregroundStyle(Color.white.opacity(0.30))
+                    t = t + Text("   ▬").foregroundStyle(ink.fg(0.30))
                         + Text(" \(L.s("평소 범위", "Typical", ja: "普段の範囲"))").foregroundStyle(legendLabel)
                 }
                 if scatterIsHeatAdjusted {
-                    t = t + Text("   \(L.s("15°C 기준", "at 15°C", ja: "15°C基準"))").foregroundStyle(Color.white.opacity(0.50))
+                    t = t + Text("   \(L.s("15°C 기준", "at 15°C", ja: "15°C基準"))").foregroundStyle(ink.fg(0.50))
                 }
                 return t
             }()
@@ -3074,7 +3138,7 @@ private struct PerformanceInsightCard: View {
         let L = AppLanguage.shared
         let g = info.genderLabel.isEmpty ? "" : " \(info.genderLabel)"
         let bounds: [Double] = [15, 26, 33, 41, 57]
-        let levelColors: [Color] = [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Theme.positive]
+        let levelColors: [Color] = [ink.pick(Color(hex: "E8564A"), Color(hex: "E0242B")), ink.pick(Color(hex: "F0913C"), Color(hex: "E07800")), ink.pick(Color(hex: "EDC84B"), Color(hex: "D4A700")), ink.positive]
         let levelNames = [L.s("낮음","Low", ja: "低い"), L.s("평균 이하","Below avg", ja: "平均以下"), L.s("평균 이상","Above avg", ja: "平均以上"), L.s("높음","High", ja: "高い")]
         var gradeIdx = bounds.count - 2
         for i in 0..<(bounds.count - 1) { if vo2 < bounds[i + 1] { gradeIdx = i; break } }
@@ -3087,7 +3151,7 @@ private struct PerformanceInsightCard: View {
             // 좌: VO2 반원 게이지
             VStack(alignment: .center, spacing: 3) {
                 Text(L.s("유산소 피트니스", "Aerobic Fitness", ja: "心肺フィットネス"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 VO2RPMGaugeView(fi: info, vo2: vo2, scale: insightGaugeScale)
                 Color.clear.frame(height: compact ? 5 : 12)
                 Text(gradeText)
@@ -3097,7 +3161,7 @@ private struct PerformanceInsightCard: View {
             .frame(maxWidth: .infinity)
             // 우: 스플릿 페이스 차트 (축소)
             if let sd = splitData {
-                Rectangle().fill(.white.opacity(0.1))
+                Rectangle().fill(ink.fg(0.1))
                     .frame(width: 0.5)
                     .padding(.vertical, 4)
                 splitPaceCompact(data: sd)
@@ -3129,11 +3193,11 @@ private struct PerformanceInsightCard: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+        Rectangle().fill(ink.fg(0.08)).frame(height: 0.5)
     }
 
     private var kpiSep: some View {
-        Rectangle().fill(Color.white.opacity(0.10)).frame(width: 0.5, height: 40)
+        Rectangle().fill(ink.fg(0.10)).frame(width: 0.5, height: 40)
     }
 
     // MARK: Computed
@@ -3290,9 +3354,9 @@ private struct PerformanceInsightCard: View {
                                                        lateHRRoseFirst: lateFirst)
         let color: Color
         switch v.shade {
-        case .good:    color = IC.green
-        case .neutral: color = Color.white.opacity(0.85)
-        case .caution: color = Theme.caution
+        case .good:    color = ink.ic.green
+        case .neutral: color = ink.fg(0.85)
+        case .caution: color = ink.caution
         }
         return (v.text, color)
     }
@@ -3300,8 +3364,10 @@ private struct PerformanceInsightCard: View {
     /// 디커플링 띠 차트의 네 구간 색 — 모두 이 카드에 이미 있는 색.
     /// 음수 = 케이던스 게이지의 "범위 아래" 하늘색(좋지도 나쁘지도 않은 '아래로 벗어남'),
     /// 0~5 = 초록(유지), 5~10 = 유산소 게이지의 노랑(조건 따라 다름), 10 이상 = 유산소 게이지의 빨강(부담).
-    private static let decouplingBandColors: [Color] =
-        [Color(hex: "5AC8FA"), Theme.positive, Color(hex: "EDC84B"), Color(hex: "E8564A")]
+    private var decouplingBandColors: [Color] {
+        [ink.pick(Color(hex: "5AC8FA"), Color(hex: "0A84FF")), ink.positive,
+         ink.pick(Color(hex: "EDC84B"), Color(hex: "D4A700")), ink.pick(Color(hex: "E8564A"), Color(hex: "E0242B"))]
+    }
 
     private static func decouplingBandIndex(_ pct: Double) -> Int {
         pct < 0 ? 0 : pct <= 5 ? 1 : pct <= 10 ? 2 : 3
@@ -3330,12 +3396,12 @@ private struct PerformanceInsightCard: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(L.s("디커플링", "Decoupling", ja: "デカップリング"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 Text(valueText)
                     .font(.system(size: 10, weight: .semibold)).foregroundStyle(reading.color)
                 // 출처 — 5% 경험칙은 Friel, J. "Aerobic Endurance and Decoupling" (TrainingPeaks, 2009)
                 Text("(Friel, J. 2009)")
-                    .font(.system(size: 8, weight: .regular)).foregroundStyle(.white.opacity(0.45))
+                    .font(.system(size: 8, weight: .regular)).foregroundStyle(ink.fg(0.45))
                 Spacer(minLength: 0)
             }
             GeometryReader { geo in
@@ -3346,12 +3412,12 @@ private struct PerformanceInsightCard: View {
                     HStack(spacing: 2) {
                         ForEach(0..<4, id: \.self) { i in
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(Self.decouplingBandColors[i].opacity(i == band ? 0.9 : 0.22))
+                                .fill(decouplingBandColors[i].opacity(i == band ? 0.9 : 0.22))
                                 .frame(height: 8)
                         }
                     }
                     // 오늘 점 — 배경색 테두리를 깔아 띠 위에서도 경계가 남는다(산점도 점과 같은 방식)
-                    Circle().fill(Theme.cardBackground)
+                    Circle().fill(ink.card)
                         .frame(width: dot, height: dot)
                         .overlay(Circle().fill(reading.color).frame(width: dot - 4, height: dot - 4))
                         .position(x: x, y: 4)
@@ -3362,7 +3428,7 @@ private struct PerformanceInsightCard: View {
                 ForEach(0..<4, id: \.self) { i in
                     Text(labels[i])
                         .font(.system(size: 8))
-                        .foregroundStyle(.white.opacity(i == band ? 0.90 : 0.45))
+                        .foregroundStyle(ink.fg(i == band ? 0.90 : 0.45))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -3402,7 +3468,7 @@ private struct PerformanceInsightCard: View {
 
         VStack(alignment: .leading, spacing: 4) {
             Text(L.s("인터벌 구간", "Interval Segments", ja: "インターバル区間"))
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 .frame(maxWidth: .infinity, alignment: .center)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -3417,7 +3483,7 @@ private struct PerformanceInsightCard: View {
                     }.joined(separator: "  ·  ")
                     Text(wcText)
                         .font(.system(size: 7.5))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(ink.fg(0.75))
                         .monospacedDigit()
                 }
 
@@ -3433,21 +3499,21 @@ private struct PerformanceInsightCard: View {
                         HStack(spacing: 6) {
                             Text(AppLanguage.shared.s("운동", "Work", ja: "本練習"))
                                 .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(Theme.positive)
+                                .foregroundStyle(ink.positive)
                                 .frame(width: 24, alignment: .leading)
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(.white.opacity(0.06))
+                                        .fill(ink.fg(0.06))
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(Theme.positive)
+                                        .fill(ink.positive)
                                         .frame(width: max(4, geo.size.width * CGFloat(norm)))
                                 }
                             }
                             .frame(height: 6)
                             Text(paceStr)
                                 .font(.system(size: 8.5, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.90))
+                                .foregroundStyle(ink.fg(0.90))
                                 .monospacedDigit()
                                 .frame(width: 38, alignment: .trailing)
                         }
@@ -3458,9 +3524,9 @@ private struct PerformanceInsightCard: View {
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(.white.opacity(0.04))
+                                        .fill(ink.fg(0.04))
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(.white.opacity(0.12))
+                                        .fill(ink.fg(0.12))
                                         .frame(width: geo.size.width * 0.12)
                                 }
                             }
@@ -3536,10 +3602,10 @@ private struct PerformanceInsightCard: View {
         }()
         let totalKm = data.map(\.distanceM).reduce(0, +) / 1000
 
-        let backColor: Color = backPct > 100 ? IC.green
-                               : backPct >= 95 ? IC.green
-                               : backPct >= 90 ? .white.opacity(0.7)
-                               : Color(hex: "FF9A3C")
+        let backColor: Color = backPct > 100 ? ink.ic.green
+                               : backPct >= 95 ? ink.ic.green
+                               : backPct >= 90 ? ink.fg(0.7)
+                               : ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800"))
         let backSuffix: String = backPct > 100
             ? L.s(" · 네거티브 스플릿", " · Negative split", ja: " · ネガティブスプリット")
             : backPct < 90 ? L.s(" · 후반 감속", " · Fade", ja: " · 後半失速") : ""
@@ -3564,9 +3630,9 @@ private struct PerformanceInsightCard: View {
 
                 // (a) 전·후반 배경
                 ctx.fill(Path(CGRect(x: xPad, y: 0, width: halfX - xPad, height: chartH)),
-                         with: .color(.white.opacity(0.03)))
+                         with: .color(ink.fg(0.03)))
                 ctx.fill(Path(CGRect(x: halfX, y: 0, width: w - halfX, height: chartH)),
-                         with: .color(Color(hex: "5BB8FF").opacity(0.06)))
+                         with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(0.06)))
 
                 // (b) 막대
                 for bar in data {
@@ -3579,7 +3645,7 @@ private struct PerformanceInsightCard: View {
                     ctx.fill(
                         Path(roundedRect: CGRect(x: bx, y: by, width: barW, height: bh),
                              cornerRadius: 2),
-                        with: .color(Color(hex: "5BB8FF").opacity(opacity))
+                        with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(opacity))
                     )
                 }
 
@@ -3589,12 +3655,12 @@ private struct PerformanceInsightCard: View {
                 var dashPath = Path()
                 dashPath.move(to: CGPoint(x: xPad, y: avgLineY))
                 dashPath.addLine(to: CGPoint(x: w - 24, y: avgLineY))
-                ctx.stroke(dashPath, with: .color(Color(hex: "5BB8FF").opacity(0.7)),
+                ctx.stroke(dashPath, with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(0.7)),
                            style: StrokeStyle(lineWidth: 0.8, dash: [4, 3]))
                 ctx.draw(
                     Text(L.s("평균", "avg", ja: "平均"))
                         .font(.system(size: 6.5))
-                        .foregroundStyle(Color(hex: "5BB8FF").opacity(0.8)),
+                        .foregroundStyle(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(0.8)),
                     at: CGPoint(x: w - 10, y: avgLineY),
                     anchor: .center
                 )
@@ -3603,12 +3669,12 @@ private struct PerformanceInsightCard: View {
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: xPad, y: chartH))
                 xAxis.addLine(to: CGPoint(x: w, y: chartH))
-                ctx.stroke(xAxis, with: .color(.white.opacity(0.35)),
+                ctx.stroke(xAxis, with: .color(ink.fg(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
                 var yAxis = Path()
                 yAxis.move(to: CGPoint(x: xPad, y: 0))
                 yAxis.addLine(to: CGPoint(x: xPad, y: chartH))
-                ctx.stroke(yAxis, with: .color(.white.opacity(0.35)),
+                ctx.stroke(yAxis, with: .color(ink.fg(0.35)),
                            style: StrokeStyle(lineWidth: 0.8))
             }
             .frame(maxWidth: .infinity)
@@ -3616,28 +3682,28 @@ private struct PerformanceInsightCard: View {
 
             // x축 라벨
             HStack {
-                Text("1").font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+                Text("1").font(.system(size: 6.5)).foregroundStyle(ink.fg(0.5))
                 Spacer()
                 Text(L.s("전반 │ 후반", "1H │ 2H", ja: "前半 │ 後半"))
-                    .font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 6.5)).foregroundStyle(ink.fg(0.5))
                 Spacer()
                 Text(String(format: "%.0fkm", totalKm))
-                    .font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 6.5)).foregroundStyle(ink.fg(0.5))
             }
 
             // 페이스 편차 가로 막대
-            let sdColor: Color = sdSec <= 8 ? IC.green
-                               : sdSec <= 15 ? Color(hex: "F5C542")
-                               : Color(hex: "FF9A3C")
+            let sdColor: Color = sdSec <= 8 ? ink.ic.green
+                               : sdSec <= 15 ? ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700"))
+                               : ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800"))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(L.s("편차", "SD", ja: "ばらつき"))
-                        .font(.system(size: 8.5)).foregroundStyle(IC.label)
+                        .font(.system(size: 8.5)).foregroundStyle(ink.ic.label)
                         .frame(width: 22, alignment: .leading)
                     GeometryReader { geo in
                         let fill = min(1.0, CGFloat(sdSec) / 25.0)
                         ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 2.5).fill(ink.fg(0.06))
                             RoundedRectangle(cornerRadius: 2.5).fill(sdColor.opacity(0.8))
                                 .frame(width: max(4, geo.size.width * fill))
                         }
@@ -3676,10 +3742,10 @@ private struct PerformanceInsightCard: View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .trailing) {
                 Text(L.s("페이스 분포", "Pace Distribution", ja: "ペース分布"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                     .frame(maxWidth: .infinity, alignment: .center)
                 Text("±\(sdSec)" + L.s("초", "s", ja: "秒"))
-                    .font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: 9, weight: .medium)).foregroundStyle(ink.fg(0.85))
             }
             Canvas { ctx, size in
                 let w = size.width
@@ -3732,9 +3798,9 @@ private struct PerformanceInsightCard: View {
                 let halfX = xPad + CGFloat(halfCount) * slotW
 
                 ctx.fill(Path(CGRect(x: xPad, y: 0, width: halfX - xPad, height: chartH)),
-                         with: .color(.white.opacity(0.03)))
+                         with: .color(ink.fg(0.03)))
                 ctx.fill(Path(CGRect(x: halfX, y: 0, width: w - halfX, height: chartH)),
-                         with: .color(Color(hex: "5BB8FF").opacity(0.06)))
+                         with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(0.06)))
 
                 // 막대 높이를 3등분하는 가로 눈금 3개(위·2/3·1/3) + 그 높이의 페이스 라벨(왼쪽)
                 for k in 1...3 {
@@ -3743,9 +3809,9 @@ private struct PerformanceInsightCard: View {
                     var grid = Path()
                     grid.move(to: CGPoint(x: xPad, y: y))
                     grid.addLine(to: CGPoint(x: w, y: y))
-                    ctx.stroke(grid, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 0.5))
+                    ctx.stroke(grid, with: .color(ink.fg(0.12)), style: StrokeStyle(lineWidth: 0.5))
                     ctx.draw(
-                        Text(fmtPace(pace(atBarHeight: bh))).font(.system(size: 6.5)).foregroundStyle(.white.opacity(0.5)),
+                        Text(fmtPace(pace(atBarHeight: bh))).font(.system(size: 6.5)).foregroundStyle(ink.fg(0.5)),
                         at: CGPoint(x: xPad - 3, y: max(4, y)), anchor: .trailing
                     )
                 }
@@ -3758,7 +3824,7 @@ private struct PerformanceInsightCard: View {
                     ctx.fill(
                         Path(roundedRect: CGRect(x: bx, y: chartH - bh, width: barW, height: bh),
                              cornerRadius: 1.5),
-                        with: .color(Color(hex: "5BB8FF").opacity(opacity))
+                        with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(opacity))
                     )
                 }
 
@@ -3767,11 +3833,11 @@ private struct PerformanceInsightCard: View {
                 var dash = Path()
                 dash.move(to: CGPoint(x: xPad, y: avgY))
                 dash.addLine(to: CGPoint(x: w, y: avgY))
-                ctx.stroke(dash, with: .color(Color(hex: "5BB8FF").opacity(0.6)),
+                ctx.stroke(dash, with: .color(ink.pick(Color(hex: "5BB8FF"), Color(hex: "1F7FD6")).opacity(0.6)),
                            style: StrokeStyle(lineWidth: 0.7, dash: [3, 2]))
                 // 평균 이름표 — 흰색 굵게. 같은 파랑이면 막대에 묻힌다. 차트 오른쪽 끝, 점선 바로 위.
                 let avgLabel = ctx.resolve(Text(fmtAvgPace).font(.system(size: 7.5, weight: .bold))
-                    .foregroundStyle(.white))
+                    .foregroundStyle(ink.primary))
                 let ls = avgLabel.measure(in: CGSize(width: 60, height: 20))
                 let labelY = min(max(0, avgY - ls.height - 1), chartH - ls.height)
                 ctx.draw(avgLabel, at: CGPoint(x: w, y: labelY), anchor: .topTrailing)
@@ -3779,19 +3845,19 @@ private struct PerformanceInsightCard: View {
                 var xAxis = Path()
                 xAxis.move(to: CGPoint(x: xPad, y: chartH))
                 xAxis.addLine(to: CGPoint(x: w, y: chartH))
-                ctx.stroke(xAxis, with: .color(.white.opacity(0.3)), style: StrokeStyle(lineWidth: 0.7))
+                ctx.stroke(xAxis, with: .color(ink.fg(0.3)), style: StrokeStyle(lineWidth: 0.7))
             }
             .frame(maxWidth: .infinity)
             .frame(height: 82)
 
             HStack {
-                Text("1").font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Text("1").font(.system(size: 6)).foregroundStyle(ink.fg(0.4))
                 Spacer()
-                Text(L.s("전반│후반", "1H│2H", ja: "前半│後半")).font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                Text(L.s("전반│후반", "1H│2H", ja: "前半│後半")).font(.system(size: 6)).foregroundStyle(ink.fg(0.4))
                 Spacer()
                 Text(totalKm.truncatingRemainder(dividingBy: 1) < 0.05
                      ? String(format: "%.0fkm", totalKm) : String(format: "%.1fkm", totalKm))
-                    .font(.system(size: 6)).foregroundStyle(.white.opacity(0.4))
+                    .font(.system(size: 6)).foregroundStyle(ink.fg(0.4))
             }
         }
     }
@@ -4140,10 +4206,10 @@ private struct PerformanceInsightCard: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
                 Text(L.s("이 러닝 기준 \(weeks)주 · \(totalRuns)회", "Before this run · \(weeks)w · \(totalRuns)", ja: "このラン時点 \(weeks)週 · \(totalRuns)回"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 if unclassified > 0 {
                     Text(L.s("분류 중 \(unclassified)건", "+\(unclassified) pending", ja: "分類中\(unclassified)件"))
-                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                        .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
@@ -4154,7 +4220,7 @@ private struct PerformanceInsightCard: View {
                     HStack(spacing: 2) {
                         Text(item.label)
                             .font(.system(size: 8))
-                            .foregroundStyle(isToday ? .white : IC.label.opacity(isEmpty ? 0.55 : 1))
+                            .foregroundStyle(isToday ? ink.primary : ink.ic.label.opacity(isEmpty ? 0.55 : 1))
                             .lineLimit(1).minimumScaleFactor(0.8)
                         if isToday {
                             Text(L.s("(오늘)", "(today)", ja: "(今日)"))
@@ -4165,7 +4231,7 @@ private struct PerformanceInsightCard: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2.5)
-                                .fill(.white.opacity(0.06))
+                                .fill(ink.fg(0.06))
                             if !isEmpty {
                                 RoundedRectangle(cornerRadius: 2.5)
                                     .fill(item.color.opacity(isToday ? 1.0 : 0.85))
@@ -4176,16 +4242,16 @@ private struct PerformanceInsightCard: View {
                     .frame(height: 8)
                     Text("\(item.count)")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(isEmpty ? IC.label.opacity(0.55) : item.color)
+                        .foregroundStyle(isEmpty ? ink.ic.label.opacity(0.55) : item.color)
                         .frame(width: 14, alignment: .trailing)
                 }
             }
             if unclassified > 0 {
                 Text(L.s("총 \(totalRuns)회 (분류 중 \(unclassified)건)", "\(totalRuns) runs (\(unclassified) pending)", ja: "計\(totalRuns)回(分類中\(unclassified)件)"))
-                    .font(.system(size: 8)).foregroundStyle(IC.label)
+                    .font(.system(size: 8)).foregroundStyle(ink.ic.label)
             } else {
                 Text(L.s("총 \(totalRuns)회", "\(totalRuns) runs", ja: "計\(totalRuns)回"))
-                    .font(.system(size: 8)).foregroundStyle(IC.label)
+                    .font(.system(size: 8)).foregroundStyle(ink.ic.label)
             }
         }
     }
@@ -4201,7 +4267,7 @@ private struct PerformanceInsightCard: View {
         if showDist, let load = sevenDayLoad {
             SplitRow(leftFraction: 0.5, spacing: 8, dividerWidth: 0.5) {
                 distributionOrPlaceholder(dist)
-                Rectangle().fill(.white.opacity(0.10))
+                Rectangle().fill(ink.fg(0.10))
                 sevenDayLoadView(load: load)
             }
         } else if showDist {
@@ -4294,12 +4360,12 @@ private struct PerformanceInsightCard: View {
         VStack(alignment: .leading, spacing: 8) {   // 행 ↔ 점선 설명 간격 8 · 제목 ↔ 첫 행(저강도)은 아래 padding으로 14 — 제목 블록과 막대가 확실히 나뉘게
             VStack(alignment: .leading, spacing: 1) {
                 Text(L.s("강도 분포 · \(data.weeks)주 · 심박 존 \(totalMin)분", "Intensity · \(data.weeks)w · \(totalMin) min in HR zones", ja: "強度分布 · \(data.weeks)週 · 心拍ゾーン\(totalMin)分"))
-                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                    .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                     .lineLimit(2).minimumScaleFactor(0.8)
                     .fixedSize(horizontal: false, vertical: true)
                 if excluded > 0 {
                     Text(L.s("심박 없음 \(excluded)건 제외", "\(excluded) w/o HR excluded", ja: "心拍なし\(excluded)件を除外"))
-                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                        .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
@@ -4312,11 +4378,11 @@ private struct PerformanceInsightCard: View {
                         let pct = Int((row.frac * 100).rounded())
                         HStack(spacing: Self.intensityGap) {
                             Text(row.tier.label)
-                                .font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.8))
+                                .font(.system(size: 8.5)).foregroundStyle(ink.fg(0.8))
                                 .lineLimit(1).minimumScaleFactor(0.6)
                                 .frame(width: Self.intensityLabelW, alignment: .leading)
                             ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 2.5).fill(.white.opacity(0.06))
+                                RoundedRectangle(cornerRadius: 2.5).fill(ink.fg(0.06))
                                 RoundedRectangle(cornerRadius: 2.5)
                                     .fill(intensityColor(row.tier).opacity(0.85))
                                     .frame(width: max(2, trackW * CGFloat(row.frac / axisFrac)))
@@ -4324,7 +4390,7 @@ private struct PerformanceInsightCard: View {
                                 // 흰색 반투명이라 어두운 트랙에선 옅은 띠, 밝은 막대 위에선 한 톤 밝은 띠로 보인다. 경고색 없음.
                                 if row.refHi > row.refLo {
                                     Rectangle()
-                                        .fill(.white.opacity(0.28))
+                                        .fill(ink.fg(0.28))
                                         .frame(width: trackW * CGFloat((row.refHi - row.refLo) / axisFrac))
                                         .offset(x: trackW * CGFloat(row.refLo / axisFrac))
                                 }
@@ -4333,7 +4399,7 @@ private struct PerformanceInsightCard: View {
                                 ForEach(Array(Set([row.refLo, row.refHi]).filter { $0 > 0 }.sorted()), id: \.self) { r in
                                     let onBar = r <= row.frac
                                     IntensityTickLine()
-                                        .stroke(onBar ? Color.black.opacity(0.55) : Color.white.opacity(0.55),
+                                        .stroke(onBar ? Color.black.opacity(0.55) : ink.fg(0.55),
                                                 style: StrokeStyle(lineWidth: 1, dash: [1.5, 1.5]))
                                         .frame(width: 1)
                                         .offset(x: trackW * CGFloat(r / axisFrac))
@@ -4342,7 +4408,7 @@ private struct PerformanceInsightCard: View {
                             .frame(width: trackW, height: Self.intensityTrackH)
                             Text("\(pct)%")
                                 .font(.system(size: 8.5))
-                                .foregroundStyle(.white.opacity(0.75))
+                                .foregroundStyle(ink.fg(0.75))
                                 .lineLimit(1).minimumScaleFactor(0.6)
                                 .frame(width: Self.intensityValueW, alignment: .trailing)
                         }
@@ -4354,7 +4420,7 @@ private struct PerformanceInsightCard: View {
             .frame(height: Self.intensityRowH * 3 + Self.intensityRowGap * 2)
             // 참고선 설명 한 줄 — 막대 아래
             Text(L.s("점선 - 문헌값 (지구력 종목)", "dashed - reference (endurance)", ja: "点線 - 文献値(持久系競技)"))
-            .font(.system(size: 8)).foregroundStyle(.white.opacity(0.7))
+            .font(.system(size: 8)).foregroundStyle(ink.fg(0.7))
             .lineLimit(1).minimumScaleFactor(0.7)
             .frame(maxWidth: .infinity, alignment: .trailing)   // 오른쪽 정렬 — 값 열(%)과 같은 끝선
             // 차트 바로 아래 문장 두 줄
@@ -4364,13 +4430,13 @@ private struct PerformanceInsightCard: View {
                 "최근 \(data.weeks)주 훈련 시간의 \(lowPct)%가 저강도입니다.".keepingNumberUnitsTogether,
                 "\(lowPct)% of your training time in the last \(data.weeks) weeks was low intensity.", ja: "直近\(data.weeks)週の練習時間の\(lowPct)%が低強度です。"
             ))
-            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+            .font(.system(size: 9)).foregroundStyle(ink.fg(0.75))
             .fixedSize(horizontal: false, vertical: true)
             // ② 회차 기준 (K-7) — 유형이 이지런인 러닝의 회차. «19%인데 왜 0회?»로 읽히지 않게 라벨로 구분.
             if let alert = TabDigestPerformance.easyAlertText(weeks: data.weeks, classified: data.classified, easyCount: data.easyCount,
                                                               easyStreak: data.easyStreak, easyStreakAtLeast: data.easyStreakAtLeast) {
                 Text(alert)
-                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                .font(.system(size: 9)).foregroundStyle(ink.fg(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -4386,7 +4452,7 @@ private struct PerformanceInsightCard: View {
         VStack(alignment: .leading, spacing: compact ? 3 : 5) {
             // 제목에 이 러닝의 부하를 붙인다 — "강도 부하 · 14일 (이 러닝 73 AU)"
             Text(sevenDayLoadTitle(load))
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.white.opacity(0.90))
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(ink.fg(0.90))
                 .lineLimit(1).minimumScaleFactor(0.8)
             RecordBarChart(
                 bars: load.bars,
@@ -4399,10 +4465,10 @@ private struct PerformanceInsightCard: View {
                 highlightDate: load.runDay,     // 앞 7일도 같은 진하기 — 이전 7일 비교가 캡션에 있어 흐리게 할 이유가 없다
                 showsTrendStrips: true           // 성장 탭 러닝 흐름과 같은 심박·유산소 선·범례
             )
-            .environment(\.colorScheme, .dark)   // 카드가 어두운 배경 전용이라 차트의 secondary 색도 다크로
+            .environment(\.colorScheme, insightLight ? .light : .dark)   // 차트의 secondary·primary 색을 카드 바탕에 맞춘다(앱 화면은 다크)
             // 한 줄: "7일 1,276 AU · 이전 7일 1,832 AU"
             Text(sevenDayLoadCaption(load))
-                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)
             // 한 줄: "4주 평균 대비 낮음, 회복 방향으로 진행 중" — 라벨 + 짧은 방향 문구
             let ratioLabel = load.acuteChronic.map(TabDigestPerformance.loadRatioText)
@@ -4410,18 +4476,18 @@ private struct PerformanceInsightCard: View {
             if load.thisRunAU == nil {
                 // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
                 Text(L.s("오늘 강도 입력 전 — 입력하면 강도 부하에 반영됩니다", "Today's effort not rated — rate it to count toward your training load", ja: "今日の強度は未入力 — 入力すると強度負荷に反映されます"))
-                    .font(.system(size: 9)).foregroundStyle(Theme.caution.opacity(0.9))
+                    .font(.system(size: 9)).foregroundStyle(ink.caution.opacity(0.9))
                     .lineLimit(1).minimumScaleFactor(0.8)
             } else if let loadLine = TabDigestPerformance.loadLine(ratio: ratioLabel, sentence: sentence) {
                 Text(loadLine)
-                    .font(.system(size: 9)).foregroundStyle(.white.opacity(0.75))
+                    .font(.system(size: 9)).foregroundStyle(ink.fg(0.75))
                     .lineLimit(2).minimumScaleFactor(0.8)   // 한 줄이면 "— 강약 나누기"가 잘렸다
                     .fixedSize(horizontal: false, vertical: true)
             }
             // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
             Text(L.s("AU = 체감 강도 × 분 · 7일 합을 4주 평균과 비교합니다",
                      "AU = perceived effort × minutes · 7-day sum vs 4-week average", ja: "AU = 体感強度 × 分 · 7日間の合計を4週平均と比べます"))
-                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.45))
+                .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
     }
@@ -4447,21 +4513,21 @@ private struct PerformanceInsightCard: View {
     }
 
     /// 이 막대는 심박 존 체류 시간을 AT1·AT2로 자른 3구간이므로 존 색이 곧 데이터의 색이다.
-    /// 바로 옆 강도 부하 차트와 같은 팔레트(`Theme.hrZoneColors`)를 써서 한 행 안에서 같은 색이
+    /// 바로 옆 강도 부하 차트와 같은 팔레트(`ink.hrZoneColors`)를 써서 한 행 안에서 같은 색이
     /// 같은 강도를 뜻하게 한다. 예전 파랑 3단계는 고강도가 가장 어두워 검은 배경에서 제일 안 보였다.
     private func intensityColor(_ tier: IntensityTier) -> Color {
         switch tier {
-        case .easy:   return Theme.hrZoneColor(2)   // 시안 — AT1 아래
-        case .medium: return Theme.hrZoneColor(3)   // 라임 — AT1~AT2
-        case .hard:   return Theme.hrZoneColor(5)   // 핑크 — AT2 위
+        case .easy:   return ink.hrZoneColor(2)   // 시안 — AT1 아래
+        case .medium: return ink.hrZoneColor(3)   // 라임 — AT1~AT2
+        case .hard:   return ink.hrZoneColor(5)   // 핑크 — AT2 위
         }
     }
 
     private var backfillingPlaceholder: some View {
         HStack(spacing: 6) {
-            ProgressView().tint(IC.label).scaleEffect(0.7)
+            ProgressView().tint(ink.ic.label).scaleEffect(0.7)
             Text(AppLanguage.shared.s("훈련 유형 분석 중…", "Analyzing run types…", ja: "練習タイプを分析中…"))
-                .font(.system(size: 10)).foregroundStyle(IC.label)
+                .font(.system(size: 10)).foregroundStyle(ink.ic.label)
         }
     }
 
@@ -4501,15 +4567,15 @@ private struct PerformanceInsightCard: View {
         HStack(spacing: 8) {
             Image(systemName: "heart.circle.fill")
                 .font(.system(size: 13))
-                .foregroundStyle(Color(hex: "30D158"))
+                .foregroundStyle(ink.pick(Color(hex: "30D158"), Color(hex: "2FA84F")))
             Text(text)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color(hex: "30D158"))
+                .foregroundStyle(ink.pick(Color(hex: "30D158"), Color(hex: "2FA84F")))
             Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, compact ? 5 : 8)
-        .background(Color(hex: "1A3020"))
+        .background(ink.pick(Color(hex: "1A3020"), Color(hex: "E8F6EC")))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -4524,16 +4590,16 @@ private struct PerformanceInsightCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(ri.gap)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ink.primary)
                 if let compare = ri.compare {
                     Text(compare)
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.white.opacity(0.65))
+                        .foregroundStyle(ink.fg(0.65))
                 }
                 if let advice = ri.advice {
                     Text(advice)
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.white.opacity(0.40))
+                        .foregroundStyle(ink.fg(0.40))
                         .padding(.top, 2)
                 }
             }
@@ -4548,6 +4614,8 @@ private struct PerformanceInsightCard: View {
 // MARK: - Race Insight Card
 
 private struct RaceInsightCard: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     var detail: ActivityDetail? = nil
     /// 후반 진단(`LateRunDiagnosis`)의 다리 신호 — 총평 '후반' 줄과 같은 폼 3단계 결과를 쓰기 위해
@@ -4634,15 +4702,15 @@ private struct RaceInsightCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "flag.checkered")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(ink.violet)
                     Text(race.raceName)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ink.primary)
                     Text("·")
-                        .foregroundStyle(Color.white.opacity(0.4))
+                        .foregroundStyle(ink.fg(0.4))
                     Text(distanceDivision(km: race.distanceKm))
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(ink.violet)
                     Spacer()
                 }
             }
@@ -4658,7 +4726,7 @@ private struct RaceInsightCard: View {
                     let maxHR = estimatedMaxHR
                     let pct = maxHR > 0 ? Int((Double(hr) / Double(maxHR) * 100).rounded()) : 0
                     KPICell(label: L.s("심박", "HR", ja: "心拍"),
-                            value: "\(hr)", unit: "bpm", color: IC.hrRed,
+                            value: "\(hr)", unit: "bpm", color: ink.ic.hrRed,
                             context: maxHR > 0 ? "max \(pct)%" : nil)
                 } else {
                     KPICell(label: L.s("심박", "HR", ja: "心拍"), value: "--", color: .secondary)
@@ -4666,7 +4734,7 @@ private struct RaceInsightCard: View {
                 kpiSep
                 if let cad = detail?.avgCadence {
                     KPICell(label: L.s("케이던스", "Cadence", ja: "ケイデンス"),
-                            value: "\(cad)", unit: "spm", color: IC.cadCyan)
+                            value: "\(cad)", unit: "spm", color: ink.ic.cadCyan)
                 } else {
                     KPICell(label: L.s("케이던스", "Cadence", ja: "ケイデンス"), value: "--", color: .secondary)
                 }
@@ -4675,11 +4743,11 @@ private struct RaceInsightCard: View {
             // ── 폼 유지력 섹션
             let fe = formEndurance
             if fe != .noData {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L.s("폼 유지력", "Form Endurance", ja: "フォーム維持力"))
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .foregroundStyle(ink.fg(0.5))
                     formEnduranceRow(fe)
                 }
             }
@@ -4687,56 +4755,56 @@ private struct RaceInsightCard: View {
             // ── 제한 요인 섹션 — 60분 이상 대회는 총평 '후반' 줄과 같은 진단(`LateRunDiagnosis`),
             //    그보다 짧거나 진단이 침묵하면(이유 모를 감속 등) 심박 %·폼 유지 규칙(`LimitFactor`)
             if let late = lateDiagnosis {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L.s("제한 요인", "Limiting Factor", ja: "制限要因"))
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .foregroundStyle(ink.fg(0.5))
                     lateDiagnosisRow(late)
                 }
             } else if limitingFactor != .noData {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L.s("제한 요인", "Limiting Factor", ja: "制限要因"))
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                        .foregroundStyle(ink.fg(0.5))
                     limitingFactorRow(limitingFactor)
                 }
             }
 
             // ── [10] 대회에서 지면접촉이 짧아지는 현상 인정
             if let note = gctNote {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 Text(note)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(IC.greenText)
+                    .foregroundStyle(ink.ic.greenText)
                     .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(IC.greenBg)
+                    .background(ink.ic.greenBg)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             // ── 같은 대회 · 같은 거리 (과거 대회가 있거나 확인할 과거 러닝이 있을 때)
             if let cmp = raceComparison, !cmp.isEmpty || !visibleQuestions.isEmpty {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 comparisonSection(cmp)
             }
 
             // ── 거리별 붕괴 곡선 (3개 이상 대회, 2개 이상 부문)
             let dcRows = distanceCollapseRows
             if !dcRows.isEmpty && dcRows.contains(where: { $0.form != .noData }) {
-                Color.white.opacity(0.1).frame(height: 0.5)
+                ink.fg(0.1).frame(height: 0.5)
                 distanceCollapseSection(dcRows)
             }
         }
         .padding(16)
-        .background(Theme.cardBackground)
+        .background(ink.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: Subviews
 
     private var kpiSep: some View {
-        Color.white.opacity(0.12).frame(width: 0.5, height: 28)
+        ink.fg(0.12).frame(width: 0.5, height: 28)
     }
 
     @ViewBuilder
@@ -4746,10 +4814,10 @@ private struct RaceInsightCard: View {
             switch fe {
             case .held where formEnduranceInfo(detail).byPaceTrend:
                 return (L.s("후반까지 폼이 유지됐습니다 — 느려진 속도로 설명되는 만큼만 변했습니다",
-                            "Form held — changes match the slowdown", ja: "後半までフォームが保たれました — 遅くなった速度で説明できる分だけ変化しました"), IC.green)
+                            "Form held — changes match the slowdown", ja: "後半までフォームが保たれました — 遅くなった速度で説明できる分だけ変化しました"), ink.ic.green)
             case .held:
                 return (L.s("후반까지 폼이 유지됐습니다 — 중반보다 무거워지지 않았습니다",
-                            "Form held to the finish — no heavier than mid-race", ja: "後半までフォームが保たれました — 中盤より重くなりませんでした"), IC.green)
+                            "Form held to the finish — no heavier than mid-race", ja: "後半までフォームが保たれました — 中盤より重くなりませんでした"), ink.ic.green)
             case .collapsed:
                 let names = formEnduranceInfo(detail).metrics.map { m -> String in
                     switch m {
@@ -4761,13 +4829,13 @@ private struct RaceInsightCard: View {
                 }.joined(separator: "·")
                 if formEnduranceInfo(detail).byPaceTrend {
                     return (L.s("후반에 폼이 무거워졌습니다 — 느려진 속도로 설명되는 것보다 \(names) 지표가 더 나빠졌습니다",
-                                "Form got heavier late — \(names) worsened more than the slowdown explains", ja: "後半にフォームが重くなりました — 遅くなった速度で説明できる以上に\(names)の指標が悪化しました"), Color(hex: "FF9A3C"))
+                                "Form got heavier late — \(names) worsened more than the slowdown explains", ja: "後半にフォームが重くなりました — 遅くなった速度で説明できる以上に\(names)の指標が悪化しました"), ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800")))
                 }
                 return (L.s("후반에 폼이 무거워졌습니다 — \(names) 지표가 그 페이스의 평소 범위를 벗어났습니다",
-                            "Form got heavier late — \(names) left the usual range for that pace", ja: "後半にフォームが重くなりました — \(names)の指標がそのペースの普段の範囲を外れました"), Color(hex: "FF9A3C"))
+                            "Form got heavier late — \(names) left the usual range for that pace", ja: "後半にフォームが重くなりました — \(names)の指標がそのペースの普段の範囲を外れました"), ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800")))
             case .mid:
                 return (L.s("폼이 일부 흔들렸지만 붕괴 수준은 아니었습니다",
-                            "Form wobbled slightly but didn't fully collapse", ja: "フォームが一部ぶれましたが、崩れるほどではありませんでした"), Color.white.opacity(0.7))
+                            "Form wobbled slightly but didn't fully collapse", ja: "フォームが一部ぶれましたが、崩れるほどではありませんでした"), ink.fg(0.7))
             case .undetermined:
                 let info = formEnduranceInfo(detail)
                 let pct: String = {
@@ -4777,11 +4845,11 @@ private struct RaceInsightCard: View {
                 if info.hasBreaks {
                     return (L.s("걷거나 멈춘 km가 섞여 후반 폼을 중반과 비교할 수 없습니다",
                                 "Walked or stopped kilometres make late form incomparable to mid-race", ja: "歩いたり止まったりしたkmが混ざっているため、後半のフォームを中盤と比べられません"),
-                            Color.white.opacity(0.7))
+                            ink.fg(0.7))
                 }
                 return (L.s("후반 페이스가 \(pct)% 달라져 폼 변화를 속도 변화와 구분할 수 없습니다",
                             "Late pace changed \(pct)%, so form changes can't be separated from speed", ja: "後半のペースが\(pct)%変わったため、フォームの変化を速度の変化と区別できません"),
-                        Color.white.opacity(0.7))
+                        ink.fg(0.7))
             case .noData:
                 return ("", .clear)
             }
@@ -4799,7 +4867,7 @@ private struct RaceInsightCard: View {
         if let detail = formHalvesDetail {
             Text(detail)
                 .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.5))
+                .foregroundStyle(ink.fg(0.5))
                 .padding(.leading, 18)
         }
     }
@@ -4813,22 +4881,22 @@ private struct RaceInsightCard: View {
                 return ("lungs.fill",
                         L.s("심폐 제한 — 심박이 최대에 가까웠고 폼은 유지됐습니다. 심폐가 먼저 한계에 닿은 레이스입니다",
                             "Cardio-limited — HR near max but form held. Your cardiovascular system hit the ceiling first", ja: "心肺が制限 — 心拍は最大近くでフォームは保たれました。心肺が先に限界に達したレースです"),
-                        IC.hrRed)
+                        ink.ic.hrRed)
             case .endurance:
                 return ("figure.run",
                         L.s("지구력 제한 — 심박 여유가 있었지만 폼이 무너졌습니다. 근육 지구력이 먼저 소진됐습니다",
                             "Endurance-limited — HR had headroom but form collapsed. Muscular endurance gave out first", ja: "持久力が制限 — 心拍に余裕はありましたがフォームが崩れました。筋持久力が先に尽きました"),
-                        Color(hex: "FF9A3C"))
+                        ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800")))
             case .balanced:
                 return ("arrow.left.arrow.right",
                         L.s("심폐·지구력 동시 한계 — 심박도 높고 폼도 무너졌습니다. 두 시스템 모두 한계에 도달한 레이스입니다",
                             "Both systems maxed — high HR and form breakdown. Cardio and endurance hit the wall together", ja: "心肺・持久力が同時に限界 — 心拍も高くフォームも崩れました。両方が限界に達したレースです"),
-                        Color(hex: "F5C542"))
+                        ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700")))
             case .managed:
                 return ("checkmark.seal.fill",
                         L.s("잘 관리된 레이스 — 심박 여유가 있었고 폼도 유지됐습니다",
                             "Well-managed effort — HR had room and form held throughout", ja: "よく管理されたレース — 心拍に余裕があり、フォームも保たれました"),
-                        IC.green)
+                        ink.ic.green)
             case .noData:
                 return ("", "", .clear)
             }
@@ -4853,16 +4921,16 @@ private struct RaceInsightCard: View {
             if let detail {
                 Text(detail)
                     .font(.system(size: 10))
-                    .foregroundStyle(Color.white.opacity(0.5))
+                    .foregroundStyle(ink.fg(0.5))
                     .padding(.leading, 18)
             }
             if let suggestion {
                 Text(suggestion)
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.white.opacity(0.65))
+                    .foregroundStyle(ink.fg(0.65))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(Color.white.opacity(0.07))
+                    .background(ink.fg(0.07))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.leading, 18)
             }
@@ -4880,27 +4948,27 @@ private struct RaceInsightCard: View {
                 return ("checkmark.seal.fill",
                         L.s("끝까지 유지한 레이스 — 후반에도 심박 효율과 폼이 버텼습니다",
                             "Held to the finish — HR efficiency and form lasted through the late stage", ja: "最後まで保ったレース — 後半も心拍効率とフォームが持ちこたえました"),
-                        IC.green)
+                        ink.ic.green)
             case .cardio:
                 return ("lungs.fill",
                         L.s("심박이 먼저 — 후반에 같은 속도를 내는 데 심박이 더 들었습니다",
                             "HR first — the late stage cost more heart rate for the same speed", ja: "心拍が先 — 後半は同じ速度を出すのにより多くの心拍が必要でした"),
-                        IC.hrRed)
+                        ink.ic.hrRed)
             case .legs:
                 return ("figure.run",
                         L.s("다리가 먼저 — 심박은 버텼지만 후반 폼이 무거워졌습니다",
                             "Legs first — HR held, but form got heavier late", ja: "脚が先 — 心拍は持ちこたえましたが、後半のフォームが重くなりました"),
-                        Color(hex: "FF9A3C"))
+                        ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800")))
             case .energy:
                 return ("bolt.slash.fill",
                         L.s("후반 힘 빠짐 — 페이스와 심박이 함께 내려갔습니다. 에너지가 떨어졌을 가능성이 있습니다",
                             "Ran low late — pace and HR dropped together. You may have run low on energy", ja: "後半の失速 — ペースと心拍が一緒に下がりました。エネルギー切れの可能性があります"),
-                        Color(hex: "F5C542"))
+                        ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700")))
             case .combined:
                 return ("arrow.left.arrow.right",
                         L.s("다리·심박 함께 — 후반에 심박도 더 들고 폼도 무거워졌습니다",
                             "Legs and HR together — late stage cost more HR and form got heavier", ja: "脚と心拍の両方 — 後半は心拍も多く必要になり、フォームも重くなりました"),
-                        Color(hex: "F5C542"))
+                        ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700")))
             }
         }()
         limitRow(icon: icon, text: text, color: color,
@@ -4950,7 +5018,7 @@ private struct RaceInsightCard: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(L.s("같은 대회 · 같은 거리", "Same Race · Same Distance", ja: "同じレース · 同じ距離"))
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.5))
+                .foregroundStyle(ink.fg(0.5))
             if showRaceGroup {
                 comparisonGroupLabel(L.s("같은 대회", "Same race", ja: "同じレース"))
                 comparisonRow(cmp.today)
@@ -4968,7 +5036,7 @@ private struct RaceInsightCard: View {
     private func comparisonGroupLabel(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.35))
+            .foregroundStyle(ink.fg(0.35))
             .padding(.top, 2)
     }
 
@@ -4979,29 +5047,29 @@ private struct RaceInsightCard: View {
         return HStack(spacing: 6) {
             Text(String(format: "%d.%02d", c.year ?? 0, c.month ?? 0))
                 .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(ink.fg(0.45))
                 .monospacedDigit()
                 .frame(width: 48, alignment: .leading)
             Text(row.title)
                 .font(.system(size: 11, weight: row.isToday ? .semibold : .regular))
-                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.8))
+                .foregroundStyle(row.isToday ? ink.violet : ink.fg(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer(minLength: 4)
             Text(RaceYearOverYear.clockDuration(Int(row.durationSec.rounded())))
                 .font(cardNumFont(12))
-                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.85))
+                .foregroundStyle(row.isToday ? ink.violet : ink.fg(0.85))
                 .lineLimit(1)
                 .layoutPriority(1)
             Text(row.delta.map { RaceYearOverYear.deltaText($0) } ?? L.s("오늘", "Today", ja: "今日"))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(row.isToday ? Theme.violet : Color.white.opacity(0.6))
+                .foregroundStyle(row.isToday ? ink.violet : ink.fg(0.6))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(width: 62, alignment: .trailing)
             Text(row.tempC.map { "\(Int($0.rounded()))°C" } ?? "")
                 .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(ink.fg(0.45))
                 .frame(width: 34, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)
@@ -5016,7 +5084,7 @@ private struct RaceInsightCard: View {
             Text(L.s("\(String(q.year)) \(q.raceName) — \(m)월 \(d)일 러닝이 이 대회였나요?",
                      "\(String(q.year)) \(q.raceName) — was your run on \(m)/\(d) this race?", ja: "\(String(q.year)) \(q.raceName) — \(m)月\(d)日のランはこのレースでしたか?"))
                 .font(.system(size: 11))
-                .foregroundStyle(Color.white.opacity(0.85))
+                .foregroundStyle(ink.fg(0.85))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button { onAnswerRaceQuestion?(q, true) } label: {
@@ -5024,7 +5092,7 @@ private struct RaceInsightCard: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Theme.violet)
+                        .background(ink.violet)
                         .clipShape(Capsule())
                         // 캡슐 모양은 그대로, 누르는 영역만 세로 44pt 가까이
                         .padding(.vertical, 10)
@@ -5034,9 +5102,9 @@ private struct RaceInsightCard: View {
                 Button { onAnswerRaceQuestion?(q, false) } label: {
                     Text(L.s("아니요", "No", ja: "いいえ"))
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(ink.fg(0.8))
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.white.opacity(0.08))
+                        .background(ink.fg(0.08))
                         .clipShape(Capsule())
                         .padding(.vertical, 10)
                         .contentShape(Rectangle())
@@ -5046,7 +5114,7 @@ private struct RaceInsightCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.violet.opacity(0.10))
+        .background(ink.violet.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -5173,7 +5241,7 @@ private struct RaceInsightCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L.s("거리별 폼 유지력 (전체 기록)", "Form by Distance (All Races)", ja: "距離別のフォーム維持力(全記録)"))
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.5))
+                .foregroundStyle(ink.fg(0.5))
             // 열 제목
             HStack(spacing: 6) {
                 Text(L.s("부문", "Dist.", ja: "種目"))
@@ -5181,16 +5249,16 @@ private struct RaceInsightCard: View {
                 Text(L.s("날짜", "Date", ja: "日付"))
                     .frame(width: 44, alignment: .leading)
                 Text(L.s("케이던스", "Cadence", ja: "ケイデンス"))
-                    .foregroundStyle(Theme.cadence.opacity(0.65))
+                    .foregroundStyle(ink.cadence.opacity(0.65))
                     .frame(width: 54, alignment: .leading)
                 Text(L.s("보폭", "Stride", ja: "ストライド"))
-                    .foregroundStyle(Theme.strideLength.opacity(0.65))
+                    .foregroundStyle(ink.strideLength.opacity(0.65))
                     .frame(width: 46, alignment: .leading)
                 Spacer()
                 Text(L.s("상태", "Status", ja: "状態"))
             }
             .font(.system(size: 9))
-            .foregroundStyle(Color.white.opacity(0.4))
+            .foregroundStyle(ink.fg(0.4))
             .padding(.bottom, 1)
             ForEach(rows, id: \.division) { row in
                 let comps = cal.dateComponents([.year, .month], from: row.raceDate)
@@ -5198,31 +5266,31 @@ private struct RaceInsightCard: View {
                 HStack(spacing: 6) {
                     Text(row.division)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(row.isCurrent ? Theme.violet : Color.white.opacity(0.85))
+                        .foregroundStyle(row.isCurrent ? ink.violet : ink.fg(0.85))
                         .frame(width: 44, alignment: .leading)
                     Text(dateStr)
                         .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.50))
+                        .foregroundStyle(ink.fg(0.50))
                         .frame(width: 44, alignment: .leading)
                     if let cd = row.cadDrop, let sd = row.strideDrop {
                         let cadSign = cd >= 0 ? "−" : "+"
                         let strSign = sd >= 0 ? "−" : "+"
                         Text("\(cadSign)\(String(format: "%.1f", abs(cd)))%")
                             .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundStyle(Theme.cadence.opacity(0.80))
+                            .foregroundStyle(ink.cadence.opacity(0.80))
                             .frame(width: 54, alignment: .leading)
                         Text("\(strSign)\(String(format: "%.1f", abs(sd)))%")
                             .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundStyle(Theme.strideLength.opacity(0.80))
+                            .foregroundStyle(ink.strideLength.opacity(0.80))
                             .frame(width: 46, alignment: .leading)
                     } else {
                         Text("–")
                             .font(.system(size: 9.5))
-                            .foregroundStyle(Color.white.opacity(0.30))
+                            .foregroundStyle(ink.fg(0.30))
                             .frame(width: 54, alignment: .leading)
                         Text("–")
                             .font(.system(size: 9.5))
-                            .foregroundStyle(Color.white.opacity(0.30))
+                            .foregroundStyle(ink.fg(0.30))
                             .frame(width: 46, alignment: .leading)
                     }
                     Spacer()
@@ -5232,7 +5300,7 @@ private struct RaceInsightCard: View {
             if let note = collapseNarrative(rows) {
                 Text(note)
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.white.opacity(0.70))
+                    .foregroundStyle(ink.fg(0.70))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 2)
             }
@@ -5244,10 +5312,10 @@ private struct RaceInsightCard: View {
         let L = AppLanguage.shared
         let (label, color): (String, Color) = {
             switch form {
-            case .held:      return (L.s("유지", "Held", ja: "横ばい"),  IC.green)
-            case .mid:       return (L.s("중간", "Mid", ja: "中強度"),   Color(hex: "F5C542"))
-            case .collapsed: return (L.s("무거워짐", "Heavier", ja: "重くなった"), Color(hex: "FF9A3C"))
-            case .noData, .undetermined: return ("–",       Color.white.opacity(0.30))
+            case .held:      return (L.s("유지", "Held", ja: "横ばい"),  ink.ic.green)
+            case .mid:       return (L.s("중간", "Mid", ja: "中強度"),   ink.pick(Color(hex: "F5C542"), Color(hex: "D4A700")))
+            case .collapsed: return (L.s("무거워짐", "Heavier", ja: "重くなった"), ink.pick(Color(hex: "FF9A3C"), Color(hex: "E07800")))
+            case .noData, .undetermined: return ("–",       ink.fg(0.30))
             }
         }()
         Text(label)
@@ -5334,6 +5402,18 @@ private struct RaceInsightCard: View {
 
 // MARK: - Export Sheet
 
+/// 라이트일 때만 colorScheme을 .light로 고정한다 — 다크(기본)는 손대지 않아 기존 출력과 같다.
+private struct InsightLightColorScheme: ViewModifier {
+    let isLight: Bool
+    func body(content: Content) -> some View {
+        if isLight {
+            content.environment(\.colorScheme, .light)
+        } else {
+            content
+        }
+    }
+}
+
 struct InsightExportSheet: View {
     let activity: Activity
     var detail: ActivityDetail? = nil
@@ -5398,6 +5478,8 @@ struct InsightExportSheet: View {
     }
 
     @State private var tab: InsightTabKind = .rhythm
+    /// 테마 칩 — 켜짐 = 라이트, 꺼짐 = 다크(기본). 저장 안 함(러닝 하루 카드·차트 내보내기와 같은 규칙).
+    @State private var isLight = false
     @State private var exportImage: UIImage? = nil
     @State private var isRendering = false
     @State private var showShare = false
@@ -5412,6 +5494,7 @@ struct InsightExportSheet: View {
                     cardPreview.padding(20)
                 }
                 Spacer(minLength: 0)
+                controlBar
                 shareBar
             }
             .background(Color(hex: "0D0D0F"))
@@ -5429,6 +5512,7 @@ struct InsightExportSheet: View {
             renderCard()
         }
         .onChange(of: tab) { _, _ in renderCard() }
+        .onChange(of: isLight) { _, _ in renderCard() }
         .sheet(isPresented: $showShare) {
             if let img = exportImage { ShareSheet(images: [img]) }
         }
@@ -5461,6 +5545,41 @@ struct InsightExportSheet: View {
         }
     }
 
+    /// 컨트롤 — 차트 내보내기와 같은 칩 규칙: 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크).
+    private var controlBar: some View {
+        HStack(spacing: 5) {
+            controlChip(AppLanguage.shared.s("라이트", "Light", ja: "ライト"), isOn: isLight) {
+                isLight.toggle()
+            }
+            .frame(width: 96)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    /// RunChartShareSheet.controlChip과 같은 모양
+    private func controlChip(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Text(label)
+                .font(.system(size: 10.5, weight: isOn ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isOn ? Theme.violet : .secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 카드 바탕 — 렌더·4:5 캔버스 여백도 이 색
+    private var cardBackgroundColor: Color { isLight ? .white : Theme.cardBackground }
+
     private var cardPreview: some View {
         exportCardView
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -5472,8 +5591,10 @@ struct InsightExportSheet: View {
             exportHeader
             cardBody
         }
-        .background(Theme.cardBackground)
+        .background(cardBackgroundColor)
         .environment(\.insightCompact, true)   // 내보내기는 촘촘한 세로 간격 — 미리보기 = 출력
+        .environment(\.insightLight, isLight)   // 라이트 칩 — 색만 바뀐다(크기·배치 같음)
+        .modifier(InsightLightColorScheme(isLight: isLight))
     }
 
     private var exportWorkoutTypeLabel: String? {
@@ -5486,7 +5607,7 @@ struct InsightExportSheet: View {
 
     private var exportHeader: some View {
         HStack(alignment: .top, spacing: 8) {
-            MIMOWordmark(size: 9)
+            MIMOWordmark(size: 9, strokeMIMO: isLight)
 
             VStack(alignment: .center, spacing: 3) {
                 dateTimeText
@@ -5496,7 +5617,7 @@ struct InsightExportSheet: View {
                 if let label = exportWorkoutTypeLabel {
                     Text(label)
                         .font(.system(size: 8.5, weight: .medium))
-                        .foregroundStyle(Theme.violet)
+                        .foregroundStyle(isLight ? RunCardLight.violet : Theme.violet)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Theme.violet.opacity(0.15))
                         .clipShape(Capsule())
@@ -5512,9 +5633,9 @@ struct InsightExportSheet: View {
                         Text(String(format: "%.0f°", temp))
                             .font(.system(size: 9, weight: .medium))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isLight ? RunCardLight.text : .white)
                     .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Color(hex: "2C1F0E"))
+                    .background(isLight ? Color(hex: "FBEFDD") : Color(hex: "2C1F0E"))
                     .clipShape(Capsule())
                 }
                 if let sn = shoeName {
@@ -5525,7 +5646,7 @@ struct InsightExportSheet: View {
                             .font(.system(size: 8))
                             .lineLimit(1)
                     }
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.6))
                 }
             }
         }
@@ -5533,7 +5654,7 @@ struct InsightExportSheet: View {
     }
 
     /// 날짜 줄 — 러닝 하루 공유 카드와 같은 형식(`ShareDateText`)
-    private var dateTimeText: Text { ShareDateText.text(for: activity.date) }
+    private var dateTimeText: Text { ShareDateText.text(for: activity.date, isLight: isLight) }
 
     private func weatherIcon(for tempC: Double) -> String {
         // 날씨 스냅샷(강수량)이 있으면 그 아이콘 — 폼 카드 "비 오는 날"과 같은 근거. 없을 때만 기온·습도로.
@@ -5670,13 +5791,13 @@ struct InsightExportSheet: View {
         let renderer = ImageRenderer(content:
             exportCardView
                 .frame(width: 360)
-                .background(Theme.cardBackground)
+                .background(cardBackgroundColor)
         )
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
 
         // 2) 인스타그램 4:5 캔버스에 맞춤 합성 — 러닝 흐름 카드와 같은 합성기를 쓴다(§5.8)
-        exportImage = ShareCanvas.fit(raw, background: UIColor(Theme.cardBackground))
+        exportImage = ShareCanvas.fit(raw, background: UIColor(cardBackgroundColor))
         isRendering = false
     }
 }
