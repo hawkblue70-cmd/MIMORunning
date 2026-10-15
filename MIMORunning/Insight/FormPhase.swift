@@ -394,7 +394,10 @@ enum FormPhase {
 
     /// 초·중·말 절을 쉼표로 이어 한 문장으로. 거리 문맥이고 말기가 유지가 아니면 "N km 후반엔 흔한 변화예요." 덧붙임.
     /// - Parameter suppressCommonTail: 관계 문장에 이미 더위 위안이 붙었으면(`hasHeatReassurance`) 이 꼬리를 생략 — 같은 말 반복 방지.
-    static func sentence(_ r: Result, isLongDistance: Bool, suppressCommonTail: Bool = false) -> String {
+    /// - Parameter omitEasyReassurance: 위 마무리 문장이 이미 케이던스 저하를 말했으면 이지 케이던스 하강의
+    ///   "편한 날엔 자연스러운 변화" 위안을 빼고 사실만(같은 카드에서 경고·안심이 엇갈리지 않게, 2026-10-15).
+    static func sentence(_ r: Result, isLongDistance: Bool, suppressCommonTail: Bool = false,
+                         omitEasyReassurance: Bool = false) -> String {
         let L = AppLanguage.shared
         let earlyKm = String(format: "%.0f", r.earlyEndKm)
         let lateKm  = String(format: "%.0f", r.totalKm - r.lateStartKm)
@@ -432,8 +435,13 @@ enum FormPhase {
             if r.isSoftCadenceOnly {
                 // 이지 프레임의 케이던스 단독 하강은 무거워짐이 아니라 편한 날의 변화 — 위안 문장을 절 안에 그대로 담는다
                 // (마지막 요소일 때 뒤에 붙는 마침표 하나로 두 문장이 자연스럽게 끝난다).
-                ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔습니다. 편한 날엔 자연스러운 변화입니다")
-                en.append("Cadence eased a little over the last \(lateKm) km — natural on an easy day")
+                if omitEasyReassurance {
+                    ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔습니다")
+                    en.append("cadence eased a little over the last \(lateKm) km")
+                } else {
+                    ko.append("마지막 \(lateKm)km엔 케이던스가 조금 내려갔습니다. 편한 날엔 자연스러운 변화입니다")
+                    en.append("Cadence eased a little over the last \(lateKm) km — natural on an easy day")
+                }
             } else {
                 ko.append("마지막 \(lateKm)km엔 " + joinKo(signals))
                 en.append("over the last \(lateKm) km " + joinEn(signals))

@@ -95,6 +95,16 @@ struct FormNarrativeTests {
         #expect(ko(i, .easy) == "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 7일 강도 부하 +134%.")
     }
 
+    @Test func easyHeavyLegsSuppressedWhenEasyZoneKept() {
+        // Zone 1~2 ≥ 80%면 의도된 이지 조절 — 피로로 단정하지 않고 사실만(2026-10-15)
+        var i = input(cad: .below, gct: .above, sl: .above, cadStr: "169", gctStr: "282", slStr: "0.91")
+        i.fatigueContext = "7일 강도 부하 +140%"
+        i.easyZoneFraction = 0.92
+        #expect(ko(i, .easy) == "같은 페이스 평소보다 지면접촉이 282ms로 길고 케이던스가 169spm으로 낮았습니다. Zone 1~2 92%로 이지 강도를 지켰습니다.")
+        i.easyZoneFraction = 0.79
+        #expect(ko(i, .easy).contains("다리가 무거운 날의 패턴입니다"))
+    }
+
     @Test func easyGctBelowWithCadenceInRangeOrAbove() {
         #expect(ko(input(gct: .below), .easy) == "평소 리듬대로 176spm을 유지했고, 지면접촉이 240ms로 짧았습니다. 가볍게 뛴 날입니다.")
         #expect(ko(input(cad: .above, gct: .below), .easy)

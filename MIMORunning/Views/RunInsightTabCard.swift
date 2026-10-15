@@ -1109,6 +1109,7 @@ struct RunInsightTabCard: View {
                 hasRecentGap: hasFormGap,
                 weatherSnapshot: weatherSnapshot,
                 fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
+                easyZoneFraction: TabDigestRhythm.easyLowZoneFraction(zones: hrZones),
                 historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:
@@ -5739,6 +5740,7 @@ struct InsightExportSheet: View {
                 hasRecentGap: exportFormHasGap,
                 weatherSnapshot: weatherSnapshot,
                 fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
+                easyZoneFraction: TabDigestRhythm.easyLowZoneFraction(zones: hrZones),
                 historicalTemperatures: history.compactMap { $0.temperatureC }
             )
         case .performance:

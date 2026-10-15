@@ -44,6 +44,8 @@ struct RunFormCardView: View {
     var weatherSnapshot: WeatherSnapshot? = nil
     /// 피로 맥락("5일 연속 · 7일 강도 부하 +134%") — 이지런 다리 무거움 문장 근거(RunSummaryBuilder.fatigueContext)
     var fatigueContext: String? = nil
+    /// 이 러닝의 Zone 1~2 비율 — 이지 강도를 지킨 날은 마무리 문장이 피로로 단정하지 않는다
+    var easyZoneFraction: Double? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
 
     /// 내보내기(촘촘 모드)면 섹션 간격 14→9 · 상하 여백 16→12 · 문장 줄 간격 −1
@@ -129,6 +131,7 @@ struct RunFormCardView: View {
                              baseline: baseline, workoutType: workoutType, intervalSegments: intervalSegments,
                              typicalKm: typicalDistanceKm, formShifts: formShifts, fatigueContext: fatigueContext,
                              phase: nil, hasRecentGap: hasRecentGap, runCadenceResidual: runCadenceResidual)
+            .withEasyZone(easyZoneFraction)
     }
 
     /// 3단계 결과까지 담은 입력 — 마무리 문장·장거리 폼 변화 판정용
@@ -779,7 +782,8 @@ struct RunFormCardView: View {
                     if let phase = formPhaseResult {
                         FormPhaseTableView(result: phase)
                         Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext,
-                                                suppressCommonTail: FormPhase.hasHeatReassurance(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC))))
+                                                suppressCommonTail: FormPhase.hasHeatReassurance(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC)),
+                                                omitEasyReassurance: TabDigestForm.narrativeSaysLowCadence(judgedInputs)))
                             .font(.system(size: 11.5))
                             .foregroundStyle(ink.fg(0.80))
                             .lineSpacing(compact ? 2 : 3)

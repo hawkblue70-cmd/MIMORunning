@@ -29,7 +29,14 @@ enum FormNarrative {
         var vo: Status = .unknown
         /// 피로 맥락("5일 연속 · 7일 강도 부하 +134%") — 이지런 다리 무거움 문장의 근거. 없으면 nil.
         var fatigueContext: String? = nil
+        /// 이 러닝의 Zone 1~2 비율(0~1) — 이지 강도를 지켰으면 지면접촉↑·케이던스↓를 피로로 단정하지 않는다
+        var easyZoneFraction: Double? = nil
     }
+
+    /// Zone 1~2 비율이 이 이상이면 '이지 강도를 지킨' 러닝 — 접지가 길고 발을 덜 굴린 것을 의도된 조절로 본다
+    /// (사용자 2026-10-15: Zone 2를 맞추려다 생긴 어쩔 수 없는 선택인데 '다리 무거운 날'로 단정했다).
+    static let easyZoneKeptMin = 0.80
+    static func keptEasyZone(_ i: Input) -> Bool { (i.easyZoneFraction ?? 0) >= easyZoneKeptMin }
 
     static func frame(for type: WorkoutType) -> Frame {
         switch type {
@@ -122,6 +129,13 @@ enum FormNarrative {
                     // 같은 페이스 대비 지면접촉↑ + 케이던스↓ 둘 다면 다리 피로 패턴(접지가 길고 발을 덜 굴림).
                     // HRV(자율신경)는 다리 근육 피로를 잘 담지 못해 HRV가 좋아도 이 패턴은 나온다(사용자 지적, 2026-10-14).
                     // 근거가 하나(지면접촉만)면 사실만 — 손목 지면접촉 오차·노면 영향이 있다.
+                    if i.cad == .below, keptEasyZone(i), let f = i.easyZoneFraction {
+                        // 이지 강도를 지킨 러닝 — 피로 해석 대신 사실 두 개(폼 숫자 + 존 비율)만
+                        let pct = Int((f * 100).rounded())
+                        return L.s("같은 페이스 평소보다 지면접촉이 \(g)ms로 길고 케이던스가 \(cadStr)spm으로 낮았습니다. Zone 1~2 \(pct)%로 이지 강도를 지켰습니다.",
+                                   "At your usual pace, ground contact ran long at \(g) ms and cadence was low at \(cadStr) spm. You kept it easy — \(pct)% in Zone 1–2.",
+                                   ja: "同じペースの普段より接地時間が\(g)msと長く、ケイデンスが\(cadStr)spmと低かったです。ゾーン1~2が\(pct)%でイージー強度を守りました。")
+                    }
                     if i.cad == .below {
                         let ctx = i.fatigueContext.map { " — \($0)" } ?? ""
                         return L.s("같은 페이스 평소보다 지면접촉이 \(g)ms로 길고 케이던스가 \(cadStr)spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다\(ctx).",

@@ -383,6 +383,7 @@ struct ActivityDetailView: View {
                 runCadenceResidual: formRunCadenceResidual,
                 // 폼 카드와 같은 더위 보정 — 3단계 문장 "흔한 변화" 꼬리 생략 여부가 같아진다
                 heatDeltaBpm: engine.heatHR.delta(activity.temperatureC))
+                .withEasyZone(TabDigestRhythm.easyLowZoneFraction(zones: c.hrZones))   // 폼 카드와 같은 존 비율
             form = TabDigestForm.signals(x, lines: lines)
             formDefault = TabDigestForm.defaultDirection(x)
         }

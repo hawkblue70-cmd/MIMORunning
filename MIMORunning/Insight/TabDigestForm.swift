@@ -35,6 +35,8 @@ enum TabDigestForm {
         var runCadenceResidual: Double? = nil
         /// 더위 심박 보정(bpm, `heatHRModel.delta(기온)`) — 3단계 문장 "흔한 변화" 꼬리 생략 판단(카드와 같은 값). 카드 경로는 쓰지 않는다.
         var heatDeltaBpm: Double? = nil
+        /// 이 러닝의 Zone 1~2 비율 — 이지 강도를 지킨 날은 접지↑·케이던스↓를 피로 패턴으로 단정하지 않는다
+        var easyZoneFraction: Double? = nil
 
         /// 카드용 — 카드 프로퍼티를 그대로 넘긴다
         init(activity: Activity, splits: [SplitData], avgCadence: Int?, avgStrideLength: Double?,
@@ -87,6 +89,8 @@ enum TabDigestForm {
             self.detail = detail
             self.heatDeltaBpm = heatDeltaBpm
         }
+
+        func withEasyZone(_ f: Double?) -> Inputs { var c = self; c.easyZoneFraction = f; return c }
 
         // MARK: 파생값 (옮김: RunFormCardView의 computed 프로퍼티)
 
@@ -217,7 +221,7 @@ enum TabDigestForm {
         let input = FormNarrative.Input(
             cad: cadStatus, gct: gctStatus, sl: slStatus,
             cadStr: cadStr, gctStr: gctStr, slStr: slStr, paceStr: paceStr,
-            vo: voStatus, fatigueContext: x.fatigueContext)
+            vo: voStatus, fatigueContext: x.fatigueContext, easyZoneFraction: x.easyZoneFraction)
         return .framed(input, FormNarrative.frame(for: x.workoutType))
     }
 
@@ -299,7 +303,8 @@ enum TabDigestForm {
                 return (f == .easy && i.cad == .above) ? nil : .good
             }
             if i.gct == .above {
-                if f == .easy && i.cad == .below { return .problem }
+                // 이지 강도를 지켰으면(Zone 1~2 ≥ 80%) 의도된 조절 — 문제로 세지 않는다(사실 문장만)
+                if f == .easy && i.cad == .below { return FormNarrative.keptEasyZone(i) ? nil : .problem }
                 if f == .fast { return .problem }
                 return nil
             }
@@ -307,6 +312,12 @@ enum TabDigestForm {
         // 빠른 날 발걸음 느림 — 보폭으로 속도(또는 기본) 분기는 "발걸음을 조금 더 빨리" 권고. 둘 다 작음은 사실만.
         if i.cad == .below, f == .fast, i.sl != .below { return .problem }
         return nil
+    }
+
+    /// 마무리 문장이 케이던스가 평소보다 낮다고 이미 말했는가 — 3단계 문장의 이지 위안 꼬리를 뺄지 판단
+    static func narrativeSaysLowCadence(_ x: Inputs) -> Bool {
+        if case .framed(let i, _)? = route(x) { return i.cad == .below }
+        return false
     }
 
     /// 마무리 문장이 고른 분기가 '문제' 분기인가 (설계 F2·F3·F8)
@@ -491,7 +502,8 @@ enum TabDigestForm {
         if let p = x.phase {
             // 카드(RunFormCardView)와 같은 꼬리 생략 — 더위 안심 괄호가 붙으면 "흔한 변화" 꼬리를 뺀다
             let sentence = FormPhase.sentence(p, isLongDistance: isLong,
-                                              suppressCommonTail: FormPhase.hasHeatReassurance(p, heatDeltaBpm: x.heatDeltaBpm))
+                                              suppressCommonTail: FormPhase.hasHeatReassurance(p, heatDeltaBpm: x.heatDeltaBpm),
+                                              omitEasyReassurance: narrativeSaysLowCadence(x))
             let st = FormPhase.shortState(p)
             switch p.late {
             case .faded:
