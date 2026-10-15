@@ -153,7 +153,9 @@ struct TabDigestBlocksView: View {
                 }
             }
             .foregroundStyle(Self.tint(b.tab))
-            ForEach(Array(b.statements.enumerated()), id: \.offset) { _, st in
+            // 원문 줄은 블록당 하나 — 원문이 있는 첫 문장에만(4:5 축소로 글자가 작아지지 않게, 2026-10-15)
+            let detailIndex = showsDetail ? b.statements.firstIndex { $0.detail != nil } : nil
+            ForEach(Array(b.statements.enumerated()), id: \.offset) { i, st in
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Circle()
                         .fill(Self.dotColor(st.tone))
@@ -165,7 +167,7 @@ struct TabDigestBlocksView: View {
                             .foregroundStyle(.white.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
-                        if showsDetail, let d = st.detail {
+                        if i == detailIndex, let d = st.detail {
                             Text(d)
                                 .font(.footnote)
                                 .foregroundStyle(.white.opacity(0.6))
