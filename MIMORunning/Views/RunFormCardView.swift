@@ -1154,7 +1154,8 @@ struct RunFormCardView: View {
                 bandLine.move(to: CGPoint(x: bandLoX, y: barY))
                 bandLine.addLine(to: CGPoint(x: bandHiX, y: barY))
                 ctx.stroke(bandLine,
-                           with: .color(ink.fg(isReference ? 0.32 : 0.55)),
+                           // 라이트: 흰 바탕에선 범위 막대·눈금·과거 원을 옅은 회색으로 — 오늘 점·숫자와 겹쳐 혼란스러웠다(2026-10-15)
+                           with: .color(ink.pick(ink.fg(isReference ? 0.32 : 0.55), Color(hex: isReference ? "D1D1D6" : "C2C2C8"))),
                            style: isReference
                                ? StrokeStyle(lineWidth: 2, dash: [2.5, 2.5])
                                : StrokeStyle(lineWidth: 2.5))
@@ -1163,7 +1164,7 @@ struct RunFormCardView: View {
                     tick.move(to: CGPoint(x: x, y: barY - 4))
                     tick.addLine(to: CGPoint(x: x, y: barY + 4))
                     ctx.stroke(tick,
-                               with: .color(ink.fg(isReference ? 0.45 : 0.72)),
+                               with: .color(ink.pick(ink.fg(isReference ? 0.45 : 0.72), Color(hex: isReference ? "C7C7CC" : "AEAEB2"))),
                                lineWidth: isReference ? 2 : 2.5)
                 }
 
@@ -1183,7 +1184,7 @@ struct RunFormCardView: View {
                 for hx in jxs {
                     let r: CGFloat = 3.5
                     ctx.stroke(Path(ellipseIn: CGRect(x: hx-r, y: barY-r, width: r*2, height: r*2)),
-                               with: .color(ink.fg(0.60)), lineWidth: 1.2)
+                               with: .color(ink.pick(ink.fg(0.60), Color(hex: "B0B0B5"))), lineWidth: 1.2)
                 }
                 // 오늘 값: 채운 원, 항상 최상단
                 let tr: CGFloat = 4.5
