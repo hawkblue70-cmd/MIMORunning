@@ -379,7 +379,9 @@ struct RunChartShareSheet: View {
                                     isOn: exportMode == .video) {
                             exportMode = .video
                         }
-                        controlChip(shareTheme == .light ? L.s("라이트", "Light", ja: "ライト") : L.s("다크", "Dark", ja: "ダーク"),
+                        // 켜고 끄는 칩 — 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크). 상태에 따라 이름이 바뀌면
+                        // 꺼진 회색 칩이 "다크"라고 적혀 다크가 선택된 건지 아닌지 헷갈렸다(2026-10-15).
+                        controlChip(L.s("라이트", "Light", ja: "ライト"),
                                     isOn: shareTheme == .light) {
                             shareTheme = shareTheme == .light ? .dark : .light
                             videoExportTask?.cancel()
