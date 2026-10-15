@@ -107,6 +107,9 @@ struct ActivityDetailView: View {
     @State private var headline: RunHeadline?
     /// 오늘의 인사이트 탭 요약 블록(리듬·폼·퍼포먼스) — 비면 맨 위 카드는 예전 사실·다음 줄을 그린다
     @State private var digest: [TabDigest.Block] = []
+    /// 러닝 하루 공유 카드 — 시트를 열 때 아침 제안을 한 번 조립해 둔다
+    @State private var showRunDayShare = false
+    @State private var runDayMorning: InsightMorning? = nil
     /// 인사이트 탭 카드의 선택 탭 — 맨 위 요약 블록을 누르면 그 탭으로 바꾼다
     @State private var selectedInsightTab: InsightTabKind = .rhythm
     /// 사용자 입력(중복 workoutID는 최신 우선) + Apple(manager 맵 > detail 캐시)
@@ -146,7 +149,7 @@ struct ActivityDetailView: View {
 
     private var level: LevelBucket { manager.userLevel.bucket }
 
-    /// 인사이트 내보내기 맨 아래 아침 제안 — 내보내기 시트가 열릴 때 한 번 조립(설계 2026-10-15 §2–§4).
+    /// 러닝 하루 공유 카드의 아침 제안 — 공유 시트를 열 때 한 번 조립(설계 2026-10-15 run-day-share-card).
     /// 그날 아침 = 첫 러닝 전 스냅샷 → 재계산, 다음 날 = 그 날 스냅샷 → 재계산(그 밤 HRV 없으면 방향 줄).
     private func makeInsightMorning() -> InsightMorning? {
         guard activity.type == .running else { return nil }
@@ -494,7 +497,23 @@ struct ActivityDetailView: View {
                                     onSelectTab: { t in
                                         withAnimation(.easeInOut(duration: 0.18)) { selectedInsightTab = t }
                                         withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("insightTabs", anchor: .top) }
-                                    })
+                                    },
+                                    onShare: (headline != nil || !digest.isEmpty) ? {
+                                        runDayMorning = makeInsightMorning()
+                                        showRunDayShare = true
+                                    } : nil)
+                        .sheet(isPresented: $showRunDayShare) {
+                            RunDayShareSheet(
+                                activity: activity,
+                                workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
+                                                                                  fastFinish: manager.isFastFinishRun(activity.id)),
+                                text: InsightCardText(insight: insight, headline: headline, digest: digest,
+                                                      comparisonLine: raceComparison?.headline,
+                                                      effortValue: resolvedEffort?.value),
+                                condition: condition,
+                                digest: digest,
+                                morning: runDayMorning)
+                        }
                     }
                     StorySection(workoutID: activity.id.uuidString,
                                  activityType: activity.type,
@@ -547,8 +566,7 @@ struct ActivityDetailView: View {
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
                             recoveryBands: recoveryBands,
-                            selectedTab: $selectedInsightTab,
-                            morningProvider: { makeInsightMorning() }
+                            selectedTab: $selectedInsightTab
                         )
                     }
                     .id("insightTabs")
@@ -1815,10 +1833,6 @@ private struct InsightCard: View {
     let insight: InsightResult?
     /// 카드 판정 요약 — 있고 드문 사건·대체가 아니면 제목·사실·다음 행동을 이것으로
     var headline: RunHeadline? = nil
-    private var usesHeadline: Bool {
-        guard let h = headline else { return false }
-        return h.source != .rareEvent && h.source != .fallback
-    }
     var condition: ActivityCondition? = nil
     var confirmedRace: PersistedRaceMatch? = nil
     var hillMatch: HillMatch? = nil
@@ -1829,130 +1843,15 @@ private struct InsightCard: View {
     var digest: [TabDigest.Block] = []
     /// 블록을 누르면 그 인사이트 탭으로
     var onSelectTab: (InsightTabKind) -> Void = { _ in }
+    /// 러닝 하루 공유 카드 열기 — nil이면 공유 버튼 없음
+    var onShare: (() -> Void)? = nil
 
-    private static func kind(_ t: TabDigest.Tab) -> InsightTabKind {
-        switch t {
-        case .rhythm:      return .rhythm
-        case .form:        return .form
-        case .performance: return .performance
-        }
+    /// 제목·사실·다음 줄 — 공유 카드(RunDayShareCard)와 같은 규칙(§5.8)
+    private var text: InsightCardText {
+        InsightCardText(insight: insight, headline: headline, digest: digest,
+                        comparisonLine: comparisonLine, effortValue: effortValue)
     }
-
-    /// 탭 카테고리 색 — 리듬 = 심박 빨강, 폼 = 페이스 청록, 퍼포먼스 = 브랜드 바이올렛
-    private static func tint(_ t: TabDigest.Tab) -> Color {
-        switch t {
-        case .rhythm:      return Theme.heartRate
-        case .form:        return Theme.pace
-        case .performance: return Theme.violet
-        }
-    }
-
-    private static func icon(_ t: TabDigest.Tab) -> String {
-        switch t {
-        case .rhythm:      return "heart.fill"
-        case .form:        return "figure.run"
-        case .performance: return "chart.line.uptrend.xyaxis"
-        }
-    }
-
-    private static func dotColor(_ tone: TabDigest.Tone) -> Color {
-        switch tone {
-        case .caution: return Theme.caution          // 총평(RunSummaryLinesView) 주의 줄과 같은 색
-        case .good:    return Theme.positive
-        case .neutral: return .secondary
-        }
-    }
-
-    private func blockView(_ b: TabDigest.Block) -> some View {
-        let tab = Self.kind(b.tab)
-        return Button { onSelectTab(tab) } label: {
-            VStack(alignment: .leading, spacing: 5) {
-                // 애플 건강 앱 스타일 — 카테고리 아이콘 + 색 제목, 오른쪽 끝 셰브런
-                HStack(spacing: 5) {
-                    Image(systemName: Self.icon(b.tab))
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(tab.title)
-                        .font(.system(size: 14, weight: .semibold))
-                    Spacer(minLength: 4)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .foregroundStyle(Self.tint(b.tab))
-                ForEach(Array(b.statements.enumerated()), id: \.offset) { _, st in
-                    HStack(alignment: .firstTextBaseline, spacing: 7) {
-                        Circle()
-                            .fill(Self.dotColor(st.tone))
-                            .frame(width: 6, height: 6)
-                            .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 1 }
-                        Text(st.text)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.85))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .multilineTextAlignment(.leading)
-                    }
-                }
-                // 위 "다음" 줄과 같은 문장이면 블록에서는 생략(같은 권고 두 번 방지)
-                if let dir = b.direction, dir != headline?.next {
-                    Text("→ " + dir)
-                        .font(.footnote)
-                        .foregroundStyle(Theme.violet)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint(AppLanguage.shared.s("\(tab.title) 탭으로 이동합니다", "Opens the \(tab.title) tab", ja: "\(tab.title)タブに移動します"))
-    }
-
-    @ViewBuilder
-    private var digestBlocks: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(digest.enumerated()), id: \.offset) { i, b in
-                if i > 0 {
-                    Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
-                }
-                blockView(b)
-            }
-        }
-        .contentTransition(.opacity)
-    }
-
-    /// 사실 줄 — 탭 블록이 같은 축(폼·심박·거리·부하)을 이미 말하면 그 조각을 뺀다. 다 빠지면 줄 자체를 숨긴다.
-    /// 드문 사건·대체(엔진 부연·대회 비교)는 블록이 다루지 않으므로 그대로.
-    private var visibleFact: String? {
-        guard usesHeadline, let h = headline else { return displayDetail }
-        guard !digest.isEmpty, !h.factParts.isEmpty else { return h.fact }
-        let covered = Set(digest.map(\.tab))
-        let kept = h.factParts.filter { part in
-            guard let tab = Self.tab(for: part.axis) else { return true }
-            return !covered.contains(tab)
-        }
-        return kept.isEmpty ? nil : kept.map(\.text).joined(separator: " · ")
-    }
-
-    private static func tab(for axis: RunHeadline.Axis) -> TabDigest.Tab? {
-        switch axis {
-        case .form:             return .form
-        case .heart, .distance: return .rhythm
-        case .load:             return .performance
-        case .none:             return nil
-        }
-    }
-
-    private var showsComparison: Bool { insight?.theme == .raceDay && comparisonLine != nil }
-
-    private var displayDetail: String {
-        guard let ins = insight else { return AppLanguage.shared.s("인사이트 분석 준비 중", "Analyzing…", ja: "インサイトを分析中") }
-        if showsComparison, let line = comparisonLine { return line }
-        if ins.theme == .adverseCondition, let e = effortValue {
-            return ins.detail + AppLanguage.shared.s(" · 체감 강도 \(e)", " · effort \(e)/10", ja: " · 体感強度 \(e)")
-        }
-        return ins.detail
-    }
+    private var showsComparison: Bool { text.showsComparison }
 
     @Query private var allStories: [WorkoutStory]
 
@@ -1966,51 +1865,6 @@ private struct InsightCard: View {
         return parts.joined(separator: " · ")
     }
 
-    private func sleepDurationText(_ hours: Double) -> String {
-        let total = Int((hours * 60).rounded())
-        let h = total / 60, m = total % 60
-        return AppLanguage.shared.s("수면 시간 \(h)시간 \(m)분", "Slept \(h)h \(m)m", ja: "睡眠時間 \(h)時間\(m)分")
-    }
-
-    // ── 컨디션 행: 날씨 칩 + 수면 칩(등급) + 수면 시간 ──
-    @ViewBuilder
-    private var conditionRow: some View {
-        if let cond = condition, cond.weather != nil || cond.sleepScore != nil {
-            HStack(alignment: .center, spacing: 6) {
-                if let w = cond.weather {
-                    // ⚠ 숫자·색상 모두 HK 메타데이터(activity.temperatureC)로 통일.
-                    //   condition?.weather는 외부 API라 값이 다를 수 있다 — 아이콘만 차용.
-                    let hkTemp = activity.temperatureC
-                    let wColor: Color = {
-                        if w.isRainy            { return Theme.pace }
-                        if (hkTemp ?? 0) >= 28  { return Theme.calories }
-                        if (hkTemp ?? 99) <= 2  { return .blue }
-                        return .secondary
-                    }()
-                    let tempLabel = hkTemp.map { String(format: "%.0f°C", $0) } ?? w.formattedTemp
-                    ConditionChip(icon: w.systemIcon(at: activity.date), label: tempLabel, color: wColor)
-                }
-                if let slp = cond.sleepScore {
-                    // 등급 라벨 칩 (숫자 없음 — Apple Health 스타일)
-                    ConditionChip(
-                        icon: "bed.double.fill",
-                        label: AppLanguage.shared.s(
-                            "수면 \(slp.chipLabel)",
-                            "Sleep \(slp.chipLabel)", ja: "睡眠 \(slp.chipLabel)"
-                        ),
-                        color: slp.isInsufficient ? Theme.time : .secondary
-                    )
-                    // 수면 시간 — 사실만. 예전 등급별 처방("오늘 힘껏 달려도 좋습니다")은 수면만 보고 부하(대회 다음 날·
-                    // 고강도 연속)를 몰라 홈 아침 제안("오늘은 이지런")과 어긋났고, 끝난 러닝에 처방이라 맞지도 않았다.
-                    // "오늘 어떻게 달릴지"는 홈 카드(MRReadiness) 한 곳에서만 말한다.
-                    Text(sleepDurationText(slp.sleepHours))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // ── Top row: insight text (미니미는 머리 날짜 줄 오른쪽으로 옮김, 2026-10-15) ──
@@ -2021,17 +1875,30 @@ private struct InsightCard: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.violetText)
                         Spacer()
+                        if let onShare {
+                            Button(action: onShare) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.violetText)
+                                    .padding(8)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(-8)   // 누르는 영역만 넓히고 머리 줄 높이는 그대로
+                            .padding(.trailing, 10)
+                            .accessibilityLabel(AppLanguage.shared.s("러닝 하루 공유", "Share run day", ja: "ランの一日を共有"))
+                        }
                         Image(systemName: "sparkles")
                             .font(.caption)
                             .foregroundStyle(Theme.violetText)
                     }
-                    Text((usesHeadline ? headline?.title : nil) ?? insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
+                    Text(text.title)
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                         .contentTransition(.opacity)
                     // 사실·다음 줄은 블록 유무와 관계없이 항상 그린다 — 블록이 늦게 도착하면서 이 줄이
                     // 잠깐 보였다 사라지던 깜빡임 제거(2026-10-15 사용자 요청: 기존 문구를 유지하며 블록을 덧붙임).
-                    if let fact = visibleFact {
+                    if let fact = text.visibleFact {
                         Text(fact)
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.72))
@@ -2078,28 +1945,14 @@ private struct InsightCard: View {
             }
 
             // ── 날씨·수면·기록 줄 — 인사이트 사실 바로 아래, 블록 위 ──
-            conditionRow
-            HStack(spacing: 4) {
-                Text(activity.formattedDistance)
-                    .foregroundStyle(Theme.violet)
-                if let pace = activity.formattedPace {
-                    Text("·").foregroundStyle(.tertiary)
-                    Text(pace).foregroundStyle(Theme.pace)
-                }
-                Text("·").foregroundStyle(.tertiary)
-                Text(activity.formattedDuration).foregroundStyle(Theme.time)
-                if let hr = activity.avgHeartRate {
-                    Text("·").foregroundStyle(.tertiary)
-                    Text("\(hr)bpm").foregroundStyle(Theme.heartRate)
-                }
-            }
-            .font(.system(size: 13, weight: .semibold))
+            RunConditionRow(activity: activity, condition: condition)
+            RunStatsRow(activity: activity)
 
             // ── 탭 요약 블록(리듬 → 폼 → 퍼포먼스) — 날씨·기록 줄 아래, 카드 폭 전체 ──
             if !digest.isEmpty {
                 Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
                     .padding(.vertical, 2)
-                digestBlocks
+                TabDigestBlocksView(digest: digest, headlineNext: headline?.next, onSelect: onSelectTab)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2162,24 +2015,6 @@ private struct MiniMeUpdateButton: View {
 #endif
 
 // MARK: - Condition chip
-
-private struct ConditionChip: View {
-    let icon: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon).font(.system(size: 10))
-            Text(label).font(.system(size: 11, weight: .medium))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(color.opacity(0.12))
-        .clipShape(Capsule())
-    }
-}
 
 // MARK: - Route markers (지도 스냅샷 공용)
 
