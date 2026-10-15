@@ -108,8 +108,11 @@ struct ActivityDetailView: View {
     /// 오늘의 인사이트 탭 요약 블록(리듬·폼·퍼포먼스) — 비면 맨 위 카드는 예전 사실·다음 줄을 그린다
     @State private var digest: [TabDigest.Block] = []
     /// 러닝 하루 공유 카드 — 시트를 열 때 아침 제안을 한 번 조립해 둔다
-    @State private var showRunDayShare = false
-    @State private var runDayMorning: InsightMorning? = nil
+    /// 러닝 하루 공유 카드 — 시트 내용을 이 값으로 띄운다(`sheet(item:)`).
+    /// ⚠ `sheet(isPresented:)` + 별도 @State였을 때, 같은 탭 동작에서 값을 넣고 바로 띄우면
+    ///   시트가 이전 렌더의 값(nil)을 잡아 아침 제안이 비어 보였다(2026-10-15 실기기).
+    struct RunDaySharePayload: Identifiable { let id = UUID(); let morning: InsightMorning? }
+    @State private var runDayShare: RunDaySharePayload? = nil
     /// 인사이트 탭 카드의 선택 탭 — 맨 위 요약 블록을 누르면 그 탭으로 바꾼다
     @State private var selectedInsightTab: InsightTabKind = .rhythm
     /// 사용자 입력(중복 workoutID는 최신 우선) + Apple(manager 맵 > detail 캐시)
@@ -163,7 +166,7 @@ struct ActivityDetailView: View {
         // 존 메모 — 재계산 두 번(그날·다음 날)이 같은 러닝의 디스크 상세 JSON을 다시 디코드하지 않게 공유한다
         final class ZoneMemo { var map: [UUID: [HRZoneData]?] = [:] }
         let memo = ZoneMemo()
-        return InsightMorning.make(
+        let result = InsightMorning.make(
             runStart: activity.date, now: Date(),
             snapshotFor: { key in MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx) },
             recompute: { [engine, manager] asOf in
@@ -188,6 +191,14 @@ struct ActivityDetailView: View {
                 activities.filter { $0.type == .running && cal.isDate($0.date, inSameDayAs: day) }.map(\.date).min()
             },
             actual: actual, direction: direction, calendar: cal)
+        #if DEBUG
+        let key = MRReadinessSnapshot.key(for: activity.date, calendar: cal)
+        let snap = MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx)
+        print("[러닝하루카드] 그날 아침 \(result.morningOf == nil ? "없음" : "있음") · 다음 날 \(result.nextMorning == nil ? "없음" : "있음")"
+              + " · 엔진 준비 \(engine.readiness(asOf: activity.date.addingTimeInterval(-1), hardRunStarts: []) != nil ? "재계산 가능" : "재계산 nil")"
+              + " · 스냅샷 \(snap.map { "\($0.computedAt)" } ?? "없음")")
+        #endif
+        return result
     }
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
@@ -499,10 +510,9 @@ struct ActivityDetailView: View {
                                         withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("insightTabs", anchor: .top) }
                                     },
                                     onShare: (headline != nil || !digest.isEmpty) ? {
-                                        runDayMorning = makeInsightMorning()
-                                        showRunDayShare = true
+                                        runDayShare = RunDaySharePayload(morning: makeInsightMorning())
                                     } : nil)
-                        .sheet(isPresented: $showRunDayShare) {
+                        .sheet(item: $runDayShare) { payload in
                             RunDayShareSheet(
                                 activity: activity,
                                 workoutTypeLabel: detail?.workoutType.displayLabel(for: activity, history: manager.activities,
@@ -512,7 +522,7 @@ struct ActivityDetailView: View {
                                                       effortValue: resolvedEffort?.value),
                                 condition: condition,
                                 digest: digest,
-                                morning: runDayMorning)
+                                morning: payload.morning)
                         }
                     }
                     StorySection(workoutID: activity.id.uuidString,
