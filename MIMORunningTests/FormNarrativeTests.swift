@@ -91,8 +91,8 @@ struct FormNarrativeTests {
         // 같은 페이스 대비 지면접촉↑ + 케이던스↓ → 다리 무거운 날 패턴(2026-10-14)
         var i = input(cad: .below, gct: .above, sl: .above, cadStr: "169", gctStr: "273", slStr: "0.91")
         #expect(ko(i, .easy) == "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다.")
-        i.fatigueContext = "5일 연속 · 최근 7일 부하 +134%"
-        #expect(ko(i, .easy) == "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 최근 7일 부하 +134%.")
+        i.fatigueContext = "5일 연속 · 7일 강도 부하 +134%"
+        #expect(ko(i, .easy) == "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 7일 강도 부하 +134%.")
     }
 
     @Test func easyGctBelowWithCadenceInRangeOrAbove() {

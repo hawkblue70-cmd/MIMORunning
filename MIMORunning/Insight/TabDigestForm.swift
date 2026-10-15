@@ -14,7 +14,7 @@ enum TabDigestForm {
         var workoutType: WorkoutType
         /// 4주 평균 1회 러닝 거리(km) — 장거리 문맥 판단
         var typicalKm: Double?
-        /// 피로 맥락("5일 연속 · 최근 7일 부하 +134%") — 이지런 다리 무거움 문장 근거
+        /// 피로 맥락("5일 연속 · 7일 강도 부하 +134%") — 이지런 다리 무거움 문장 근거
         var fatigueContext: String?
         /// 초·중·말 폼 형태(`FormPhase.result`)
         var phase: FormPhase.Result?

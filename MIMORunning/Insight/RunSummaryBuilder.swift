@@ -149,7 +149,7 @@ enum RunSummaryBuilder {
         return values[mid]
     }
 
-    /// 피로 맥락 — 연속 4일↑이거나 7일 부하가 4주 평균보다 높을 때만 "5일 연속 · 최근 7일 부하 +134%".
+    /// 피로 맥락 — 연속 4일↑이거나 7일 강도 부하가 4주 평균보다 높을 때만 "5일 연속 · 7일 강도 부하 +134%".
     /// 폼 카드 "다리가 무거운 날의 패턴" 문장의 근거로 붙인다(총평 훈련부하 줄과 같은 계산). 해당 없으면 nil.
     static func fatigueContext(activity: Activity, history: [Activity], effortIndex: EffortIndex?) -> String? {
         let L = AppLanguage.shared
@@ -167,9 +167,9 @@ enum RunSummaryBuilder {
         if streak >= 4 { parts.append(L.s("\(streak)일 연속", "\(streak) days in a row", ja: "\(streak)日連続")) }
         if loadHigh, let a = au, a.previous > 0 {
             let pct = Int(((a.current / a.previous - 1) * 100).rounded())
-            parts.append(L.s("최근 7일 부하 \(pct >= 0 ? "+" : "")\(pct)%", "7-day load \(pct >= 0 ? "+" : "")\(pct)%", ja: "直近7日の負荷 \(pct >= 0 ? "+" : "")\(pct)%"))
+            parts.append(L.s("7일 강도 부하 \(pct >= 0 ? "+" : "")\(pct)%", "7-day training load \(pct >= 0 ? "+" : "")\(pct)%", ja: "7日間の強度負荷 \(pct >= 0 ? "+" : "")\(pct)%"))
         } else if loadHigh {
-            parts.append(L.s("부하 4주 평균보다 높음", "load above 4-week avg", ja: "負荷が4週平均より高い"))
+            parts.append(L.s("강도 부하 4주 평균보다 높음", "training load above 4-week avg", ja: "強度負荷が4週平均より高い"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

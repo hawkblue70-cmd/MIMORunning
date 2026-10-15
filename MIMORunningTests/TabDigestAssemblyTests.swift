@@ -18,7 +18,7 @@ final class TabDigestAssemblyTests: XCTestCase {
         ]
         let form = [
             S(tab: .form, kind: .problem, priority: 2, family: .unique,
-              text: "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 최근 7일 부하 +134%.",
+              text: "같은 페이스 평소보다 지면접촉이 273ms로 길고 케이던스가 169spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 7일 강도 부하 +134%.",
               tone: .caution, direction: formNext),
         ]
         let performance = [

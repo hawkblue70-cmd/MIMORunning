@@ -43,8 +43,8 @@ struct TabDigestFormTests {
     // MARK: 추출 회귀 — 카드가 내던 문장 그대로
 
     @Test func easyHeavyLegsNarrativeIsProblem() {
-        let x = inputs(cadence: 165, gct: 265, baseline: baseline(), fatigue: "5일 연속 · 최근 7일 부하 +134%")
-        #expect(TabDigestForm.narrative(x) == "같은 페이스 평소보다 지면접촉이 265ms로 길고 케이던스가 165spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 최근 7일 부하 +134%.")
+        let x = inputs(cadence: 165, gct: 265, baseline: baseline(), fatigue: "5일 연속 · 7일 강도 부하 +134%")
+        #expect(TabDigestForm.narrative(x) == "같은 페이스 평소보다 지면접촉이 265ms로 길고 케이던스가 165spm으로 낮았습니다. 다리가 무거운 날의 패턴입니다 — 5일 연속 · 7일 강도 부하 +134%.")
         #expect(TabDigestForm.narrativeIsProblem(x))
     }
 
@@ -109,7 +109,7 @@ struct TabDigestFormTests {
     // MARK: 마무리 문장 문제의 순서·방향 (F2·F8)
 
     @Test func easyHeavyLegsProblemIsF2WithFormNext() {
-        let x = inputs(cadence: 165, gct: 265, baseline: baseline(), fatigue: "5일 연속 · 최근 7일 부하 +134%")
+        let x = inputs(cadence: 165, gct: 265, baseline: baseline(), fatigue: "5일 연속 · 7일 강도 부하 +134%")
         let next = "다음 이지런은 지면접촉을 짧게 의식해 보세요."
         let lines = [RunSummaryLine(axis: RunHeadline.Axis.form.label!, state: "다리 무거움", tone: .neutral, next: next)]
         let p = TabDigestForm.signals(x, lines: lines).first { $0.kind == .problem }
@@ -173,7 +173,7 @@ struct TabDigestFormTests {
 
     @Test func formShortsAreTerse() {
         let heavy = TabDigestForm.signals(inputs(cadence: 165, gct: 265, baseline: baseline(),
-                                                 fatigue: "5일 연속 · 최근 7일 부하 +134%"), lines: [])
+                                                 fatigue: "5일 연속 · 7일 강도 부하 +134%"), lines: [])
             .first { $0.kind == .problem }
         #expect(isTerse(heavy?.short))
         #expect(heavy?.short?.hasPrefix("지면접촉 265ms·케이던스 165spm — 다리 무거운 날 패턴") == true)

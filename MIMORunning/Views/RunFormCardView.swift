@@ -40,7 +40,7 @@ struct RunFormCardView: View {
     var runCadenceResidual: Double? = nil
     var hasRecentGap: Bool = false
     var weatherSnapshot: WeatherSnapshot? = nil
-    /// 피로 맥락("5일 연속 · 최근 7일 부하 +134%") — 이지런 다리 무거움 문장 근거(RunSummaryBuilder.fatigueContext)
+    /// 피로 맥락("5일 연속 · 7일 강도 부하 +134%") — 이지런 다리 무거움 문장 근거(RunSummaryBuilder.fatigueContext)
     var fatigueContext: String? = nil
     var historicalTemperatures: [Double] = []   // 야외 런 기온 이력 — 추위 슬롯 문맥 및 tempExtreme 중복 체크용
 

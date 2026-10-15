@@ -27,7 +27,7 @@ enum FormNarrative {
         let paceStr: String
         /// 수직진폭 판정 — 케이던스↑·보폭 범위 안 문장에서 "위아래 움직임도 작았어요"를 붙일 때만 본다
         var vo: Status = .unknown
-        /// 피로 맥락("5일 연속 · 최근 7일 부하 +134%") — 이지런 다리 무거움 문장의 근거. 없으면 nil.
+        /// 피로 맥락("5일 연속 · 7일 강도 부하 +134%") — 이지런 다리 무거움 문장의 근거. 없으면 nil.
         var fatigueContext: String? = nil
     }
 
