@@ -43,11 +43,25 @@ struct InsightInk {
     /// 0.85↑ 본문 · 0.6~0.85 흐린 글자 · 0.35~0.6 더 흐린 글자 · 그 아래(면·선) 검정 반투명.
     func fg(_ o: Double) -> Color {
         guard light else { return Color.white.opacity(o) }
+        // 2026-10-15 시인성: 흰 바탕에서 흐린 글자·격자가 묻혀 한 단계씩 진하게
         switch o {
         case 0.85...:     return Self.ink1
-        case 0.6..<0.85:  return Color(hex: "555555")
-        case 0.35..<0.6:  return Color(hex: "757575")
-        default:          return Self.ink1.opacity(o)
+        case 0.6..<0.85:  return Color(hex: "3A3A3C")
+        case 0.35..<0.6:  return Color(hex: "5C5C60")
+        default:          return Self.ink1.opacity(min(0.4, o * 1.6))
+        }
+    }
+
+    /// 글자로 쓰는 지표색 — 라이트에서 노랑·주황 계열 글자는 흰 바탕에서 묻혀 한 단계 짙게(선·점은 원래 짝 그대로).
+    /// 다크는 받은 값 그대로.
+    func metricText(_ c: Color) -> Color {
+        guard light else { return c }
+        switch c {
+        case cadence:       return Color(hex: "B8860B")
+        case strideLength:  return Color(hex: "B85500")
+        case time:          return Color(hex: "A88400")
+        case verticalOsc:   return Color(hex: "4A5666")
+        default:            return c
         }
     }
 

@@ -41,7 +41,7 @@ struct FormPhaseTableView: View {
         }
         GridRow {
             Text(phaseLabel(stats, ko: ko, en: en))
-                .font(.system(size: 9 * scale, weight: .medium))
+                .font(.system(size: 9 * scale, weight: insightLight ? .semibold : .medium))
                 .foregroundStyle(ink.fg(0.78))
                 .padding(.horizontal, 3 * scale)
                 .padding(.vertical, 1 * scale)
@@ -58,7 +58,7 @@ struct FormPhaseTableView: View {
     @ViewBuilder
     private func headerCell(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 8 * scale))
+            .font(.system(size: 8 * scale, weight: insightLight ? .semibold : .regular))
             .foregroundStyle(ink.fg(0.5))
             .padding(.horizontal, 3 * scale)
     }
@@ -66,8 +66,8 @@ struct FormPhaseTableView: View {
     @ViewBuilder
     private func valueCell(_ text: String?, color: Color, caution: Bool) -> some View {
         Text(text ?? "–")
-            .font(.system(size: 9 * scale))
-            .foregroundStyle(text == nil ? ink.fg(0.35) : (caution ? ink.caution : color))
+            .font(.system(size: 9 * scale, weight: insightLight ? .semibold : .regular))
+            .foregroundStyle(text == nil ? ink.fg(0.35) : (caution ? ink.caution : ink.metricText(color)))
             .padding(.horizontal, 3 * scale)
             .padding(.vertical, 1 * scale)
             .background {

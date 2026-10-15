@@ -1445,7 +1445,7 @@ struct RunFormCardView: View {
                     )
                     .foregroundStyle(ink.metric(s.lineColor))
                     .interpolationMethod(.monotone)
-                    .lineStyle(StrokeStyle(lineWidth: 1.8))
+                    .lineStyle(StrokeStyle(lineWidth: insightLight ? 2.4 : 1.8))   // 흰 바탕에선 조금 굵게
                 }
 
                 // In-range small dots
