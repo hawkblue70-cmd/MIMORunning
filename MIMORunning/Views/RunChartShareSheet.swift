@@ -379,18 +379,18 @@ struct RunChartShareSheet: View {
                                     isOn: exportMode == .video) {
                             exportMode = .video
                         }
-                        // 켜고 끄는 칩 — 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크). 상태에 따라 이름이 바뀌면
-                        // 꺼진 회색 칩이 "다크"라고 적혀 다크가 선택된 건지 아닌지 헷갈렸다(2026-10-15).
-                        controlChip(L.s("라이트", "Light", ja: "ライト"),
-                                    isOn: shareTheme == .light) {
-                            shareTheme = shareTheme == .light ? .dark : .light
-                            videoExportTask?.cancel()
-                            exportedVideo = nil; isExportingVideo = false; videoProgress = 0
-                            if exportMode == .video { refreshPreview() }
-                        }
+                        // 빈 칸 — 아래 영상 내용 줄(3칸)과 칩 폭을 맞춘다(테마는 아래 두 칸으로 옮김)
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
+
+                    // 테마 — 러닝 흐름 내보내기와 같은 "다크 | 라이트" 두 칸(2026-10-15 사용자: 칩 줄 아래 남는 자리에)
+                    ShareThemeSegmented(isLight: Binding(
+                        get: { shareTheme == .light },
+                        set: { shareTheme = $0 ? .light : .dark }))
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
                     .onAppear {
                         refitChartHeight()   // 미리보기·내보내기보다 먼저 — 둘 다 이 값을 쓴다
                         if exportMode == .video { refreshPreview() }
