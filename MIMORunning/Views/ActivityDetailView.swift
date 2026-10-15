@@ -157,6 +157,9 @@ struct ActivityDetailView: View {
         let direction = digest.compactMap(\.direction).first ?? headline?.next
         let ctx = modelContext
         let stories = panelAllStories
+        // 존 메모 — 재계산 두 번(그날·다음 날)이 같은 러닝의 디스크 상세 JSON을 다시 디코드하지 않게 공유한다
+        final class ZoneMemo { var map: [UUID: [HRZoneData]?] = [:] }
+        let memo = ZoneMemo()
         return InsightMorning.make(
             runStart: activity.date, now: Date(),
             snapshotFor: { key in MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx) },
@@ -170,7 +173,12 @@ struct ActivityDetailView: View {
                         return EffortIndex(stories: stories.filter { ids.contains($0.workoutID) }, apple: manager.effortMap)
                     },
                     workoutTypeFn: { id in manager.cachedWorkoutTypeForStats(for: id) },
-                    hrZonesFn: { id in manager.hrZonesFromCache(id) })
+                    hrZonesFn: { id in
+                        if let hit = memo.map[id] { return hit }
+                        let z = manager.hrZonesFromCache(id)
+                        memo.map[id] = .some(z)
+                        return z
+                    })
                 return engine.readiness(asOf: asOf, hardRunStarts: hard)
             },
             firstRunStart: { day in

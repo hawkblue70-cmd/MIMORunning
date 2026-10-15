@@ -37,7 +37,11 @@ struct MRReadiness: Equatable {
     /// 셋째 줄 — 이번 주 계획 진행. 계획이 없으면 nil.
     var planLine: String? { progress }
 
-    var line: String {
+    var line: String { line(includePending: true) }
+
+    /// 판정 줄 — `includePending`이 false면 "어젯밤 HRV 동기화 전" 꼬리를 붙이지 않는다
+    /// (지난 시각 재계산: 그 밤 값은 '동기화 전'이 아니라 '없음'이다 — 인사이트 내보내기).
+    func line(includePending: Bool) -> String {
         let L = AppLanguage.shared
         let head: String
         switch level {
@@ -55,7 +59,7 @@ struct MRReadiness: Equatable {
         } else {
             parts = session.map { [head, $0] } ?? ([head] + reasons)
         }
-        if hrvPending { parts.append(L.s("어젯밤 HRV 동기화 전", "last night's HRV not synced yet", ja: "昨夜のHRVは同期前")) }
+        if includePending, hrvPending { parts.append(L.s("어젯밤 HRV 동기화 전", "last night's HRV not synced yet", ja: "昨夜のHRVは同期前")) }
         return parts.joined(separator: " · ")
     }
 

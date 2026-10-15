@@ -56,7 +56,8 @@ struct InsightMorning: Equatable {
         var nextMorning: Entry?
         if let nextStart = calendar.date(byAdding: .day, value: 1, to: dayStart), now >= nextStart {
             let nextKey = MRReadinessSnapshot.key(for: nextStart, calendar: calendar)
-            if let s = snapshotFor(nextKey) {
+            // 동기화 전에 찍힌 스냅샷(hrvPending)은 그 밤 값이 없던 문장 → 재계산으로 넘어간다(그것도 pending이면 방향 줄)
+            if let s = snapshotFor(nextKey), !s.hrvPending {
                 nextMorning = entry(label: nextLabel, snapshot: s)
             } else {
                 let noon = calendar.date(byAdding: .hour, value: 12, to: nextStart) ?? nextStart
@@ -79,7 +80,8 @@ struct InsightMorning: Equatable {
     }
 
     private static func entry(label: String, readiness r: MRReadiness) -> Entry {
-        Entry(label: label, level: MRReadinessSnapshotStore.levelString(r.level), line: r.line,
+        // 재계산은 지난 시각 기준 — 그 밤 값이 없으면 '동기화 전'이 아니라 없음이라 꼬리를 붙이지 않는다
+        Entry(label: label, level: MRReadinessSnapshotStore.levelString(r.level), line: r.line(includePending: false),
               why: firstSentence(r.why), data: r.data.joined(separator: " · "))
     }
 

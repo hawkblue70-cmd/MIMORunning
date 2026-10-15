@@ -14,9 +14,12 @@ final class MRReadinessSnapshot {
     var data: String = ""
     var planLine: String = ""
     var computedAt: Date = Date.distantPast
+    /// 저장 당시 그 밤 HRV가 아직 없었나(워치 동기화 전) — 다음 날 블록은 이 스냅샷 대신 재계산으로 넘어간다
+    var hrvPending: Bool = false
 
     init(dateKey: String = "", level: String = "", line: String = "", why: String = "",
-         data: String = "", planLine: String = "", computedAt: Date = Date.distantPast) {
+         data: String = "", planLine: String = "", computedAt: Date = Date.distantPast,
+         hrvPending: Bool = false) {
         self.dateKey = dateKey
         self.level = level
         self.line = line
@@ -24,6 +27,7 @@ final class MRReadinessSnapshot {
         self.data = data
         self.planLine = planLine
         self.computedAt = computedAt
+        self.hrvPending = hrvPending
     }
 
     static func key(for date: Date, calendar: Calendar = .current) -> String {
@@ -58,6 +62,7 @@ enum MRReadinessSnapshotStore {
         snap.data = r.data.joined(separator: " · ")
         snap.planLine = r.planLine ?? ""
         snap.computedAt = at
+        snap.hrvPending = r.hrvPending
         try? context.save()
     }
 

@@ -109,6 +109,39 @@ struct InsightMorningTests {
         #expect(m.nextMorning?.level == "rest")
     }
 
+    @Test func recomputedPendingLineHasNoSyncTail() {
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 14, hour: 9),
+            snapshotFor: { _ in nil },
+            recompute: { _ in readiness(.easy, pending: true) },
+            firstRunStart: { _ in nil },
+            actual: nil, direction: nil, calendar: cal)
+        #expect(m.morningOf?.line == "오늘은 이지런")
+        #expect(m.morningOf?.line.contains("동기화 전") == false)
+        #expect(readiness(.easy, pending: true).line.contains("동기화 전"))   // 홈 줄은 그대로
+    }
+
+    @Test func pendingNextDaySnapshotFallsBackToRecompute() {
+        let nextKey = MRReadinessSnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
+        func run(_ nextPending: Bool) -> InsightMorning {
+            InsightMorning.make(
+                runStart: runStart, now: at(day: 15, hour: 8),
+                snapshotFor: { key in
+                    guard key == nextKey else { return nil }
+                    let s = snap(nextKey, level: "rest", line: "오늘은 휴식이나 짧은 이지", at: at(day: 15, hour: 6))
+                    s.hrvPending = true
+                    return s
+                },
+                recompute: { d in d > at(day: 15, hour: 0) ? readiness(.go, pending: nextPending) : readiness(.easy) },
+                firstRunStart: { _ in nil },
+                actual: nil, direction: "내일은 쉬어 가세요", calendar: cal)
+        }
+        #expect(run(false).nextMorning?.level == "go")
+        let pending = run(true)
+        #expect(pending.nextMorning == nil)
+        #expect(pending.nextDirection == "내일은 쉬어 가세요")
+    }
+
     @Test func firstSentenceTrim() {
         #expect(InsightMorning.firstSentence("연속 4일째입니다. 강도를 빼 주세요.") == "연속 4일째입니다.")
         #expect(InsightMorning.firstSentence("거리 5.2km입니다.") == "거리 5.2km입니다.")
