@@ -5557,37 +5557,14 @@ struct InsightExportSheet: View {
         }
     }
 
-    /// 컨트롤 — 차트 내보내기와 같은 칩 규칙: 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크).
+    /// 컨트롤 — 러닝 흐름 내보내기와 같은 "다크 | 라이트" 두 칸(2026-10-15 사용자)
     private var controlBar: some View {
-        HStack(spacing: 5) {
-            controlChip(AppLanguage.shared.s("라이트", "Light", ja: "ライト"), isOn: isLight) {
-                isLight.toggle()
-            }
-            .frame(width: 96)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        ShareThemeSegmented(isLight: $isLight)
+            .onChange(of: isLight) { _, _ in UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
     }
 
-    /// RunChartShareSheet.controlChip과 같은 모양
-    private func controlChip(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            Text(label)
-                .font(.system(size: 10.5, weight: isOn ? .semibold : .regular))
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(isOn ? Theme.violet : .secondary)
-        }
-        .buttonStyle(.plain)
-    }
 
     /// 카드 바탕 — 렌더·4:5 캔버스 여백도 이 색
     private var cardBackgroundColor: Color { isLight ? .white : Theme.cardBackground }

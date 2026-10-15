@@ -580,37 +580,14 @@ struct RunDayShareSheet: View {
         }
     }
 
-    /// 컨트롤 — 차트 내보내기와 같은 칩 규칙: 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크).
+    /// 컨트롤 — 러닝 흐름 내보내기와 같은 "다크 | 라이트" 두 칸(2026-10-15 사용자)
     private var controlBar: some View {
-        HStack(spacing: 5) {
-            controlChip(AppLanguage.shared.s("라이트", "Light", ja: "ライト"), isOn: isLight) {
-                isLight.toggle()
-            }
-            .frame(width: 96)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+        ShareThemeSegmented(isLight: $isLight)
+            .onChange(of: isLight) { _, _ in UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
     }
 
-    /// RunChartShareSheet.controlChip과 같은 모양
-    private func controlChip(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            Text(label)
-                .font(.system(size: 10.5, weight: isOn ? .semibold : .regular))
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(isOn ? Theme.violet : .secondary)
-        }
-        .buttonStyle(.plain)
-    }
 
     private var shareBar: some View {
         Button {
@@ -654,5 +631,34 @@ struct RunDayShareSheet: View {
         // 2) 4:5 캔버스에 맞춤 합성 — 길면 전체 축소(§5.8 같은 합성기)
         exportImage = ShareCanvas.fit(raw, background: UIColor(RunDayShareCard.background(isLight: isLight)))
         isRendering = false
+    }
+}
+
+// MARK: - 다크 | 라이트 세그먼트
+
+/// 공유 시트 테마 선택 — 러닝 흐름 내보내기(`WeeklyGrowthShareCardView.themeToggle`)와 같은 모양의 "다크 | 라이트" 두 칸.
+struct ShareThemeSegmented: View {
+    @Binding var isLight: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            segment(AppLanguage.shared.s("다크", "Dark", ja: "ダーク"), selected: !isLight) { isLight = false }
+            segment(AppLanguage.shared.s("라이트", "Light", ja: "ライト"), selected: isLight) { isLight = true }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func segment(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selected ? Theme.violet : Color.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(selected ? Theme.violet.opacity(0.22) : Color.white.opacity(0.08))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: selected)
     }
 }
