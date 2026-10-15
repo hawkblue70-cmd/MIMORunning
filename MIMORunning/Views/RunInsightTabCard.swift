@@ -67,6 +67,12 @@ private struct ICInk {
     }
     var zoneColors: [Color] { light ? ShareChartPalette.light.hrZones : IC.zoneColors }
     func zone(_ id: Int) -> Color { light ? zoneColors[min(max(id - 1, 0), 4)] : IC.zone(id) }
+    /// 그래프(도넛 호·심박 선·강도 막대)용 존 색 — 라이트에서도 밝은 짝(같은 색상, 흰 바탕에서 보일 만큼만 깊게).
+    /// 글자(퍼센트·캡션)는 위 `zone`의 짙은 짝을 쓴다. 다크는 `IC.zone` 그대로.
+    static let lightGraphicZones: [Color] = [
+        Color(hex: "3B82F6"), Color(hex: "2CC9BC"), Color(hex: "9ADB00"), Color(hex: "FF9A1F"), Color(hex: "FF2E6B"),
+    ]
+    func zoneGraphic(_ id: Int) -> Color { light ? Self.lightGraphicZones[min(max(id - 1, 0), 4)] : IC.zone(id) }
 }
 
 extension InsightInk {
@@ -152,7 +158,7 @@ private struct ZoneDonutView: View {
                                startAngle: .degrees(startDeg),
                                endAngle:   .degrees(startDeg + sweep),
                                clockwise: false)
-                    ctx.stroke(arc, with: .color(ink.ic.zone(zone.id)),
+                    ctx.stroke(arc, with: .color(ink.ic.zoneGraphic(zone.id)),
                                style: StrokeStyle(lineWidth: thickness, lineCap: .butt))
                     startDeg += sweep
                 }
@@ -287,8 +293,9 @@ private struct CadenceRPMGaugeView: View {
 
                 // 3구간 아크 — 개인 밴드 기반, clockwise:false = 상단 반원
                 let segs: [(Double, Double, Color)] = [
-                    (axMin,  pLower, ink.pick(Color(hex: "5AC8FA"), Color(hex: "0A84FF"))),
-                    (pLower, pUpper, ink.positive),
+                    // 게이지 호는 라이트에서도 밝은 짝(그래프) — 바늘 숫자 글자색은 아래 따로
+                    (axMin,  pLower, Color(hex: "5AC8FA")),
+                    (pLower, pUpper, ink.pick(Theme.positive, Color(hex: "34C759"))),
                     (pUpper, axMax,  Color(hex: "3A7BD5")),
                 ]
                 for s in segs where s.0 < s.1 {
@@ -540,6 +547,10 @@ private struct VO2RPMGaugeView: View {
         ink.pick(Color(hex: "EDC84B"), Color(hex: "D4A700")),  // 평균이상
         ink.positive,  // 높음
     ] }
+    /// 게이지 호 색 — 라이트에서도 밝은 짝(다크 값, 초록만 흰 바탕용 34C759). 숫자 글자는 위 segColors(짙은 짝).
+    private var segGraphic: [Color] { insightLight
+        ? [Color(hex: "E8564A"), Color(hex: "F0913C"), Color(hex: "EDC84B"), Color(hex: "34C759")]
+        : segColors }
     private let segLabels   = ["낮음", "평균 이하", "평균 이상", "높음"]
     private let segLabelsEn = ["Low", "Below avg", "Above avg", "High"]
 
@@ -559,7 +570,7 @@ private struct VO2RPMGaugeView: View {
         let zIdx = zoneIndex
         let vc   = segColors[zIdx]
         let segs: [(Double, Double, Color)] = (0..<segColors.count).map {
-            (bounds[$0], bounds[$0 + 1], segColors[$0])
+            (bounds[$0], bounds[$0 + 1], segGraphic[$0])
         }
 
         VStack(alignment: .leading, spacing: 6 * scale) {
@@ -1225,9 +1236,9 @@ private struct HRTimeSeriesView: View {
     private func zoneColor(for bpm: Double) -> Color {
         guard !zones.isEmpty else { return ink.pick(Color(hex: "FF6B6B"), Color(hex: "E0242B")) }
         for z in zones.sorted(by: { $0.id < $1.id }) {
-            if bpm <= Double(z.maxBPM) { return ink.ic.zone(z.id) }
+            if bpm <= Double(z.maxBPM) { return ink.ic.zoneGraphic(z.id) }
         }
-        return ink.ic.zone(5)
+        return ink.ic.zoneGraphic(5)
     }
 
     var body: some View {
@@ -4517,9 +4528,9 @@ private struct PerformanceInsightCard: View {
     /// 같은 강도를 뜻하게 한다. 예전 파랑 3단계는 고강도가 가장 어두워 검은 배경에서 제일 안 보였다.
     private func intensityColor(_ tier: IntensityTier) -> Color {
         switch tier {
-        case .easy:   return ink.hrZoneColor(2)   // 시안 — AT1 아래
-        case .medium: return ink.hrZoneColor(3)   // 라임 — AT1~AT2
-        case .hard:   return ink.hrZoneColor(5)   // 핑크 — AT2 위
+        case .easy:   return ink.ic.zoneGraphic(2)   // 시안 — AT1 아래 (그래프라 라이트에서도 밝은 짝)
+        case .medium: return ink.ic.zoneGraphic(3)   // 라임 — AT1~AT2
+        case .hard:   return ink.ic.zoneGraphic(5)   // 핑크 — AT2 위
         }
     }
 
