@@ -87,9 +87,11 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var intenseRuns: [Date: String] = [:]
     /// 홈이 한 번이라도 넣어 줬는가 — 그 전에는 강도 훈련이 0건으로 보여 습관이 "3주"로 잘못 잡힌다.
     private var intenseRunsInjected = false
-    private var pointHabitEveryWeeks: Int? {
+    private var pointHabitEveryWeeks: Int? { pointHabitEveryWeeks(runs: runs, asOf: Date()) }
+    /// asOf 재계산용 — asOf 이전 러닝·강도 러닝만으로 센다.
+    private func pointHabitEveryWeeks(runs: [MRWorkout], asOf: Date) -> Int? {
         guard intenseRunsInjected else { return nil }   // 모름 → 주당 횟수 규칙만(폴백)
-        return mrHabitualPointEveryWeeks(runs: runs, intenseStarts: Set(intenseRuns.keys), asOf: Date())
+        return mrHabitualPointEveryWeeks(runs: runs, intenseStarts: Set(intenseRuns.keys.filter { $0 < asOf }), asOf: asOf)
     }
     /// 월간 계획 카드용(읽기 전용) — 강도 훈련 습관 간격. 설계 2026-10-07-monthly-volume-goal-design.md
     var monthlyPlanPointHabit: Int? { pointHabitEveryWeeks }
@@ -1254,26 +1256,60 @@ final class MREngineStore: ObservableObject {
     /// 오늘 카드 생성 — 호출부 5곳이 이 하나만 쓴다(대회 D-day 가시성·아침 제안 입력을 한 곳에서).
     private func buildTodayCard(runs: [MRWorkout], now: Date) -> MRTodayCard? {
         let raceDayVisible = raceDayCard.map { MRRaceDayView.shouldShow($0) } ?? false
-        let governing = governingPlanWeek(for: now)
+        let inputs = readinessInputs(runs: runs, now: now, hardRunStarts: hardRunStarts)
         var card: MRTodayCard? = mrTodayCard(runs: runs, phys: phys, plans: plans,
                            raceDayCardVisible: raceDayVisible,
                            advice: advice, asOf: now,
                            heatHR: heatHR, hrvNights: hrvNights,
-                           planPhase: governing?.week.phase,
+                           planPhase: inputs.planPhase,
                            hardRunStarts: hardRunStarts,
-                           planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) },
-                           pointRunTypes: pointRunTypes, rhythm: governing == nil ? rhythmContext(now: now) : nil,
+                           planWeek: inputs.planWeek,
+                           pointRunTypes: pointRunTypes, rhythm: inputs.rhythm,
                            easyTarget: easyTarget,
-                           grayZone: easyTarget.flatMap { t in
-                               mrGrayZoneWeek(runs: runs, lt1HR: t.lt1HR,
-                                              intenseStarts: intenseRunsInjected ? Set(intenseRuns.keys) : hardRunStarts,
-                                              asOf: now)
-                           },
+                           grayZone: inputs.grayZone,
                            restingHR: rhrSamples,
                            respNights: respNights, tempNights: tempNights)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
+    }
+
+    /// 아침 제안 조립 입력(계획 주차·리듬·회색 지대) — 홈 오늘 카드와 asOf 재계산이 같이 쓴다.
+    private struct ReadinessInputs {
+        let planPhase: String?
+        let planWeek: MRPlanWeekContext?
+        let rhythm: MRRhythmContext?
+        let grayZone: MRGrayZoneWeek?
+    }
+
+    /// `runs`·`hardRunStarts`는 호출부가 기준 시각에 맞춰 넘긴다(asOf 재계산은 미리 거른 값).
+    /// 강도 러닝 주입값은 `now` 이전 것만 — 홈(now = 지금)에서는 전부라 동작이 같다.
+    private func readinessInputs(runs: [MRWorkout], now: Date, hardRunStarts: Set<Date>) -> ReadinessInputs {
+        let governing = governingPlanWeek(for: now)
+        let intenseStarts = intenseRunsInjected ? Set(intenseRuns.keys.filter { $0 < now }) : hardRunStarts
+        return ReadinessInputs(
+            planPhase: governing?.week.phase,
+            planWeek: governing.map { planWeekContext(plan: $0.plan, week: $0.week, now: now) },
+            rhythm: governing == nil ? rhythmContext(now: now, runs: runs) : nil,
+            grayZone: easyTarget.flatMap { t in
+                mrGrayZoneWeek(runs: runs, lt1HR: t.lt1HR, intenseStarts: intenseStarts, asOf: now)
+            })
+    }
+
+    /// 그 시각 아침에 앱이 했을 제안을 다시 계산한다(인사이트 내보내기 — 앱을 안 연 날도).
+    /// 러닝·밤 값·포인트 유형·강도 러닝은 asOf 이전 것만 쓴다. `hardRunStarts`는 호출부가 asOf 기준 14일로 만든다
+    /// (`RunSummaryBuilder.hardRunStarts`) — 스토어 값은 오늘 기준 15일뿐이다.
+    /// 한계: 계획 주차·LT1·이지 페이스는 현재 모델(설계 §6). 엔진 준비 전이면 nil.
+    func readiness(asOf: Date, hardRunStarts: Set<Date>) -> MRReadiness? {
+        guard case .ready = state else { return nil }
+        let past = mrRunsBefore(runs, asOf: asOf)
+        let hard = hardRunStarts.filter { $0 < asOf }
+        let inputs = readinessInputs(runs: past, now: asOf, hardRunStarts: hard)
+        return mrReadinessAsOf(runs: past, phys: phys, heatHR: heatHR, hrvNights: hrvNights,
+                               planPhase: inputs.planPhase, asOf: asOf, hardRunStarts: hard,
+                               planWeek: inputs.planWeek, pointRunTypes: pointRunTypes,
+                               rhythm: inputs.rhythm, easyTarget: easyTarget, grayZone: inputs.grayZone,
+                               restingHR: rhrSamples, respNights: respNights, tempNights: tempNights)
     }
 
     /// 홈 대회 안내 줄 아래 한 줄 — 안내 줄이 가리키는 대회(가장 가까운 계획 대회)의 준비 비교.
@@ -1319,7 +1355,7 @@ final class MREngineStore: ObservableObject {
     /// 대회 계획이 오늘을 덮지 않을 때의 2주 리듬 입력(설계 9절). 최근 14일 대회는 등록 대회 우선, 없으면 저장 유형 '대회'.
     /// 등록 대회가 오늘~13일 뒤에 있으면 nil — 계획 없는 대회(3주 안 등록)는 D-day 카드가 테이퍼를 말하는데
     /// 리듬이 롱런·포인트를 권하면 두 카드가 부딪힌다.
-    private func rhythmContext(now: Date) -> MRRhythmContext? {
+    private func rhythmContext(now: Date, runs: [MRWorkout]) -> MRRhythmContext? {
         let cal = Calendar.current
         let today = cal.startOfDay(for: now)
         func daysFromToday(_ d: Date) -> Int { cal.dateComponents([.day], from: today, to: cal.startOfDay(for: d)).day ?? -999 }
@@ -1339,12 +1375,14 @@ final class MREngineStore: ObservableObject {
                 && mrFindRaceDayRun(runs: runs, raceDate: $0.date, distanceM: $0.distanceM) != nil }
             .max { $0.date < $1.date }
         func runDistanceM(_ start: Date) -> Double? { runs.first { $0.start == start }?.distanceKm.map { $0 * 1000 } }
-        let typed = pointRunTypes.filter { $0.value == .race && withinRecovery($0.key, distanceM: runDistanceM($0.key)) }.keys.max()
+        // 포인트 유형·인터벌 기록은 now 이전 것만 — 홈(now = 지금)에서는 전부라 동작이 같고, asOf 재계산은 미래를 안 본다
+        let pastTypes = pointRunTypes.filter { $0.key < now }
+        let typed = pastTypes.filter { $0.value == .race && withinRecovery($0.key, distanceM: runDistanceM($0.key)) }.keys.max()
         var c = MRRhythmContext(runsPerWeek: profile.runsPerWeek,
                                 paces: mrPointPaces(halfEquivMin: halfEquivMin, thresholdPace: thresholdTrend?.current.paceSecPerKm),
-                                pointTypes: pointRunTypes)
-        c.habitEveryWeeks = pointHabitEveryWeeks
-        c.intervalHistory = recentIntervals.last
+                                pointTypes: pastTypes)
+        c.habitEveryWeeks = pointHabitEveryWeeks(runs: runs, asOf: now)
+        c.intervalHistory = recentIntervals.last { $0.date < now }
         c.noUpcomingRace = userInput.upcomingRaces(asOf: now).isEmpty
         if let r = registered {
             c.recentRaceName = r.name; c.recentRaceDate = r.date; c.recentRaceDistanceM = r.distanceM

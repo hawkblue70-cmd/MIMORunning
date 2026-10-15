@@ -231,18 +231,17 @@ private struct ActivityListContent: View {
             print(String(format: "[하드런] 끝 %.0fms", ms))
             #endif
         }
-        let since = Calendar.current.date(byAdding: .day, value: -15, to: Date()) ?? .distantPast
-        let recent = manager.activities.filter { $0.type == .running && $0.date >= since }
-        // 스토리는 이 러닝들 것만 — 전체를 정렬하면 스토리 수만큼 SwiftData 폴트가 메인에서 난다
-        let ids = Set(recent.map { $0.id.uuidString })
-        let idx = EffortIndex(stories: stories.filter { ids.contains($0.workoutID) }, apple: manager.effortMap)
-        let starts = recent
-            .filter { RunSummaryBuilder.isHardRun($0, effortIndex: idx,
-                                                   workoutTypeFn: { [manager] id in manager.cachedWorkoutTypeForStats(for: id) },
-                                                   // 디스크 상세는 안 읽는다 — 홈에서 러닝 6~10건의 상세 JSON을 메인에서 디코딩하면 화면이 선다
-                                                   hrZonesFn: { [manager] id in manager.hrZonesFromMemoryCache(id) }) }
-            .map(\.date)
-        engine.updateHardRunStarts(Set(starts))
+        let starts = RunSummaryBuilder.hardRunStarts(
+            activities: manager.activities, asOf: Date(), days: 15,
+            // 스토리는 이 러닝들 것만 — 전체를 정렬하면 스토리 수만큼 SwiftData 폴트가 메인에서 난다
+            effortIndex: { [stories, manager] recent in
+                let ids = Set(recent.map { $0.id.uuidString })
+                return EffortIndex(stories: stories.filter { ids.contains($0.workoutID) }, apple: manager.effortMap)
+            },
+            workoutTypeFn: { [manager] id in manager.cachedWorkoutTypeForStats(for: id) },
+            // 디스크 상세는 안 읽는다 — 홈에서 러닝 6~10건의 상세 JSON을 메인에서 디코딩하면 화면이 선다
+            hrZonesFn: { [manager] id in manager.hrZonesFromMemoryCache(id) })
+        engine.updateHardRunStarts(starts)
         // 포인트 유형 러닝(최근 180일) — 지난 주차 포인트 완료·대회 없을 때 번갈이용. UserDefaults는 한 번만 읽는다.
         let lookup = manager.workoutTypeLookup()
         let since180 = Calendar.current.date(byAdding: .day, value: -180, to: Date()) ?? .distantPast

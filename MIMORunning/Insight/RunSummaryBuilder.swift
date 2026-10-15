@@ -87,6 +87,21 @@ enum RunSummaryBuilder {
         return highFrac >= 0.5
     }
 
+    /// asOf 기준 최근 `days`일 러닝 중 `isHardRun`인 것의 시작 시각(`Activity.date` = 엔진 `MRWorkout.start`).
+    /// 홈(`pushHardRunStarts`, asOf = 지금)과 인사이트 내보내기의 아침 제안 재계산이 같은 판정을 쓴다.
+    /// `effortIndex`는 고른 러닝만 받아 만든다 — 전체 스토리를 읽으면 SwiftData 폴트가 메인에서 난다.
+    static func hardRunStarts(activities: [Activity], asOf: Date, days: Int = 15,
+                              effortIndex: ([Activity]) -> EffortIndex?,
+                              workoutTypeFn: ((UUID) -> WorkoutType?)?,
+                              hrZonesFn: ((UUID) -> [HRZoneData]?)?) -> Set<Date> {
+        let since = Calendar.current.date(byAdding: .day, value: -days, to: asOf) ?? .distantPast
+        let recent = activities.filter { $0.type == .running && $0.date >= since && $0.date < asOf }
+        let idx = effortIndex(recent)
+        return Set(recent
+            .filter { isHardRun($0, effortIndex: idx, workoutTypeFn: workoutTypeFn, hrZonesFn: hrZonesFn) }
+            .map(\.date))
+    }
+
     /// 이 러닝 전 마지막 대회(유형 '대회')로부터 지난 일수와 그 대회의 회복 기간 — 회복 기간(거리별) 안일 때만, 아니면 nil.
     static func daysSinceRace(activity: Activity, history: [Activity],
                               workoutTypeFn: ((UUID) -> WorkoutType?)?) -> (days: Int, easyDays: Int)? {
