@@ -458,8 +458,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if let r = load.ratio, r > MRReadiness.spikeRatio {
         let ratioStr = String(format: "%.1f", r)
         return make(.rest, [L.s("부하 급증", "load spike", ja: "負荷の急増")],
-                    why: L.s("최근 7일 부하가 평소의 \(ratioStr)배입니다. 급히 늘린 부하는 쉬는 날에 흡수됩니다.",
-                             "Your last 7 days carry \(ratioStr)× your usual load. A sudden jump needs a rest day to absorb.", ja: "直近7日の負荷が普段の\(ratioStr)倍です。急に増やした負荷は休養日に吸収されます。"))
+                    why: L.s("최근 7일 강도 부하가 평소의 \(ratioStr)배입니다. 급히 늘린 부하는 쉬는 날에 흡수됩니다.",
+                             "Your last 7 days carry \(ratioStr)× your usual training load. A sudden jump needs a rest day to absorb.", ja: "直近7日の強度負荷が普段の\(ratioStr)倍です。急に増やした負荷は休養日に吸収されます。"))
     }
     // 연속일은 휴식이 아니라 강도를 빼라는 신호 — 이지런이면 괜찮다(2026-09-23 사용자 결정). 문턱은 본인 평소 연속일 + 1.
     if consecutive >= streakThreshold {

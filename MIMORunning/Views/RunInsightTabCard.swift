@@ -4409,7 +4409,7 @@ private struct PerformanceInsightCard: View {
             let sentence = load.sentence.flatMap(TabDigestPerformance.loadSentence)
             if load.thisRunAU == nil {
                 // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
-                Text(L.s("오늘 강도 입력 전 — 입력하면 7일 부하에 반영됩니다", "Today's effort not rated — rate it to count toward the 7-day load", ja: "今日の強度は未入力 — 入力すると7日間の負荷に反映されます"))
+                Text(L.s("오늘 강도 입력 전 — 입력하면 강도 부하에 반영됩니다", "Today's effort not rated — rate it to count toward your training load", ja: "今日の強度は未入力 — 入力すると強度負荷に反映されます"))
                     .font(.system(size: 9)).foregroundStyle(Theme.caution.opacity(0.9))
                     .lineLimit(1).minimumScaleFactor(0.8)
             } else if let loadLine = TabDigestPerformance.loadLine(ratio: ratioLabel, sentence: sentence) {
