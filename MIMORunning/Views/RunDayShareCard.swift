@@ -367,7 +367,9 @@ struct RunDayShareCard: View {
         let ofLabel = L.s("그날 아침", "That morning", ja: "その日の朝")
         let nextLabel = L.s("다음 날 아침", "Next morning", ja: "翌朝")
         let hasMorningOf = morning?.morningOf != nil
-        let hasNext = morning?.nextMorning != nil || !(morning?.nextDirection ?? "").isEmpty
+        // 다음 날 제안이 아직 없을 때의 "→ 다음" 줄은 위 오늘의 러닝(다음 줄·블록 방향)과 같은 문장이라 빼고,
+        // 다음 날 아침 제안이 실제로 있을 때만 구간을 그린다(같은 권고 두 번 방지).
+        let hasNext = morning?.nextMorning != nil
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 8) {
                 MIMOWordmark(size: 9)
@@ -385,7 +387,7 @@ struct RunDayShareCard: View {
 
             // ── 오늘의 러닝 — 앱 오늘의 인사이트 카드와 같은 글·같은 뷰 ──
             VStack(alignment: .leading, spacing: 8) {
-                Text(L.s("오늘의 러닝", "Today's run", ja: "今日のラン"))
+                Text(L.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.violetText)
                 Text((workoutTypeLabel ?? activity.type.label) + " · " + text.title)
