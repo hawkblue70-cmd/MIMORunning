@@ -155,6 +155,8 @@ struct RunInsightSection: View {
     var recoveryBands: MRRecoveryBands? = nil
     /// 탭 카드의 선택 탭 — 상세 화면이 소유(맨 위 요약 블록을 누르면 그 탭으로). nil이면 카드 자체 상태.
     var selectedTab: Binding<InsightTabKind>? = nil
+    /// 내보내기 이미지 아침 제안 조립(시트가 열릴 때 한 번) — 그대로 탭 카드로.
+    var morningProvider: (() -> InsightMorning?)? = nil
 
     var body: some View {
         if !insights.isEmpty, let act = activity {
@@ -196,6 +198,7 @@ struct RunInsightSection: View {
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,
+                morningProvider: morningProvider,
                 selection: selectedTab
             )
         }

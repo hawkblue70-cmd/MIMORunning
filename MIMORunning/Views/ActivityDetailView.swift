@@ -142,8 +142,42 @@ struct ActivityDetailView: View {
     @Query private var panelAllStories: [WorkoutStory]
     @Query private var panelAllShoes: [Shoe]
     @EnvironmentObject private var engine: MREngineStore
+    @Environment(\.modelContext) private var modelContext
 
     private var level: LevelBucket { manager.userLevel.bucket }
+
+    /// 인사이트 내보내기 맨 아래 아침 제안 — 내보내기 시트가 열릴 때 한 번 조립(설계 2026-10-15 §2–§4).
+    /// 그날 아침 = 첫 러닝 전 스냅샷 → 재계산, 다음 날 = 그 날 스냅샷 → 재계산(그 밤 HRV 없으면 방향 줄).
+    private func makeInsightMorning() -> InsightMorning? {
+        guard activity.type == .running else { return nil }
+        let cal = Calendar.current
+        let activities = manager.activities
+        let rhythm = digest.first { $0.tab == .rhythm }
+        let actual = rhythm?.statements.first?.text
+        let direction = digest.compactMap(\.direction).first ?? headline?.next
+        let ctx = modelContext
+        let stories = panelAllStories
+        return InsightMorning.make(
+            runStart: activity.date, now: Date(),
+            snapshotFor: { key in MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx) },
+            recompute: { [engine, manager] asOf in
+                // 고강도 시작은 asOf 기준으로 다시 — 스토어 값은 오늘 기준 15일뿐이다.
+                // 내보내기 때 한 번이라 디스크 존 캐시도 읽는다(홈은 메모리 캐시만).
+                let hard = RunSummaryBuilder.hardRunStarts(
+                    activities: activities, asOf: asOf,
+                    effortIndex: { recent in
+                        let ids = Set(recent.map { $0.id.uuidString })
+                        return EffortIndex(stories: stories.filter { ids.contains($0.workoutID) }, apple: manager.effortMap)
+                    },
+                    workoutTypeFn: { id in manager.cachedWorkoutTypeForStats(for: id) },
+                    hrZonesFn: { id in manager.hrZonesFromCache(id) })
+                return engine.readiness(asOf: asOf, hardRunStarts: hard)
+            },
+            firstRunStart: { day in
+                activities.filter { $0.type == .running && cal.isDate($0.date, inSameDayAs: day) }.map(\.date).min()
+            },
+            actual: actual, direction: direction, calendar: cal)
+    }
 
     /// displayZones(비동기 계산) 우선, 없으면 detail.hrZones, 최후 동기 폴백.
     /// 운동 후 심박 회복 로드 — 종료 후 60초 샘플이 있으면 1·2분 낙폭 숫자는 **항상** 만든다(관찰 사실).
@@ -505,7 +539,8 @@ struct ActivityDetailView: View {
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
                             recoveryBands: recoveryBands,
-                            selectedTab: $selectedInsightTab
+                            selectedTab: $selectedInsightTab,
+                            morningProvider: { makeInsightMorning() }
                         )
                     }
                     .id("insightTabs")

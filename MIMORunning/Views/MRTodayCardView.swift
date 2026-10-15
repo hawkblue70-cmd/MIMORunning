@@ -1,6 +1,17 @@
 import SwiftUI
 import SwiftData
 
+extension MRReadiness.Level {
+    /// 아침 제안 색 — 초록(강도 OK)·노랑(이지런)·주황(휴식). 홈 카드와 인사이트 내보내기가 같이 쓴다.
+    var displayColor: Color {
+        switch self {
+        case .go:   return Theme.positive
+        case .easy: return Theme.time
+        case .rest: return Color(hex: "FF9A3C")
+        }
+    }
+}
+
 struct MRTodayCardView: View {
     @EnvironmentObject var engine: MREngineStore
     @Environment(\.modelContext) private var modelContext
@@ -18,14 +29,8 @@ struct MRTodayCardView: View {
         return (f.string(from: NSNumber(value: v)) ?? String(Int(v)), unit)
     }
 
-    /// 아침 제안 색 — 초록(강도 OK)·노랑(이지런)·주황(휴식).
-    private func readinessColor(_ level: MRReadiness.Level) -> Color {
-        switch level {
-        case .go:   return Theme.positive
-        case .easy: return Theme.time
-        case .rest: return Color(hex: "FF9A3C")
-        }
-    }
+    /// 아침 제안 색 — `MRReadiness.Level.displayColor`(인사이트 내보내기 아침 제안과 같은 색).
+    private func readinessColor(_ level: MRReadiness.Level) -> Color { level.displayColor }
 
     private func saveReadinessSnapshot(_ c: MRTodayCard) {
         guard let r = c.readiness else { return }

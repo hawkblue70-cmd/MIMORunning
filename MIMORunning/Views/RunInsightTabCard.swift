@@ -833,6 +833,8 @@ struct RunInsightTabCard: View {
     /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 1·2분 평소 낙폭 범위.
     var recoveryBands: MRRecoveryBands? = nil
 
+    /// 내보내기 이미지 맨 아래 아침 제안 — 시트가 열릴 때 한 번 부른다(상세 화면 렌더마다 계산하지 않게).
+    var morningProvider: (() -> InsightMorning?)? = nil
     /// 선택 탭 — 상세 화면이 넘기면 그 바인딩(맨 위 요약 블록 탭으로 이동), 없으면 카드 자체 상태.
     var selection: Binding<InsightTabKind>? = nil
     @State private var localTab: InsightTabKind = .rhythm
@@ -898,7 +900,8 @@ struct RunInsightTabCard: View {
                 planPhase: planPhase,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
-                recoveryBands: recoveryBands
+                recoveryBands: recoveryBands,
+                morningProvider: morningProvider
             )
         }
         .onAppear {
@@ -5377,6 +5380,8 @@ struct InsightExportSheet: View {
     var recoveryResult: MRRecoveryResult? = nil
     /// 심박 차트 회복 띠 — 같은 심박으로 끝낸 러닝의 1·2분 평소 낙폭 범위.
     var recoveryBands: MRRecoveryBands? = nil
+    /// 아침 제안 블록 조립 — 시트가 열릴 때 한 번(설계 2026-10-15). nil이면 블록 없음.
+    var morningProvider: (() -> InsightMorning?)? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -5401,6 +5406,9 @@ struct InsightExportSheet: View {
     @State private var exportImage: UIImage? = nil
     @State private var isRendering = false
     @State private var showShare = false
+    @State private var morning: InsightMorning? = nil
+    /// "수치 표시" 칩 — 기본 꺼짐(HRV ms·안정시 심박 등은 켰을 때만 이미지에 넣는다)
+    @State private var showMorningData = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -5426,9 +5434,11 @@ struct InsightExportSheet: View {
         .preferredColorScheme(.dark)
         .onAppear {
             tab = startTab
+            if let m = morningProvider?(), !m.isEmpty { morning = m }
             renderCard()
         }
         .onChange(of: tab) { _, _ in renderCard() }
+        .onChange(of: showMorningData) { _, _ in renderCard() }
         .sheet(isPresented: $showShare) {
             if let img = exportImage { ShareSheet(images: [img]) }
         }
@@ -5458,6 +5468,23 @@ struct InsightExportSheet: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            if morning != nil {
+                Button {
+                    showMorningData.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showMorningData ? "checkmark" : "number")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(AppLanguage.shared.s("수치 표시", "Show numbers", ja: "数値を表示"))
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(showMorningData ? Theme.violet : Color.white.opacity(0.50))
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(showMorningData ? Theme.violet.opacity(0.22) : Color.white.opacity(0.06))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -5471,6 +5498,10 @@ struct InsightExportSheet: View {
         VStack(spacing: 0) {
             exportHeader
             cardBody
+            // 아침 제안 — 기존 카드 아래 한 블록. 탭과 무관하게 같다(대회 탭 포함).
+            if let m = morning {
+                InsightMorningSection(morning: m, showData: showMorningData)
+            }
         }
         .background(Theme.cardBackground)
         .environment(\.insightCompact, true)   // 내보내기는 촘촘한 세로 간격 — 미리보기 = 출력
