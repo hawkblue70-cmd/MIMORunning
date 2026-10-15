@@ -2,9 +2,11 @@ import SwiftUI
 
 /// 초반·중반·후반 표 — 페이스·심박·케이던스·보폭·접지. 폼 카드가 **이 컴포넌트 하나만** 쓴다(§5.8). scale=1 기준: 글자 9pt · 행 간격 5pt.
 /// 판정: **후반 행만**, 케이던스·보폭·접지가 그 구간의 평소 범위에서 피로 방향(케이던스↓·보폭↓·접지↑)으로 벗어났거나 페이스가 무너졌고
-/// **중반보다 실제로 나빠졌을 때** `Theme.caution`, 아니면 지표 고유색. 러닝 내내 범위 밖이어도 변화가 없으면 칠하지 않는다 — 문장("끝까지 유지")과 같은 규칙.
+/// **중반보다 실제로 나빠졌을 때** `ink.caution`, 아니면 지표 고유색. 러닝 내내 범위 밖이어도 변화가 없으면 칠하지 않는다 — 문장("끝까지 유지")과 같은 규칙.
 /// 페이스·심박은 판정 없음. 결측은 "–".
 struct FormPhaseTableView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let result: FormPhase.Result
     var scale: CGFloat = 1.0
     /// 내보내기(촘촘 모드)면 행 간격 5→3
@@ -40,14 +42,14 @@ struct FormPhaseTableView: View {
         GridRow {
             Text(phaseLabel(stats, ko: ko, en: en))
                 .font(.system(size: 9 * scale, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.78))
+                .foregroundStyle(ink.fg(0.78))
                 .padding(.horizontal, 3 * scale)
                 .padding(.vertical, 1 * scale)
-            valueCell(paceText(stats.paceSecPerKm), color: Color.white.opacity(0.9), caution: false)
-            valueCell(stats.avgHR.map { String(Int($0.rounded())) }, color: Theme.heartRate, caution: false)
-            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: Theme.cadence, caution: worse(.cadence, signals.cadence == .below))
-            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: Theme.strideLength, caution: worse(.stride, signals.stride == .below))
-            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: Theme.groundContact, caution: worse(.groundContact, signals.groundContact == .above))
+            valueCell(paceText(stats.paceSecPerKm), color: ink.fg(0.9), caution: false)
+            valueCell(stats.avgHR.map { String(Int($0.rounded())) }, color: ink.heartRate, caution: false)
+            valueCell(stats.cadence.map { String(Int($0.rounded())) }, color: ink.cadence, caution: worse(.cadence, signals.cadence == .below))
+            valueCell(stats.stride.map { String(format: "%.2f", $0) }, color: ink.strideLength, caution: worse(.stride, signals.stride == .below))
+            valueCell(stats.groundContact.map { String(Int($0.rounded())) }, color: ink.groundContact, caution: worse(.groundContact, signals.groundContact == .above))
         }
     }
 
@@ -57,7 +59,7 @@ struct FormPhaseTableView: View {
     private func headerCell(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 8 * scale))
-            .foregroundStyle(Color.white.opacity(0.5))
+            .foregroundStyle(ink.fg(0.5))
             .padding(.horizontal, 3 * scale)
     }
 
@@ -65,13 +67,13 @@ struct FormPhaseTableView: View {
     private func valueCell(_ text: String?, color: Color, caution: Bool) -> some View {
         Text(text ?? "–")
             .font(.system(size: 9 * scale))
-            .foregroundStyle(text == nil ? Color.white.opacity(0.35) : (caution ? Theme.caution : color))
+            .foregroundStyle(text == nil ? ink.fg(0.35) : (caution ? ink.caution : color))
             .padding(.horizontal, 3 * scale)
             .padding(.vertical, 1 * scale)
             .background {
                 if caution {
                     RoundedRectangle(cornerRadius: 3 * scale, style: .continuous)
-                        .fill(Theme.caution.opacity(0.18))
+                        .fill(ink.caution.opacity(0.18))
                 }
             }
     }

@@ -9,6 +9,8 @@ import SwiftUI
 /// `fontBoost`는 글자만 pt 단위로 키운다(점·여백·줄 간격은 scale 그대로). 축·라벨 열 폭은 글자에 맞춰 함께 넓어진다.
 /// 내보내기는 `allowsExpansion: false` — 노란 줄은 펼쳐 그리되 화살표도 탭도 없다.
 struct RunSummaryLinesView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let lines: [RunSummaryLine]
     var scale: CGFloat = 1.0
     var allowsExpansion: Bool = true
@@ -52,7 +54,7 @@ struct RunSummaryLinesView: View {
         }
         .padding(.horizontal, 12 * scale).padding(.vertical, (compact ? 7 : 10) * scale)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
+        .background(ink.fg(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10 * scale))
     }
 
@@ -69,37 +71,37 @@ struct RunSummaryLinesView: View {
                     .padding(.top, 3.5 * scale)
                 Text(line.axis)
                     .font(.system(size: fs(10), weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(ink.primary)
                     .lineLimit(1)
                     .frame(width: axisWidth, alignment: .leading)
                     .layoutPriority(1)
                 Text("·")
                     .font(.system(size: fs(10)))
-                    .foregroundStyle(Color.white.opacity(0.50))
+                    .foregroundStyle(ink.fg(0.50))
                     .frame(width: sepWidth, alignment: .center)
                 Text(line.state.keepingNumberUnitsTogether)
                     .font(.system(size: fs(10)))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(ink.primary)
                     .lineSpacing(2 * scale)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if showChevron {
                     Image(systemName: open ? "chevron.up" : "chevron.down")
                         .font(.system(size: fs(9), weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.55))
+                        .foregroundStyle(ink.fg(0.55))
                 }
             }
             if open {
                 VStack(alignment: .leading, spacing: 3 * scale) {
                     if let evidence = line.evidence {
                         detailRow(label: AppLanguage.shared.s("근거", "Why", ja: "根拠"),
-                                  labelColor: Color.white.opacity(0.62),
-                                  text: evidence, textColor: Color.white.opacity(0.80))
+                                  labelColor: ink.fg(0.62),
+                                  text: evidence, textColor: ink.fg(0.80))
                     }
                     if let next = line.next {
                         detailRow(label: AppLanguage.shared.s("다음", "Next", ja: "次へ"),
                                   labelColor: color(line.tone).opacity(0.9),
-                                  text: next, textColor: Color.white.opacity(0.96))
+                                  text: next, textColor: ink.fg(0.96))
                     }
                 }
                 .padding(.leading, axisStart)
@@ -120,7 +122,7 @@ struct RunSummaryLinesView: View {
         return HStack(alignment: .top, spacing: 0) {
             Text("-")
                 .font(.system(size: fs(9)))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(ink.fg(0.45))
                 .frame(width: bulletWidth, alignment: .leading)
             Text(label)
                 .font(.system(size: fs(8.5), weight: .semibold))
@@ -135,6 +137,6 @@ struct RunSummaryLinesView: View {
     }
 
     private func color(_ tone: RunSummaryLine.Tone) -> Color {
-        tone == .good ? Theme.positive : Theme.caution
+        tone == .good ? ink.positive : ink.caution
     }
 }

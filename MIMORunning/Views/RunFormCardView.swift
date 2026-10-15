@@ -20,6 +20,8 @@ func isLongDistanceRunContext(
 // MARK: - Run Form Card
 
 struct RunFormCardView: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
     let activity: Activity
     var splits: [SplitData] = []
     var avgCadence: Int? = nil
@@ -217,7 +219,7 @@ struct RunFormCardView: View {
                          baseline: baseline, formShifts: formShifts, workoutType: workoutType)
     }
 
-    private let lineColor = Color.white.opacity(0.20)
+    private var lineColor: Color { ink.fg(0.20) }
     // [57] 텍스트 열 고정 너비 — 가장 긴 「수직진폭 (참고) N.N cm」+ 들여쓰기를 수용
     //      네 줄 모두 이 값에서 바가 시작 → 축 좌우 끝 픽셀 정렬
     private let barTextColumnWidth: CGFloat = 120
@@ -498,7 +500,7 @@ struct RunFormCardView: View {
                         id: .temperature,
                         badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Heat", ja: isRainy ? "気温・天候" : "気温"),
                         bodyText: text,
-                        badgeColor: Color(hex: "FF8C42")))
+                        badgeColor: ink.pick(Color(hex: "FF8C42"), Color(hex: "E07800"))))
                 }
             } else if temp <= 5 {
                 // 추위 — bCold 계수 미신뢰, 보정 문장 없음
@@ -541,7 +543,7 @@ struct RunFormCardView: View {
                         id: .temperature,
                         badgeText: L.s(isRainy ? "기온·날씨" : "기온", isRainy ? "Temp & Rain" : "Cold", ja: isRainy ? "気温・天候" : "気温"),
                         bodyText: text,
-                        badgeColor: Color(hex: "6BAED6")))
+                        badgeColor: ink.pick(Color(hex: "6BAED6"), Color(hex: "2F7BB0"))))
                 }
             }
         }
@@ -553,7 +555,7 @@ struct RunFormCardView: View {
                 id: .weather,
                 badgeText: L.s("날씨", "Weather", ja: "天候"),
                 bodyText: text,
-                badgeColor: Color(hex: "6BAED6")))
+                badgeColor: ink.pick(Color(hex: "6BAED6"), Color(hex: "2F7BB0"))))
         }
 
         // [추세] 공백이 있으면 hasRecentGap=true → mrFormObservation 내에서 nil 반환
@@ -562,7 +564,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("추세", "Trend", ja: "推移"),
                                          bodyText: obs.text,
-                                         badgeColor: Theme.positive))
+                                         badgeColor: ink.positive))
         }
 
         // [거리] distance ≥ 4주 평균 × 130%
@@ -577,7 +579,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .distance,
                                          badgeText: L.s("거리", "Distance", ja: "距離"),
                                          bodyText: text,
-                                         badgeColor: Color(hex: "6BAED6")))
+                                         badgeColor: ink.pick(Color(hex: "6BAED6"), Color(hex: "2F7BB0"))))
         }
 
         // [케이던스 U자] 같은 페이스에서 심박 최저 케이던스 추정 (우선순위 4위)
@@ -600,7 +602,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .style,
                                          badgeText: L.s("걸음수/보폭", "Stride", ja: "ピッチ/ストライド"),
                                          bodyText: text,
-                                         badgeColor: Theme.groundContact))
+                                         badgeColor: ink.groundContact))
         }
 
         // 총 4줄 상한: 논리적 줄 수 합산 후 초과하면 낮은 우선순위부터 제거
@@ -675,7 +677,7 @@ struct RunFormCardView: View {
             items.append(FormInsightItem(id: .trend,
                                          badgeText: L.s("기록", "Stats", ja: "記録"),
                                          bodyText: text,
-                                         badgeColor: Color.white.opacity(0.58)))
+                                         badgeColor: ink.fg(0.58)))
             }
             #if DEBUG
             print("[인사이트] 표시 0개 → 폴백: \(notableChange == nil ? "숨김(위 지표 되풀이)" : text)")
@@ -699,7 +701,7 @@ struct RunFormCardView: View {
             id: .formChange,
             badgeText: L.s("폼 변화", "Form Shift", ja: "フォームの変化"),
             bodyText: body,
-            badgeColor: Theme.groundContact)
+            badgeColor: ink.groundContact)
     }
 
     // MARK: - Cadence-HR U-Curve Insight
@@ -711,7 +713,7 @@ struct RunFormCardView: View {
         return FormInsightItem(id: .cadenceHR,
                                badgeText: L.s("케이던스", "Cadence", ja: "ケイデンス"),
                                bodyText: body,
-                               badgeColor: Color(hex: "4ECDC4"))
+                               badgeColor: ink.pick(Color(hex: "4ECDC4"), Color(hex: "00A0A8")))
     }
 
     private var chainChildren: [ChainChild] {
@@ -779,13 +781,13 @@ struct RunFormCardView: View {
                         Text(FormPhase.sentence(phase, isLongDistance: isLongDistanceContext,
                                                 suppressCommonTail: FormPhase.hasHeatReassurance(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC))))
                             .font(.system(size: 11.5))
-                            .foregroundStyle(Color.white.opacity(0.80))
+                            .foregroundStyle(ink.fg(0.80))
                             .lineSpacing(compact ? 2 : 3)
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(FormPhase.relationSentences(phase, heatDeltaBpm: heatHRModel?.delta(activity.temperatureC)), id: \.self) { line in
                             Text(line)
                                 .font(.system(size: 10.5))
-                                .foregroundStyle(Color.white.opacity(0.66))
+                                .foregroundStyle(ink.fg(0.66))
                                 .lineSpacing(compact ? 1 : 2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -796,7 +798,7 @@ struct RunFormCardView: View {
         .padding(.horizontal, 16)
         // 내보내기: 위 여백만 줄여 헤더에 붙인다 (리듬·퍼포먼스 카드와 동일 값)
         .padding(.top, compact ? 4 : 16).padding(.bottom, compact ? 12 : 16)
-        .background(Theme.cardBackground)
+        .background(ink.card)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
             formSeriesCache = formSeries  // 버킷 1회 계산 → 이후 재사용
@@ -831,21 +833,21 @@ struct RunFormCardView: View {
                     .tracking(-1.6)
                 Text("km")
                     .font(.system(size: 16))
-                    .foregroundStyle(Color(hex: "8A8F99"))
+                    .foregroundStyle(ink.pick(Color(hex: "8A8F99"), Color(hex: "757575")))
             }
-            .foregroundStyle(Color.white)
+            .foregroundStyle(ink.primary)
             HStack(spacing: 0) {
                 KPICell(label: AppLanguage.shared.s("시간", "Time", ja: "時間"),
                         value: activity.formattedDuration)
                 kpiSep
                 KPICell(label: AppLanguage.shared.s("페이스", "Pace", ja: "ペース"),
                         value: activity.formattedPace ?? "--'--\"",
-                        context: flatEquivalentText, contextColor: Color.white.opacity(0.58))
+                        context: flatEquivalentText, contextColor: ink.fg(0.58))
                 if let cad = avgCadence {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
                             value: "\(cad)", unit: "spm",
-                            color: Theme.cadence,
+                            color: ink.cadence,
                             context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs", ja: "本練習区間") : nil)
                 }
                 // 인터벌은 케이던스와 같은 전력 구간 값 — 케이던스 184(전력)에 보폭 0.98(전체)처럼 짝이 어긋나지 않게
@@ -856,7 +858,7 @@ struct RunFormCardView: View {
                     kpiSep
                     KPICell(label: AppLanguage.shared.s("보폭", "Stride", ja: "ストライド"),
                             value: String(format: "%.2f", sl), unit: "m",
-                            color: Color.white,
+                            color: ink.primary,
                             context: isInterval ? AppLanguage.shared.s("전력 구간", "work segs", ja: "本練習区間") : nil)
                 }
             }
@@ -891,7 +893,7 @@ struct RunFormCardView: View {
                     Color.clear.frame(width: 6)
                     Text(summary)
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.72))
+                        .foregroundStyle(ink.fg(0.72))
                         .lineSpacing(2.5)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, compact ? 3 : 5)
@@ -907,7 +909,7 @@ struct RunFormCardView: View {
                 Color.clear.frame(height: compact ? 5 : 10)
                 Text(sentence)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(Color.white.opacity(0.80))
+                    .foregroundStyle(ink.fg(0.80))
                     .lineSpacing(compact ? 2 : 3)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -921,10 +923,10 @@ struct RunFormCardView: View {
     /// 기존 규칙을 그대로 둔다(숫자가 주인공인 행).
     private func metricLabelColor(_ dir: MetricDir) -> Color {
         switch dir {
-        case .cadence:       return Theme.cadence
-        case .stride:        return Theme.strideLength
-        case .groundContact: return Theme.groundContact
-        case .verticalOsc:   return Theme.verticalOsc
+        case .cadence:       return ink.cadence
+        case .stride:        return ink.strideLength
+        case .groundContact: return ink.groundContact
+        case .verticalOsc:   return ink.verticalOsc
         }
     }
 
@@ -935,8 +937,8 @@ struct RunFormCardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(metricLabelColor(dir)).lineLimit(1)
-                    Text(formatted).font(cardNumFont(22)).foregroundStyle(Color.white).lineLimit(1)
-                    Text(unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.58)).lineLimit(1)
+                    Text(formatted).font(cardNumFont(22)).foregroundStyle(ink.primary).lineLimit(1)
+                    Text(unit).font(.system(size: 10)).foregroundStyle(ink.fg(0.58)).lineLimit(1)
                 }
             }
             .frame(width: barTextColumnWidth, alignment: .leading)
@@ -972,9 +974,9 @@ struct RunFormCardView: View {
                         Text(child.label).font(.system(size: 10, weight: .medium)).foregroundStyle(metricLabelColor(child.dir)).lineLimit(1)
                         Text(child.formatted)
                             .font(cardNumFont(20))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(ink.primary)
                             .lineLimit(1)
-                        Text(child.unit).font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.58)).lineLimit(1)
+                        Text(child.unit).font(.system(size: 10)).foregroundStyle(ink.fg(0.58)).lineLimit(1)
                     }
                 }
             }
@@ -1024,8 +1026,8 @@ struct RunFormCardView: View {
     /// 경사·기온은 상단 평지 환산과 기온 배지가 따로 담당한다.
     private func resultNodeView(label: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.62))
-            Text(value).font(cardNumFont(26)).foregroundStyle(Theme.violet)
+            Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(ink.fg(0.62))
+            Text(value).font(cardNumFont(26)).foregroundStyle(ink.violet)
         }
     }
 
@@ -1096,8 +1098,8 @@ struct RunFormCardView: View {
         axisLo -= axisSpan * 0.08
         axisHi += axisSpan * 0.08
 
-        let green: Color = Theme.positive
-        let neutral: Color = Color.white.opacity(0.70)
+        let green: Color = ink.positive
+        let neutral: Color = ink.fg(0.70)
         let dotColor: Color = {
             // [76] 범위 안 + 개선 방향 벗어남 = 녹색. 반대 방향만 회색.
             // [79] 거리 문맥은 색에 영향 없음 — 색은 판정이 아니라 "범위 안" 사실 표시
@@ -1138,12 +1140,12 @@ struct RunFormCardView: View {
                 var fullLine = Path()
                 fullLine.move(to: CGPoint(x: barL, y: barY))
                 fullLine.addLine(to: CGPoint(x: barR, y: barY))
-                ctx.stroke(fullLine, with: .color(.white.opacity(0.04)), lineWidth: 0.5)
+                ctx.stroke(fullLine, with: .color(ink.fg(0.04)), lineWidth: 0.5)
                 for x in [barL, barR] {
                     var cap = Path()
                     cap.move(to: CGPoint(x: x, y: barY - 2.5))
                     cap.addLine(to: CGPoint(x: x, y: barY + 2.5))
-                    ctx.stroke(cap, with: .color(.white.opacity(0.07)), lineWidth: 1)
+                    ctx.stroke(cap, with: .color(ink.fg(0.07)), lineWidth: 1)
                 }
 
                 // [63] 평소 범위: 훨씬 밝고 굵게 — 축과 두 단계 이상 대비
@@ -1152,7 +1154,7 @@ struct RunFormCardView: View {
                 bandLine.move(to: CGPoint(x: bandLoX, y: barY))
                 bandLine.addLine(to: CGPoint(x: bandHiX, y: barY))
                 ctx.stroke(bandLine,
-                           with: .color(.white.opacity(isReference ? 0.32 : 0.55)),
+                           with: .color(ink.fg(isReference ? 0.32 : 0.55)),
                            style: isReference
                                ? StrokeStyle(lineWidth: 2, dash: [2.5, 2.5])
                                : StrokeStyle(lineWidth: 2.5))
@@ -1161,7 +1163,7 @@ struct RunFormCardView: View {
                     tick.move(to: CGPoint(x: x, y: barY - 4))
                     tick.addLine(to: CGPoint(x: x, y: barY + 4))
                     ctx.stroke(tick,
-                               with: .color(.white.opacity(isReference ? 0.45 : 0.72)),
+                               with: .color(ink.fg(isReference ? 0.45 : 0.72)),
                                lineWidth: isReference ? 2 : 2.5)
                 }
 
@@ -1181,7 +1183,7 @@ struct RunFormCardView: View {
                 for hx in jxs {
                     let r: CGFloat = 3.5
                     ctx.stroke(Path(ellipseIn: CGRect(x: hx-r, y: barY-r, width: r*2, height: r*2)),
-                               with: .color(.white.opacity(0.60)), lineWidth: 1.2)
+                               with: .color(ink.fg(0.60)), lineWidth: 1.2)
                 }
                 // 오늘 값: 채운 원, 항상 최상단
                 let tr: CGFloat = 4.5
@@ -1199,8 +1201,8 @@ struct RunFormCardView: View {
                 }
             } symbols: {
                 // [74] 축 숫자: 설명 문구와 동일 크기/밝기
-                Text(loStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.72)).tag(0)
-                Text(hiStr).font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.72)).tag(1)
+                Text(loStr).font(.system(size: 8)).foregroundStyle(ink.fg(0.72)).tag(0)
+                Text(hiStr).font(.system(size: 8)).foregroundStyle(ink.fg(0.72)).tag(1)
             }
             .frame(height: 26)
 
@@ -1225,7 +1227,7 @@ struct RunFormCardView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 3))
                         Text(item.bodyText)
                             .font(.system(size: 11))
-                            .foregroundStyle(Color.white.opacity(0.80))
+                            .foregroundStyle(ink.fg(0.80))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1289,10 +1291,10 @@ struct RunFormCardView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(AppLanguage.shared.s("수직진폭", "Vert Osc", ja: "上下動"))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.42))
+                .foregroundStyle(ink.fg(0.42))
             Text(AppLanguage.shared.s("데이터 없음", "No data", ja: "データなし"))
                 .font(.system(size: 9))
-                .foregroundStyle(Color.white.opacity(0.34))
+                .foregroundStyle(ink.fg(0.34))
                 .frame(height: 52, alignment: .center)
         }
     }
@@ -1368,7 +1370,7 @@ struct RunFormCardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(s.label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.78))
+                    .foregroundStyle(ink.fg(0.78))
                     .lineLimit(1)
                 let ends = trendEndpoints(s)
                 if let f = ends.first, let sec = ends.second {
@@ -1376,7 +1378,7 @@ struct RunFormCardView: View {
                     if missingRate > 0.50 {
                         Text(L.s("데이터 부족", "Low data", ja: "データ不足"))
                             .font(.system(size: 8))
-                            .foregroundStyle(Color.white.opacity(0.42))
+                            .foregroundStyle(ink.fg(0.42))
                     } else {
                         trendChangeBadge(dir: s.dir, unit: s.unit, firstAvg: f, secondAvg: sec)
                     }
@@ -1405,13 +1407,13 @@ struct RunFormCardView: View {
                     }()
                     Text(bandLabel)
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.42))
+                        .foregroundStyle(ink.fg(0.42))
                 }
                 Spacer(minLength: 0)
                 if dataCount < totalBuckets && totalBuckets > 0 {
                     Text("(\(dataCount)/\(totalBuckets))")
                         .font(.system(size: 8))
-                        .foregroundStyle(Color.white.opacity(0.36))
+                        .foregroundStyle(ink.fg(0.36))
                 }
             }
 
@@ -1425,14 +1427,14 @@ struct RunFormCardView: View {
                         yStart: .value("", lo),
                         yEnd: .value("", hi)
                     )
-                    .foregroundStyle(Color.white.opacity(s.bandIsReference ? 0.05 : 0.08))
+                    .foregroundStyle(ink.fg(s.bandIsReference ? 0.05 : 0.08))
                 }
 
                 // 구간 경계 — 기본은 50% 중앙선, 3단계 문장이 있으면 30%·70%
                 ForEach(phaseMarkKms, id: \.self) { km in
                     RuleMark(x: .value("", km))
                         .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                        .foregroundStyle(Color.white.opacity(0.15))
+                        .foregroundStyle(ink.fg(0.15))
                 }
 
                 // Line
@@ -1441,7 +1443,7 @@ struct RunFormCardView: View {
                         x: .value("km", pt.kmEnd),
                         y: .value("val", pt.value)
                     )
-                    .foregroundStyle(s.lineColor)
+                    .foregroundStyle(ink.metric(s.lineColor))
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 1.8))
                 }
@@ -1449,7 +1451,7 @@ struct RunFormCardView: View {
                 // In-range small dots
                 ForEach(s.points.filter { !$0.outOfRange }) { pt in
                     PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
-                        .foregroundStyle(s.lineColor.opacity(Theme.sparkDotOpacity))
+                        .foregroundStyle(ink.metric(s.lineColor).opacity(Theme.sparkDotOpacity))
                         .symbolSize(Theme.sparkDotSize)
                 }
 
@@ -1457,12 +1459,12 @@ struct RunFormCardView: View {
                 if !isLongDistanceContext {
                     ForEach(s.points.filter(\.outOfRange)) { pt in
                         PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(ink.primary)
                             .symbolSize(Theme.sparkHaloSize)
                     }
                     ForEach(s.points.filter(\.outOfRange)) { pt in
                         PointMark(x: .value("km", pt.kmEnd), y: .value("val", pt.value))
-                            .foregroundStyle(s.lineColor)
+                            .foregroundStyle(ink.metric(s.lineColor))
                             .symbolSize(Theme.sparkHaloCoreSize)
                     }
                 }
@@ -1479,7 +1481,7 @@ struct RunFormCardView: View {
                             AxisValueLabel(anchor: .topLeading) {
                                 Text("km")
                                     .font(.system(size: 7))
-                                    .foregroundStyle(Color.white.opacity(0.42))
+                                    .foregroundStyle(ink.fg(0.42))
                             }
                         } else {
                             // 정수에 가까우면 정수로 — 5.99km를 "6.0"으로 찍으면 넓어진 글자가 앞 "5"에 붙어 "56.0"으로 읽혔다
@@ -1490,13 +1492,13 @@ struct RunFormCardView: View {
                                 AxisValueLabel(anchor: .topTrailing) {
                                     Text(fmtKm)
                                         .font(.system(size: 8))
-                                        .foregroundStyle(Color.white.opacity(0.68))
+                                        .foregroundStyle(ink.fg(0.68))
                                 }
                             } else {
                                 AxisValueLabel(centered: false) {
                                     Text(fmtKm)
                                         .font(.system(size: 8))
-                                        .foregroundStyle(Color.white.opacity(0.68))
+                                        .foregroundStyle(ink.fg(0.68))
                                 }
                             }
                         }
@@ -1516,7 +1518,7 @@ struct RunFormCardView: View {
                     }
                     Text(FormNarrative.belowRangeNote(type: workoutType, metric: s.dir, lateFasterSec: lateFasterSec))
                         .font(.system(size: 8.5))
-                        .foregroundStyle(Color.white.opacity(0.58))
+                        .foregroundStyle(ink.fg(0.58))
                 }
             }
         }
@@ -1531,8 +1533,8 @@ struct RunFormCardView: View {
         let diffUnit = dir == .groundContact ? "ms" : ""
         let sign: String = diff > 0.0005 ? "+" : diff < -0.0005 ? "−" : "±"
         let label = "\(fmtNum(first)) → \(fmtNum(second)) (\(sign)\(fmtNum(abs(diff)))\(diffUnit))"
-        let green = Theme.positive
-        let muted = Color.white.opacity(0.70)
+        let green = ink.positive
+        let muted = ink.fg(0.70)
         let color: Color
         switch dir {
         case .cadence:                     color = diff > 0.0005 ? green : muted
@@ -2005,18 +2007,18 @@ struct RunFormCardView: View {
     // MARK: - Helpers
 
     private var kpiSep: some View {
-        Rectangle().fill(Color.white.opacity(0.10)).frame(width: 0.5, height: 40)
+        Rectangle().fill(ink.fg(0.10)).frame(width: 0.5, height: 40)
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+        Rectangle().fill(ink.fg(0.08)).frame(height: 0.5)
     }
 
     @ViewBuilder
     private func placeholderSection(title: String, icon: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(Color.white.opacity(0.38))
-            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.white.opacity(0.38))
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(ink.fg(0.38))
+            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(ink.fg(0.38))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 24)

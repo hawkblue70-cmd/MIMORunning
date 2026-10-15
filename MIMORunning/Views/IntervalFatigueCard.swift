@@ -6,6 +6,8 @@ import Charts
 // Receives ALL interval segments; filters work / recovery internally.
 
 struct IntervalFatigueCard: View {
+    @Environment(\.insightLight) private var insightLight
+    private var ink: InsightInk { InsightInk(light: insightLight) }
 
     let segments: [IntervalSegment]
     var hrSamples: [(offset: TimeInterval, bpm: Int)] = []
@@ -318,10 +320,10 @@ struct IntervalFatigueCard: View {
 
     private var normBadgeBaseColor: Color {
         switch normBadgeKind {
-        case .muscFatigue:    return Color(hex: "FFA94D")  // stride line color
-        case .rhythmCollapse: return Theme.cadence  // 케이던스 선과 같은 색
-        case .stable:         return Theme.positive  // green
-        case .bothDecline, .styleChange: return .white
+        case .muscFatigue:    return ink.pick(Color(hex: "FFA94D"), Color(hex: "D96A00"))  // stride line color
+        case .rhythmCollapse: return ink.cadence  // 케이던스 선과 같은 색
+        case .stable:         return ink.positive  // green
+        case .bothDecline, .styleChange: return ink.primary
         }
     }
 
@@ -712,9 +714,9 @@ struct IntervalFatigueCard: View {
         if workSegs.count < 3 {
             HStack(spacing: 8) {
                 Image(systemName: "chart.xyaxis.line")
-                    .font(.system(size: 13)).foregroundStyle(Color.white.opacity(0.28))
+                    .font(.system(size: 13)).foregroundStyle(ink.fg(0.28))
                 Text(AppLanguage.shared.s("구간이 부족합니다 (최소 3개 필요)", "Not enough intervals (need 3+)", ja: "本数が足りません(最低3本必要)"))
-                    .font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.38))
+                    .font(.system(size: 11)).foregroundStyle(ink.fg(0.38))
             }
             .padding(.vertical, 14)
         } else {
@@ -817,7 +819,7 @@ struct IntervalFatigueCard: View {
             // 관찰 — 초반→후반 실측값 (평가 어휘 없음)
             Text(observation)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.90))
+                .foregroundStyle(ink.fg(0.90))
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer().frame(height: 8)
@@ -825,7 +827,7 @@ struct IntervalFatigueCard: View {
             // 해석 — 왜 그랬을까 (가능성 어조)
             Text(interpretation)
                 .font(.system(size: 11.5))
-                .foregroundStyle(Color.white.opacity(0.72))
+                .foregroundStyle(ink.fg(0.72))
                 .fixedSize(horizontal: false, vertical: true)
 
             // 제안 — 개선 여지가 있을 때만
@@ -834,12 +836,12 @@ struct IntervalFatigueCard: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "arrow.right.circle.fill")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color(hex: "FFD166"))
+                        .foregroundStyle(ink.pick(Color(hex: "FFD166"), Color(hex: "B8860B")))
                         .frame(width: 16)
                         .padding(.top, 1)
                     Text(sug)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(Color(hex: "FFD166"))
+                        .foregroundStyle(ink.pick(Color(hex: "FFD166"), Color(hex: "B8860B")))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -862,13 +864,13 @@ struct IntervalFatigueCard: View {
         VStack(spacing: 10) {
             if hasPace { paceChartRow }
             if hasNorm {
-                if hasPace { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5) }
+                if hasPace { Rectangle().fill(ink.fg(0.06)).frame(height: 0.5) }
                 normalizedChartRow
             }
             if hasHR {
-                if hasPace || hasNorm { Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5) }
+                if hasPace || hasNorm { Rectangle().fill(ink.fg(0.06)).frame(height: 0.5) }
                 lineChartRow(label: L.s("심박", "HR", ja: "心拍"),
-                             points: hrPoints, color: Color(hex: "F87171"), isGoodUp: false,
+                             points: hrPoints, color: ink.pick(Color(hex: "F87171"), Color(hex: "E0242B")), isGoodUp: false,
                              earlyAvg: earlyHR, lateAvg: lateHR)
             }
         }
@@ -894,7 +896,7 @@ struct IntervalFatigueCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(L.s("페이스", "Pace", ja: "ペース"))
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.50))
+                    .foregroundStyle(ink.fg(0.50))
                 Spacer()
                 if let ep = earlyPace, let lp = latePace {
                     let delta = Int((lp - ep).rounded())
@@ -902,20 +904,20 @@ struct IntervalFatigueCard: View {
                     let badge = "\(fmtPace(ep)) → \(fmtPace(lp)) (\(sign)\(abs(delta))초)"
                     Text(badge)
                         .font(.system(size: 9.5, weight: .medium))
-                        .foregroundStyle(delta < 0 ? Theme.positive : Color.white.opacity(0.70))
+                        .foregroundStyle(delta < 0 ? ink.positive : ink.fg(0.70))
                 }
             }
             Chart {
                 RuleMark(x: .value("mid", mid))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                    .foregroundStyle(Color.white.opacity(0.15))
+                    .foregroundStyle(ink.fg(0.15))
                 ForEach(pacePoints) { pt in
                     LineMark(x: .value("", Double(pt.id)), y: .value("", -pt.value))
-                        .foregroundStyle(Color.white.opacity(0.75))
+                        .foregroundStyle(ink.fg(0.75))
                         .interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 1.5))
                     PointMark(x: .value("", Double(pt.id)), y: .value("", -pt.value))
-                        .foregroundStyle(Color.white.opacity(0.40))
+                        .foregroundStyle(ink.fg(0.40))
                         .symbolSize(22)
                 }
             }
@@ -925,7 +927,7 @@ struct IntervalFatigueCard: View {
                 AxisMarks(values: xVals) { val in
                     AxisValueLabel(centered: false) {
                         if let v = val.as(Double.self) {
-                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.30))
+                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(ink.fg(0.30))
                         }
                     }
                 }
@@ -933,13 +935,13 @@ struct IntervalFatigueCard: View {
             .chartYAxis {
                 AxisMarks(values: .automatic(desiredCount: 2)) { val in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
-                        .foregroundStyle(Color.white.opacity(0.06))
+                        .foregroundStyle(ink.fg(0.06))
                     AxisValueLabel {
                         if let v = val.as(Double.self), v < 0 {
                             let sec = Int((-v).rounded())
                             Text(String(format: "%d'%02d\"", sec / 60, sec % 60))
                                 .font(.system(size: 7))
-                                .foregroundStyle(Color.white.opacity(0.30))
+                                .foregroundStyle(ink.fg(0.30))
                         }
                     }
                 }
@@ -966,8 +968,8 @@ struct IntervalFatigueCard: View {
         let yLo = (allVals.min() ?? 99) - max(span * 0.25, 1.0)
         let yHi = (allVals.max() ?? 101) + max(span * 0.25, 1.0)
 
-        let cadColor = Theme.cadence
-        let strColor = Color(hex: "FFA94D")
+        let cadColor = ink.cadence
+        let strColor = ink.pick(Color(hex: "FFA94D"), Color(hex: "D96A00"))
         // Dominant metric emphasized; other dimmed — mirrors interpretationType
         let cadOpacity: Double = interpretationType == .rhythmCollapse ? 1.0
                                : interpretationType == .muscFatigue    ? 0.35 : 1.0
@@ -989,20 +991,20 @@ struct IntervalFatigueCard: View {
                     Circle().fill(strColor).frame(width: 5, height: 5)
                     Text(L.s("케이던스 · 보폭 (1회차=100%)", "Cad · Stride (rep1=100%)", ja: "ケイデンス · ストライド(1本目=100%)"))
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.50))
+                        .foregroundStyle(ink.fg(0.50))
                 }
                 Spacer()
                 Text(badge)
                     .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.60))
+                    .foregroundStyle(ink.fg(0.60))
             }
             Chart {
                 RuleMark(y: .value("", 100))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                    .foregroundStyle(Color.white.opacity(0.18))
+                    .foregroundStyle(ink.fg(0.18))
                 RuleMark(x: .value("mid", mid))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                    .foregroundStyle(Color.white.opacity(0.10))
+                    .foregroundStyle(ink.fg(0.10))
                 ForEach(cadPts) { pt in
                     LineMark(x: .value("", Double(pt.id)), y: .value("", pt.value),
                              series: .value("", "cad"))
@@ -1030,7 +1032,7 @@ struct IntervalFatigueCard: View {
                 AxisMarks(values: xVals) { val in
                     AxisValueLabel(centered: false) {
                         if let v = val.as(Double.self) {
-                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.30))
+                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(ink.fg(0.30))
                         }
                     }
                 }
@@ -1047,7 +1049,7 @@ struct IntervalFatigueCard: View {
                     .clipShape(Capsule())
                 Text(normBadgeDesc)
                     .font(.system(size: 9, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.50))
+                    .foregroundStyle(ink.fg(0.50))
             }
         }
     }
@@ -1069,7 +1071,7 @@ struct IntervalFatigueCard: View {
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Color.white.opacity(0.50))
+                Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(ink.fg(0.50))
                 Spacer()
                 badgeView(ea: earlyAvg, la: lateAvg,
                           fallbackFirst: points.first?.value, fallbackLast: points.last?.value,
@@ -1078,7 +1080,7 @@ struct IntervalFatigueCard: View {
             Chart {
                 RuleMark(x: .value("mid", mid))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-                    .foregroundStyle(Color.white.opacity(0.15))
+                    .foregroundStyle(ink.fg(0.15))
                 ForEach(points) { pt in
                     LineMark(x: .value("", Double(pt.id)), y: .value("", pt.value))
                         .foregroundStyle(color).interpolationMethod(.monotone)
@@ -1093,7 +1095,7 @@ struct IntervalFatigueCard: View {
                 AxisMarks(values: xVals) { val in
                     AxisValueLabel(centered: false) {
                         if let v = val.as(Double.self) {
-                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(Color.white.opacity(0.30))
+                            Text("\(Int(v))").font(.system(size: 8)).foregroundStyle(ink.fg(0.30))
                         }
                     }
                 }
@@ -1114,7 +1116,7 @@ struct IntervalFatigueCard: View {
                 let label = "\(fr) → \(lr) (\(sign)\(abs(dr)))"
                 Text(label)
                     .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle((isGoodUp ? dr >= 0 : dr <= 0) ? Theme.positive : Color.white.opacity(0.70))
+                    .foregroundStyle((isGoodUp ? dr >= 0 : dr <= 0) ? ink.positive : ink.fg(0.70))
             }
         }
     }
@@ -1138,7 +1140,7 @@ struct IntervalFatigueCard: View {
                 Text(L.s("상태(페이스)", "State(Pace)", ja: "状態(ペース)")).frame(width: 46, alignment: .center)
             }
             .font(.system(size: 9, weight: .medium))
-            .foregroundStyle(Color.white.opacity(0.38))
+            .foregroundStyle(ink.fg(0.38))
             .padding(.bottom, 5)
 
             ForEach(workSegs.indices, id: \.self) { idx in
@@ -1153,7 +1155,7 @@ struct IntervalFatigueCard: View {
                     Text(segEmoji(index: idx)).frame(width: 46, alignment: .center)
                 }
                 .font(.system(size: 10))
-                .foregroundStyle(isOutlier ? Color.white.opacity(0.38) : Color.white.opacity(0.82))
+                .foregroundStyle(isOutlier ? ink.fg(0.38) : ink.fg(0.82))
                 .padding(.vertical, 3)
             }
             // 색점 범례 — segEmoji와 같은 기준(1회차 대비). 페이스가 없으면 케이던스 기준.
@@ -1163,7 +1165,7 @@ struct IntervalFatigueCard: View {
                  : L.s("🟢 1회차 케이던스 ±1%  🔵 1% 이상 올라감  🟡 1~3% 내려감  🔴 3% 이상 내려감",
                        "🟢 within ±1% of rep-1 cadence  🔵 1%+ up  🟡 1–3% down  🔴 3%+ down", ja: "🟢 1本目ケイデンス±1%  🔵 1%以上上昇  🟡 1~3%低下  🔴 3%以上低下"))
                 .font(.system(size: 8.5))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(ink.fg(0.45))
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .padding(.top, 2)
         }
@@ -1174,14 +1176,14 @@ struct IntervalFatigueCard: View {
     private func noteRow(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "info.circle")
-                .font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.38)).padding(.top, 1)
+                .font(.system(size: 9)).foregroundStyle(ink.fg(0.38)).padding(.top, 1)
             Text(text)
-                .font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.55))
+                .font(.system(size: 10)).foregroundStyle(ink.fg(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var internalDivider: some View {
-        Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+        Rectangle().fill(ink.fg(0.08)).frame(height: 0.5)
     }
 }
