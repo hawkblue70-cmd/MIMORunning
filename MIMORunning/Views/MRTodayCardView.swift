@@ -1,7 +1,9 @@
 import SwiftUI
+import SwiftData
 
 struct MRTodayCardView: View {
     @EnvironmentObject var engine: MREngineStore
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("distanceUnitMiles") private var useMiles = false
 
     /// 숫자와 단위를 따로 — 단위는 작고 흐리게 붙여 숫자가 또렷하게.
@@ -23,6 +25,11 @@ struct MRTodayCardView: View {
         case .easy: return Theme.time
         case .rest: return Color(hex: "FF9A3C")
         }
+    }
+
+    private func saveReadinessSnapshot(_ c: MRTodayCard) {
+        guard let r = c.readiness else { return }
+        MRReadinessSnapshotStore.upsert(r, at: Date(), context: modelContext)
     }
 
     var body: some View {
@@ -118,6 +125,9 @@ struct MRTodayCardView: View {
             .onChange(of: AppLanguage.shared.current) { _, _ in
                 engine.recomputeTodayCard()
             }
+            // 보여 주는 순간 그날 스냅샷으로 남긴다(내보내기용). 제안이 없으면(오늘 뜀 등) 저장 안 함.
+            .onAppear { saveReadinessSnapshot(c) }
+            .onChange(of: c.readiness) { _, _ in saveReadinessSnapshot(c) }
         }
     }
 }

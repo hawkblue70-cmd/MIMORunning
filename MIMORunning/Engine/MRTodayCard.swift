@@ -29,6 +29,8 @@ struct MRTodayCard {
     let readinessPlan: String?
     /// 대회 준비 비교 — 대회 안내 줄(linkLine) 바로 아래 한 줄. 엔진이 카드를 만든 뒤 채운다.
     var prepLine: String? = nil
+    /// 아침 제안 원본 — 스냅샷 저장용(why·data를 따로 보존). 표시는 위 문자열 필드를 쓴다.
+    var readiness: MRReadiness? = nil
 
     /// 러닝 기록 줄을 "오늘"로 치는 시간 — 러닝 **종료** 후 이만큼. 달력상 자정이 아니다.
     /// 이 안에 다시 뛰면 가장 최근 러닝으로 교체된다(`runs.last`).
@@ -194,5 +196,6 @@ func mrTodayCard(runs: [MRWorkout],
                        sessionLine: sessionLine, linkLine: linkLine,
                        readinessLine: readiness?.line, readinessLevel: readiness?.level,
                        readinessDetail: readiness?.detail,
-                       readinessPlan: readiness?.planLine)
+                       readinessPlan: readiness?.planLine,
+                       readiness: readiness)
 }
