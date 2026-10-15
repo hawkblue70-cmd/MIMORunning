@@ -316,6 +316,8 @@ struct RunConditionRow: View {
 /// 거리 · 페이스 · 시간 · 심박 — 지표 의미색(§11).
 struct RunStatsRow: View {
     let activity: Activity
+    /// 글자 크기 — 앱 카드 13, 공유 카드는 조금 크게(16)
+    var fontSize: CGFloat = 13
     @Environment(\.runCardLight) private var isLight
 
     var body: some View {
@@ -333,7 +335,7 @@ struct RunStatsRow: View {
                 Text("\(hr)bpm").foregroundStyle(isLight ? RunCardLight.heartRate : Theme.heartRate)
             }
         }
-        .font(.system(size: 13, weight: .semibold))
+        .font(.system(size: fontSize, weight: .semibold))
     }
 }
 
@@ -501,7 +503,7 @@ struct RunDayShareCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 RunConditionRow(activity: activity, condition: condition)
-                RunStatsRow(activity: activity)
+                RunStatsRow(activity: activity, fontSize: 16)
                 if !digest.isEmpty {
                     divider.padding(.vertical, 2)
                     TabDigestBlocksView(digest: digest, headlineNext: text.next, showsDetail: true)
