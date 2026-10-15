@@ -205,14 +205,15 @@ struct TabDigestBlocksView: View {
                         .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 1 }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(st.text)
-                            .font(.subheadline)
-                            .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(0.85))
+                            // 공유 카드(원문 줄이 붙는 자리)는 요약 줄을 굵게 — 원문 줄과 위계를 나눈다. 앱 화면은 그대로
+                            .font(showsDetail ? .subheadline.weight(.semibold) : .subheadline)
+                            .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(showsDetail ? 0.95 : 0.85))
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
                         if i == detailIndex, let d = st.detail {
                             Text(d)
                                 .font(.footnote)
-                                .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.6))
+                                .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .multilineTextAlignment(.leading)
                         }
@@ -355,28 +356,28 @@ struct MorningSuggestionView: View {
                                 : (lv?.displayColor ?? Color.white)
             VStack(alignment: .leading, spacing: 5) {
                 Text(label)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(labelColor)
                 Text(e.line)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(color)
                     .fixedSize(horizontal: false, vertical: true)
                 if !e.why.isEmpty {
                     Text(e.why)
                         .font(.subheadline)
-                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.72))
+                        .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.data.isEmpty {
                     Text(e.data)
-                        .font(.footnote)
-                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.planLine.isEmpty {
                     Text(e.planLine)
                         .font(.footnote)
-                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
+                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -409,7 +410,7 @@ enum ShareDateText {
         let fDay  = DateFormatter(); fDay.locale  = loc; fDay.dateFormat = "EEE"
         let fTime = DateFormatter(); fTime.locale = loc
         fTime.dateFormat = L.s(" a h:mm", " h:mm a", ja: " H:mm")
-        let base: Color = isLight ? RunCardLight.textFaint : .white.opacity(0.65)
+        let base: Color = isLight ? RunCardLight.textSoft : .white.opacity(0.65)
         let day: Color  = isLight ? RunCardLight.time : Color.yellow
         return Text(fDate.string(from: date)).foregroundStyle(base)
              + Text(fDay.string(from: date)).foregroundStyle(day)
@@ -480,7 +481,7 @@ struct RunDayShareCard: View {
             // ── 오늘의 러닝 — 앱 오늘의 인사이트 카드와 같은 글·같은 뷰 ──
             VStack(alignment: .leading, spacing: 8) {
                 Text(L.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
                 Text((workoutTypeLabel ?? activity.type.label) + " · " + text.title)
                     .font(.headline.bold())
@@ -488,14 +489,15 @@ struct RunDayShareCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let fact = text.visibleFact {
                     Text(fact)
-                        .font(.subheadline)
-                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.72))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let next = text.next {
+                    // 다음 행동 — 권고라 방향 줄과 같은 바이올렛·중간 굵기(회색이면 묻혔다)
                     Text(next)
-                        .font(.footnote)
-                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 RunConditionRow(activity: activity, condition: condition)
