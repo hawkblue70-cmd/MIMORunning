@@ -1881,27 +1881,31 @@ private struct InsightCard: View {
             // ── Top row: insight text (미니미는 머리 날짜 줄 오른쪽으로 옮김, 2026-10-15) ──
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
+                    HStack(alignment: .center, spacing: 8) {
                         Text(AppLanguage.shared.s("오늘의 인사이트", "Today's Insight", ja: "今日のインサイト"))
-                            .font(.caption.weight(.semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.violetText)
-                        Spacer()
+                        // 러닝 하루 공유 카드 — 제목 바로 옆 "내보내기" 칩, 다른 섹션의 "차트 내보내기" 칩과 같은 모양(2026-10-15 사용자).
+                        // 장식용 ✦(sparkles) 아이콘은 뺐다.
                         if let onShare {
                             Button(action: onShare) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Theme.violetText)
-                                    .padding(8)
-                                    .contentShape(Rectangle())
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.up.on.square")
+                                        .font(.caption.weight(.semibold))
+                                    Text(AppLanguage.shared.s("내보내기", "Export", ja: "書き出す"))
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(1)
+                                }
+                                .foregroundStyle(Theme.violetText)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Theme.violet.opacity(0.12))
+                                .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
-                            .padding(-8)   // 누르는 영역만 넓히고 머리 줄 높이는 그대로
-                            .padding(.trailing, 10)
-                            .accessibilityLabel(AppLanguage.shared.s("러닝 하루 공유", "Share run day", ja: "ランの一日を共有"))
+                            .accessibilityLabel(AppLanguage.shared.s("오늘의 러닝 내보내기", "Export today's run", ja: "今日のランを書き出す"))
                         }
-                        Image(systemName: "sparkles")
-                            .font(.caption)
-                            .foregroundStyle(Theme.violetText)
+                        Spacer(minLength: 0)
                     }
                     Text(text.title)
                         .font(.headline.bold())
