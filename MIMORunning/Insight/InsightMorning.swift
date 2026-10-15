@@ -8,7 +8,7 @@ import Foundation
 
 struct InsightMorning: Equatable {
     struct Entry: Equatable {
-        /// "그날 아침" / "다음 날 아침"
+        /// "당일 아침" / "다음 날 아침"
         let label: String
         /// "go" | "easy" | "rest" (스냅샷 저장 형식과 같다)
         let level: String
@@ -38,9 +38,10 @@ struct InsightMorning: Equatable {
     /// - firstRunStart: 어떤 날(그 날 안의 아무 시각) → 그날 첫 러닝 시작. 없으면 nil
     static func make(runStart: Date, now: Date, snapshotFor: (String) -> MRReadinessSnapshot?,
                      recompute: (Date) -> MRReadiness?, firstRunStart: (Date) -> Date?,
-                     actual: String?, direction: String?, calendar: Calendar) -> InsightMorning {
+                     actual: String?, direction: String?, calendar: Calendar,
+                     includeNextDay: Bool = true) -> InsightMorning {
         let L = AppLanguage.shared
-        let ofLabel = L.s("그날 아침", "That morning", ja: "その日の朝")
+        let ofLabel = L.s("당일 아침", "That morning", ja: "当日の朝")
         let nextLabel = L.s("다음 날 아침", "Next morning", ja: "翌朝")
 
         // ① 그날 아침 — 그날 첫 러닝 시작 전에 찍힌 스냅샷 → 없으면 첫 러닝 − 1초로 재계산.
@@ -58,7 +59,7 @@ struct InsightMorning: Equatable {
         // ② 다음 날 아침 — 그 날 스냅샷 → 없으면 min(첫 러닝 − 1초, 12:00, 지금) 재계산.
         //    아직 그 날이 아니거나(저녁 러닝 당일) 그 밤 HRV가 없으면(hrvPending) 블록 대신 방향 줄.
         var nextMorning: Entry?
-        if let nextStart = calendar.date(byAdding: .day, value: 1, to: dayStart), now >= nextStart {
+        if includeNextDay, let nextStart = calendar.date(byAdding: .day, value: 1, to: dayStart), now >= nextStart {
             let nextKey = MRReadinessSnapshot.key(for: nextStart, calendar: calendar)
             // 동기화 전에 찍힌 스냅샷(hrvPending)은 그 밤 값이 없던 문장 → 재계산으로 넘어간다(그것도 pending이면 방향 줄)
             if let s = snapshotFor(nextKey), !s.hrvPending {

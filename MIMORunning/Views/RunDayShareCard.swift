@@ -273,7 +273,7 @@ struct RunStatsRow: View {
 
 // MARK: - 아침 제안 한 덩어리
 
-/// 라벨("그날 아침"/"다음 날 아침") + 제안 줄(판정 색 = 홈과 같은 displayColor) + why 전체 + data + planLine.
+/// 라벨("당일 아침") + 제안 줄(판정 색 = 홈과 같은 displayColor) + why 전체 + data + planLine.
 /// 제안이 없고 `direction`이 있으면 "→ 다음: {방향}" 한 줄. 둘 다 없으면 아무것도 그리지 않는다.
 struct MorningSuggestionView: View {
     let label: String
@@ -364,12 +364,9 @@ struct RunDayShareCard: View {
 
     var body: some View {
         let L = AppLanguage.shared
-        let ofLabel = L.s("그날 아침", "That morning", ja: "その日の朝")
-        let nextLabel = L.s("다음 날 아침", "Next morning", ja: "翌朝")
+        let ofLabel = L.s("당일 아침", "That morning", ja: "当日の朝")
         let hasMorningOf = morning?.morningOf != nil
-        // 다음 날 제안이 아직 없을 때의 "→ 다음" 줄은 위 오늘의 러닝(다음 줄·블록 방향)과 같은 문장이라 빼고,
-        // 다음 날 아침 제안이 실제로 있을 때만 구간을 그린다(같은 권고 두 번 방지).
-        let hasNext = morning?.nextMorning != nil
+        // 순서(2026-10-15 사용자): 오늘의 러닝 결과 → 당일 아침 제안. 다음 날 아침은 넣지 않는다.
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 8) {
                 MIMOWordmark(size: 9)
@@ -378,11 +375,6 @@ struct RunDayShareCard: View {
                     .font(.system(size: 11))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-            }
-
-            if hasMorningOf {
-                MorningSuggestionView(label: ofLabel, entry: morning?.morningOf)
-                divider
             }
 
             // ── 오늘의 러닝 — 앱 오늘의 인사이트 카드와 같은 글·같은 뷰 ──
@@ -414,10 +406,9 @@ struct RunDayShareCard: View {
                 }
             }
 
-            if hasNext {
+            if hasMorningOf {
                 divider
-                MorningSuggestionView(label: nextLabel, entry: morning?.nextMorning,
-                                      direction: morning?.nextDirection)
+                MorningSuggestionView(label: ofLabel, entry: morning?.morningOf)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
