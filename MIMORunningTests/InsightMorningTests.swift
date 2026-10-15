@@ -22,12 +22,13 @@ struct InsightMorningTests {
     private func snap(_ key: String, level: String = "easy", line: String = "오늘은 이지런",
                       why: String = "연속 4일째입니다. 강도를 빼고 몸을 풀어 주세요.", at: Date) -> MRReadinessSnapshot {
         MRReadinessSnapshot(dateKey: key, level: level, line: line, why: why, data: "HRV 42ms",
-                            planLine: "", computedAt: at)
+                            planLine: "이번 주 롱런 아직 · 이지 1/3회", computedAt: at)
     }
 
     private func readiness(_ level: MRReadiness.Level, pending: Bool = false,
                            why: String = "어젯밤 HRV가 평소 범위입니다. 계획대로 하세요.") -> MRReadiness {
-        MRReadiness(level: level, reasons: [], hrvPending: pending, why: why, data: ["HRV 45ms", "연속 1일"])
+        MRReadiness(level: level, reasons: [], hrvPending: pending, why: why, data: ["HRV 45ms", "연속 1일"],
+                    progress: "이번 주 이지 2/3회")
     }
 
     @Test func snapshotBeforeRunIsPreferred() {
@@ -40,8 +41,9 @@ struct InsightMorningTests {
             firstRunStart: { _ in nil },
             actual: "이지 페이스 유지", direction: "내일은 쉬어 가세요", calendar: cal)
         #expect(m.morningOf?.level == "easy")
-        #expect(m.morningOf?.why == "연속 4일째입니다.")
+        #expect(m.morningOf?.why == "연속 4일째입니다. 강도를 빼고 몸을 풀어 주세요.")   // why 전체
         #expect(m.morningOf?.data == "HRV 42ms")
+        #expect(m.morningOf?.planLine == "이번 주 롱런 아직 · 이지 1/3회")
         #expect(m.actual == "이지 페이스 유지")
         #expect(recomputed == 0)
     }
@@ -161,16 +163,37 @@ struct InsightMorningTests {
         #expect(pending.nextDirection == "내일은 쉬어 가세요")
     }
 
-    @Test func firstSentenceTrim() {
-        #expect(InsightMorning.firstSentence("연속 4일째입니다. 강도를 빼 주세요.") == "연속 4일째입니다.")
-        #expect(InsightMorning.firstSentence("거리 5.2km입니다.") == "거리 5.2km입니다.")
-        #expect(InsightMorning.firstSentence("昨夜は平常です。強度OKです。") == "昨夜は平常です。")
-        #expect(InsightMorning.firstSentence("마침표 없음") == "마침표 없음")
+    @Test func recomputedEntryKeepsFullWhyDataAndPlanLine() {
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 14, hour: 9),
+            snapshotFor: { _ in nil },
+            recompute: { _ in readiness(.go) },
+            firstRunStart: { _ in nil },
+            actual: nil, direction: nil, calendar: cal)
+        #expect(m.morningOf?.why == "어젯밤 HRV가 평소 범위입니다. 계획대로 하세요.")
+        #expect(m.morningOf?.data == "HRV 45ms · 연속 1일")
+        #expect(m.morningOf?.planLine == "이번 주 이지 2/3회")
     }
 
-    @Test func verdictStripsTodayPrefix() {
-        #expect(InsightMorning.verdict(fromLine: "오늘은 이지런 · 연속 4일") == "이지런 · 연속 4일")
-        #expect(InsightMorning.verdict(fromLine: "Today: hard is OK") == "hard is OK")
-        #expect(InsightMorning.verdict(fromLine: "今日は強度OK") == "強度OK")
+    @Test func recomputedEntryWithoutPlanHasEmptyPlanLine() {
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 14, hour: 9),
+            snapshotFor: { _ in nil },
+            recompute: { _ in MRReadiness(level: .easy, reasons: [], hrvPending: false, why: "연속 4일째입니다.") },
+            firstRunStart: { _ in nil },
+            actual: nil, direction: nil, calendar: cal)
+        #expect(m.morningOf?.planLine == "")
+    }
+
+    @Test func nextDaySnapshotKeepsFullWhyAndPlanLine() {
+        let nextKey = MRReadinessSnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
+        let m = InsightMorning.make(
+            runStart: runStart, now: at(day: 15, hour: 8),
+            snapshotFor: { $0 == nextKey ? snap(nextKey, level: "rest", at: at(day: 15, hour: 7)) : nil },
+            recompute: { _ in readiness(.easy) },
+            firstRunStart: { _ in nil },
+            actual: nil, direction: nil, calendar: cal)
+        #expect(m.nextMorning?.why == "연속 4일째입니다. 강도를 빼고 몸을 풀어 주세요.")
+        #expect(m.nextMorning?.planLine == "이번 주 롱런 아직 · 이지 1/3회")
     }
 }

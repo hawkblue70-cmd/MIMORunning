@@ -1,8 +1,9 @@
 import Foundation
 
-// MARK: - 인사이트 내보내기 · 아침 제안 조립
+// MARK: - 러닝 하루 공유 카드 · 아침 제안 조립
 //
-// 설계: docs/superpowers/specs/2026-10-15-insight-export-morning-design.md §2–§4
+// 설계: docs/superpowers/specs/2026-10-15-insight-export-morning-design.md §2–§4(스냅샷·재계산)
+//      docs/superpowers/specs/2026-10-15-run-day-share-card-design.md(카드 — why 전체·data·planLine)
 // 새 판정 없음 — 홈이 저장한 스냅샷 또는 엔진 재계산(`MREngineStore.readiness(asOf:)`) 결과만 옮긴다.
 
 struct InsightMorning: Equatable {
@@ -13,10 +14,12 @@ struct InsightMorning: Equatable {
         let level: String
         /// 엔진·홈이 만든 판정 줄 그대로("오늘은 이지런 · …")
         let line: String
-        /// why 첫 문장
+        /// 왜 그 판정인지 — 홈 둘째 줄 앞부분 전체
         let why: String
-        /// 수치 조각(" · " 이음) — "수치 표시" 칩이 켜졌을 때만 그린다
+        /// 수치 조각(" · " 이음) — HRV·안정시 심박 등, 홈 둘째 줄 뒷부분
         let data: String
+        /// 이번 주 계획 진행(홈 셋째 줄). 계획이 없으면 ""
+        let planLine: String
     }
     /// 그날 아침
     var morningOf: Entry?
@@ -77,35 +80,13 @@ struct InsightMorning: Equatable {
     }
 
     private static func entry(label: String, snapshot s: MRReadinessSnapshot) -> Entry {
-        Entry(label: label, level: s.level, line: s.line, why: firstSentence(s.why), data: s.data)
+        Entry(label: label, level: s.level, line: s.line, why: s.why, data: s.data, planLine: s.planLine)
     }
 
     private static func entry(label: String, readiness r: MRReadiness) -> Entry {
         // 재계산은 지난 시각 기준 — 그 밤 값이 없으면 '동기화 전'이 아니라 없음이라 꼬리를 붙이지 않는다
         Entry(label: label, level: MRReadinessSnapshotStore.levelString(r.level), line: r.line(includePending: false),
-              why: firstSentence(r.why), data: r.data.joined(separator: " · "))
-    }
-
-    /// 첫 문장만 — "." 뒤가 공백·끝일 때(5.2km 같은 소수점은 자르지 않는다), "。"는 곧바로(일본어는 띄어 쓰지 않는다).
-    static func firstSentence(_ s: String) -> String {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        var i = t.startIndex
-        while i < t.endIndex {
-            let c = t[i]
-            let next = t.index(after: i)
-            if c == "。" { return String(t[..<next]) }
-            if c == "." && (next == t.endIndex || t[next].isWhitespace) { return String(t[..<next]) }
-            i = next
-        }
-        return t
-    }
-
-    /// 판정 줄의 판정어 — 엔진 줄 앞머리("오늘은 ", "Today: ", "今日は")만 뗀다. 새 낱말을 만들지 않는다.
-    static func verdict(fromLine line: String) -> String {
-        for p in ["오늘은 ", "Today: ", "今日は"] where line.hasPrefix(p) {
-            return String(line.dropFirst(p.count))
-        }
-        return line
+              why: r.why, data: r.data.joined(separator: " · "), planLine: r.planLine ?? "")
     }
 
     static func level(from s: String) -> MRReadiness.Level? {
