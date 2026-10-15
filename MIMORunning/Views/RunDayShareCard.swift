@@ -403,8 +403,8 @@ struct RunDayShareCard: View {
                         .minimumScaleFactor(0.75)
                     if let line = distanceLine {
                         Text(line)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
