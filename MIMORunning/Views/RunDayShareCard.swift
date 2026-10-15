@@ -8,6 +8,47 @@ import SwiftUI
 //   `RunConditionRow`(날씨·수면 칩) · `RunStatsRow`(거리·페이스·시간·심박 줄).
 // 아침 블록은 `MorningSuggestionView` 하나를 그날·다음 날 두 번 쓴다. 새 판정 없음.
 
+// MARK: - 라이트 테마(공유 카드 전용)
+
+/// 러닝 하루 공유 카드의 라이트 테마 스위치. 기본 false = 기존 다크 색 그대로 → 앱 화면 InsightCard는 영향 없음.
+/// 공유 뷰들은 이 값으로 **색만** 고른다(크기·여백·배치는 같음 — §5.8).
+private struct RunCardLightKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var runCardLight: Bool {
+        get { self[RunCardLightKey.self] }
+        set { self[RunCardLightKey.self] = newValue }
+    }
+}
+
+/// 흰 배경용 색 — 차트 내보내기 라이트 팔레트(`ShareChartPalette.light`)와 같은 계열.
+enum RunCardLight {
+    static let background = Color.white
+    static let text       = Color(hex: "1A1A1A")              // 본문
+    static let textSoft   = Color(hex: "555555")              // 흐린 글자(다크 0.72~0.85 자리)
+    static let textFaint  = Color(hex: "757575")              // 더 흐린 글자(다크 0.55~0.65 자리)
+    static let divider    = Color(hex: "1A1A1A").opacity(0.15)
+    static let violet     = Color(hex: "5B3FD9")              // 브랜드 바이올렛의 짙은 짝(라벨·방향·거리)
+    static let heartRate  = ShareChartPalette.light.hrRepColor   // E0242B
+    static let pace       = ShareChartPalette.light.pace         // 0E7C8A
+    static let time       = Color(hex: "D4A700")              // 시간·요일 노랑의 짙은 짝
+    static let caution    = Color(hex: "E07800")
+    static let positive   = Color(hex: "2FA84F")
+}
+
+extension MRReadiness.Level {
+    /// 라이트 공유 카드용 판정 색 — `displayColor`(초록·노랑·주황)의 의미를 유지한 짙은 짝.
+    var displayColorLight: Color {
+        switch self {
+        case .go:   return RunCardLight.positive        // 2FA84F
+        case .easy: return Color(hex: "B8860B")
+        case .rest: return RunCardLight.caution         // E07800
+        }
+    }
+}
+
 // MARK: - 제목·사실·다음 줄
 
 /// 오늘의 인사이트 카드의 글 — 앱 카드와 공유 카드가 같은 규칙으로 고른다.
@@ -78,6 +119,7 @@ struct TabDigestBlocksView: View {
     var onSelect: ((InsightTabKind) -> Void)? = nil
     /// 짧은 줄 아래 카드 원문을 한 줄 더(공유 카드 — 탭을 열어 볼 수 없으니 조금 자세히). 앱 화면은 끔.
     var showsDetail: Bool = false
+    @Environment(\.runCardLight) private var isLight
 
     static func kind(_ t: TabDigest.Tab) -> InsightTabKind {
         switch t {
@@ -88,11 +130,11 @@ struct TabDigestBlocksView: View {
     }
 
     /// 탭 카테고리 색 — 리듬 = 심박 빨강, 폼 = 페이스 청록, 퍼포먼스 = 브랜드 바이올렛
-    private static func tint(_ t: TabDigest.Tab) -> Color {
+    private static func tint(_ t: TabDigest.Tab, isLight: Bool) -> Color {
         switch t {
-        case .rhythm:      return Theme.heartRate
-        case .form:        return Theme.pace
-        case .performance: return Theme.violet
+        case .rhythm:      return isLight ? RunCardLight.heartRate : Theme.heartRate
+        case .form:        return isLight ? RunCardLight.pace : Theme.pace
+        case .performance: return isLight ? RunCardLight.violet : Theme.violet
         }
     }
 
@@ -104,11 +146,11 @@ struct TabDigestBlocksView: View {
         }
     }
 
-    private static func dotColor(_ tone: TabDigest.Tone) -> Color {
+    private static func dotColor(_ tone: TabDigest.Tone, isLight: Bool) -> Color {
         switch tone {
-        case .caution: return Theme.caution          // 총평(RunSummaryLinesView) 주의 줄과 같은 색
-        case .good:    return Theme.positive
-        case .neutral: return .secondary
+        case .caution: return isLight ? RunCardLight.caution : Theme.caution   // 총평(RunSummaryLinesView) 주의 줄과 같은 색
+        case .good:    return isLight ? RunCardLight.positive : Theme.positive
+        case .neutral: return isLight ? RunCardLight.textFaint : .secondary
         }
     }
 
@@ -116,7 +158,7 @@ struct TabDigestBlocksView: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(digest.enumerated()), id: \.offset) { i, b in
                 if i > 0 {
-                    Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
+                    Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
                 }
                 block(b)
             }
@@ -152,25 +194,25 @@ struct TabDigestBlocksView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .foregroundStyle(Self.tint(b.tab))
+            .foregroundStyle(Self.tint(b.tab, isLight: isLight))
             // 원문 줄은 블록당 하나 — 원문이 있는 첫 문장에만(4:5 축소로 글자가 작아지지 않게, 2026-10-15)
             let detailIndex = showsDetail ? b.statements.firstIndex { $0.detail != nil } : nil
             ForEach(Array(b.statements.enumerated()), id: \.offset) { i, st in
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Circle()
-                        .fill(Self.dotColor(st.tone))
+                        .fill(Self.dotColor(st.tone, isLight: isLight))
                         .frame(width: 6, height: 6)
                         .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 1 }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(st.text)
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
                         if i == detailIndex, let d = st.detail {
                             Text(d)
                                 .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.6))
+                                .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.6))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .multilineTextAlignment(.leading)
                         }
@@ -180,7 +222,7 @@ struct TabDigestBlocksView: View {
             if let dir = b.direction, dir != headlineNext {
                 Text("→ " + dir)
                     .font(.footnote)
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(isLight ? RunCardLight.violet : Theme.violet)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
             }
@@ -214,6 +256,7 @@ struct ConditionChip: View {
 struct RunConditionRow: View {
     let activity: Activity
     let condition: ActivityCondition?
+    @Environment(\.runCardLight) private var isLight
 
     private func sleepDurationText(_ hours: Double) -> String {
         let total = Int((hours * 60).rounded())
@@ -229,6 +272,13 @@ struct RunConditionRow: View {
                     //   condition?.weather는 외부 API라 값이 다를 수 있다 — 아이콘만 차용.
                     let hkTemp = activity.temperatureC
                     let wColor: Color = {
+                        if isLight {
+                            // 라이트 — 같은 조건, 흰 배경에서 읽히는 짙은 짝(차트 내보내기 라이트와 같은 계열)
+                            if w.isRainy                    { return RunCardLight.pace }
+                            if let t = hkTemp, t >= 28      { return temperatureColor(t, isLight: true) }
+                            if let t = hkTemp, t <= 2       { return temperatureColor(t, isLight: true) }
+                            return RunCardLight.textSoft
+                        }
                         if w.isRainy            { return Theme.pace }
                         if (hkTemp ?? 0) >= 28  { return Theme.calories }
                         if (hkTemp ?? 99) <= 2  { return .blue }
@@ -245,14 +295,15 @@ struct RunConditionRow: View {
                             "수면 \(slp.chipLabel)",
                             "Sleep \(slp.chipLabel)", ja: "睡眠 \(slp.chipLabel)"
                         ),
-                        color: slp.isInsufficient ? Theme.time : .secondary
+                        color: slp.isInsufficient ? (isLight ? RunCardLight.time : Theme.time)
+                                                  : (isLight ? RunCardLight.textSoft : .secondary)
                     )
                     // 수면 시간 — 사실만. 예전 등급별 처방("오늘 힘껏 달려도 좋습니다")은 수면만 보고 부하(대회 다음 날·
                     // 고강도 연속)를 몰라 홈 아침 제안("오늘은 이지런")과 어긋났고, 끝난 러닝에 처방이라 맞지도 않았다.
                     // "오늘 어떻게 달릴지"는 홈 카드(MRReadiness) 한 곳에서만 말한다.
                     Text(sleepDurationText(slp.sleepHours))
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isLight ? RunCardLight.textFaint : .secondary)
                 }
             }
         }
@@ -264,20 +315,21 @@ struct RunConditionRow: View {
 /// 거리 · 페이스 · 시간 · 심박 — 지표 의미색(§11).
 struct RunStatsRow: View {
     let activity: Activity
+    @Environment(\.runCardLight) private var isLight
 
     var body: some View {
         HStack(spacing: 4) {
             Text(activity.formattedDistance)
-                .foregroundStyle(Theme.violet)
+                .foregroundStyle(isLight ? RunCardLight.violet : Theme.violet)
             if let pace = activity.formattedPace {
                 Text("·").foregroundStyle(.tertiary)
-                Text(pace).foregroundStyle(Theme.pace)
+                Text(pace).foregroundStyle(isLight ? RunCardLight.pace : Theme.pace)
             }
             Text("·").foregroundStyle(.tertiary)
-            Text(activity.formattedDuration).foregroundStyle(Theme.time)
+            Text(activity.formattedDuration).foregroundStyle(isLight ? RunCardLight.time : Theme.time)
             if let hr = activity.avgHeartRate {
                 Text("·").foregroundStyle(.tertiary)
-                Text("\(hr)bpm").foregroundStyle(Theme.heartRate)
+                Text("\(hr)bpm").foregroundStyle(isLight ? RunCardLight.heartRate : Theme.heartRate)
             }
         }
         .font(.system(size: 13, weight: .semibold))
@@ -292,15 +344,19 @@ struct MorningSuggestionView: View {
     let label: String
     let entry: InsightMorning.Entry?
     var direction: String? = nil
+    @Environment(\.runCardLight) private var isLight
 
     var body: some View {
         let L = AppLanguage.shared
+        let labelColor = isLight ? RunCardLight.violet : Theme.violetText
         if let e = entry {
-            let color = InsightMorning.level(from: e.level)?.displayColor ?? Color.white
+            let lv = InsightMorning.level(from: e.level)
+            let color = isLight ? (lv?.displayColorLight ?? RunCardLight.text)
+                                : (lv?.displayColor ?? Color.white)
             VStack(alignment: .leading, spacing: 5) {
                 Text(label)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.violetText)
+                    .foregroundStyle(labelColor)
                 Text(e.line)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(color)
@@ -308,19 +364,19 @@ struct MorningSuggestionView: View {
                 if !e.why.isEmpty {
                     Text(e.why)
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.72))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.data.isEmpty {
                     Text(e.data)
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.planLine.isEmpty {
                     Text(e.planLine)
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -329,10 +385,10 @@ struct MorningSuggestionView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(label)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.violetText)
+                    .foregroundStyle(labelColor)
                 Text("→ " + L.s("다음: ", "Next: ", ja: "次: ") + d)
                     .font(.subheadline)
-                    .foregroundStyle(Theme.violet)
+                    .foregroundStyle(isLight ? RunCardLight.violet : Theme.violet)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -344,7 +400,8 @@ struct MorningSuggestionView: View {
 
 enum ShareDateText {
     /// "2026. 10. 13 화 오후 6:10" — 요일만 노랑. 인사이트 내보내기 머리와 같은 형식.
-    static func text(for date: Date) -> Text {
+    /// `isLight` = 흰 배경 공유 카드(기본 false = 기존 다크 색).
+    static func text(for date: Date, isLight: Bool = false) -> Text {
         let L = AppLanguage.shared
         let loc = L.locale
         let fDate = DateFormatter(); fDate.locale = loc
@@ -352,15 +409,17 @@ enum ShareDateText {
         let fDay  = DateFormatter(); fDay.locale  = loc; fDay.dateFormat = "EEE"
         let fTime = DateFormatter(); fTime.locale = loc
         fTime.dateFormat = L.s(" a h:mm", " h:mm a", ja: " H:mm")
-        return Text(fDate.string(from: date)).foregroundStyle(.white.opacity(0.65))
-             + Text(fDay.string(from: date)).foregroundStyle(Color.yellow)
-             + Text(fTime.string(from: date)).foregroundStyle(.white.opacity(0.65))
+        let base: Color = isLight ? RunCardLight.textFaint : .white.opacity(0.65)
+        let day: Color  = isLight ? RunCardLight.time : Color.yellow
+        return Text(fDate.string(from: date)).foregroundStyle(base)
+             + Text(fDay.string(from: date)).foregroundStyle(day)
+             + Text(fTime.string(from: date)).foregroundStyle(base)
     }
 }
 
 // MARK: - 카드
 
-/// 위 → 아래: 워드마크·날짜 → 그날 아침 → 구분선 → 오늘의 러닝 → 구분선 → 다음 날 아침. 다크 고정.
+/// 위 → 아래: 워드마크·날짜 → 오늘의 러닝 → 구분선 → 당일 아침. 다크 기본, 라이트 선택(`isLight`).
 /// 미리보기와 출력이 이 뷰 하나다.
 struct RunDayShareCard: View {
     let activity: Activity
@@ -373,9 +432,16 @@ struct RunDayShareCard: View {
     /// 이 러닝까지의 이번 주(월요일 시작)·이번 달 러닝 거리(km) — 날짜 밑 한 줄
     var weekKm: Double? = nil
     var monthKm: Double? = nil
+    /// 라이트 테마(흰 배경). 기본 다크.
+    var isLight: Bool = false
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
+        Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
+    }
+
+    /// 카드 바탕 — 렌더·4:5 캔버스 여백도 이 색
+    static func background(isLight: Bool) -> Color {
+        isLight ? RunCardLight.background : Theme.cardBackground
     }
 
     /// "이번 주 16.2km · 이번 달 87.3km"
@@ -394,17 +460,17 @@ struct RunDayShareCard: View {
         // 순서(2026-10-15 사용자): 오늘의 러닝 결과 → 당일 아침 제안. 다음 날 아침은 넣지 않는다.
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 8) {
-                MIMOWordmark(size: 9)
+                MIMOWordmark(size: 9, strokeMIMO: isLight)
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 2) {
-                    ShareDateText.text(for: activity.date)
+                    ShareDateText.text(for: activity.date, isLight: isLight)
                         .font(.system(size: 11))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     if let line = distanceLine {
                         Text(line)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isLight ? RunCardLight.text : .white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
@@ -415,21 +481,21 @@ struct RunDayShareCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(L.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.violetText)
+                    .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
                 Text((workoutTypeLabel ?? activity.type.label) + " · " + text.title)
                     .font(.headline.bold())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isLight ? RunCardLight.text : .white)
                     .fixedSize(horizontal: false, vertical: true)
                 if let fact = text.visibleFact {
                     Text(fact)
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.72))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let next = text.next {
                     Text(next)
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(isLight ? RunCardLight.textFaint : .white.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 RunConditionRow(activity: activity, condition: condition)
@@ -447,8 +513,9 @@ struct RunDayShareCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Theme.cardBackground)
-        .environment(\.colorScheme, .dark)
+        .background(Self.background(isLight: isLight))
+        .environment(\.runCardLight, isLight)
+        .environment(\.colorScheme, isLight ? .light : .dark)
     }
 }
 
@@ -465,6 +532,8 @@ struct RunDayShareSheet: View {
     var weekKm: Double? = nil
     var monthKm: Double? = nil
 
+    /// 테마 칩 — 켜짐 = 라이트, 꺼짐 = 다크(기본). 저장 안 함.
+    @State private var isLight = false
     @State private var exportImage: UIImage? = nil
     @State private var isRendering = false
     @State private var showShare = false
@@ -473,7 +542,7 @@ struct RunDayShareSheet: View {
     private var card: RunDayShareCard {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
-                        weekKm: weekKm, monthKm: monthKm)
+                        weekKm: weekKm, monthKm: monthKm, isLight: isLight)
     }
 
     var body: some View {
@@ -487,6 +556,7 @@ struct RunDayShareSheet: View {
                         .padding(20)
                         .frame(maxWidth: .infinity)
                 }
+                controlBar
                 shareBar
             }
             .background(Color(hex: "0D0D0F"))
@@ -500,9 +570,42 @@ struct RunDayShareSheet: View {
         }
         .preferredColorScheme(.dark)
         .onAppear { renderCard() }
+        .onChange(of: isLight) { _, _ in renderCard() }
         .sheet(isPresented: $showShare) {
             if let img = exportImage { ShareSheet(images: [img]) }
         }
+    }
+
+    /// 컨트롤 — 차트 내보내기와 같은 칩 규칙: 이름은 늘 "라이트"(켜짐 = 라이트, 꺼짐 = 다크).
+    private var controlBar: some View {
+        HStack(spacing: 5) {
+            controlChip(AppLanguage.shared.s("라이트", "Light", ja: "ライト"), isOn: isLight) {
+                isLight.toggle()
+            }
+            .frame(width: 96)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
+    /// RunChartShareSheet.controlChip과 같은 모양
+    private func controlChip(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Text(label)
+                .font(.system(size: 10.5, weight: isOn ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(isOn ? Theme.violet.opacity(0.18) : Color.white.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isOn ? Theme.violet : .secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private var shareBar: some View {
@@ -540,12 +643,12 @@ struct RunDayShareSheet: View {
         let renderer = ImageRenderer(content:
             card
                 .frame(width: 360)
-                .background(Theme.cardBackground)
+                .background(RunDayShareCard.background(isLight: isLight))
         )
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
         // 2) 4:5 캔버스에 맞춤 합성 — 길면 전체 축소(§5.8 같은 합성기)
-        exportImage = ShareCanvas.fit(raw, background: UIColor(Theme.cardBackground))
+        exportImage = ShareCanvas.fit(raw, background: UIColor(RunDayShareCard.background(isLight: isLight)))
         isRendering = false
     }
 }
