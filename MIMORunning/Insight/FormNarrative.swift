@@ -272,7 +272,9 @@ extension FormNarrative {
     ///   지면접촉의 `.below`(짧아짐)는 하락이 아니므로 이 분기를 열지 않는다.
     static func longDistanceSentence(_ i: LongDistanceInput) -> String {
         let L = AppLanguage.shared
-        let distKmStr = String(format: "%.0f", i.distKm)
+        // 정수 근처(±0.05)면 정수, 아니면 소수 한 자리 — 19.6km를 "20km"로 반올림하면 카드 거리와 어긋났다(2026-10-16)
+        let distKmStr = abs(i.distKm - i.distKm.rounded()) < 0.05
+            ? String(format: "%.0f", i.distKm) : String(format: "%.1f", i.distKm)
 
         let allInRange = [i.cad, i.gct, i.sl].allSatisfy { $0 == .inRange || $0 == .unknown }
         let anyBelow = i.cad == .below || i.sl == .below

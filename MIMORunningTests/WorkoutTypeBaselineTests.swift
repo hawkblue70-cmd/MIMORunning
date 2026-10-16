@@ -58,11 +58,11 @@ final class WorkoutTypeBaselineTests: XCTestCase {
 
     func testHotDayLongRunIsNotMisreadAsEasyWithHeatModel() {
         // 4주 기준선 400(15°C, 8km 6회). 오늘 30°C 12km 530 페이스, 스플릿 균일.
-        //  원본: 530 > 400×1.15 → 이지런(페이스 폴백)  /  환산: 530×e^−0.15 ≈ 456 → 이지·거리주·LSD 아님 → 롱런
+        //  원본: 530 > 400×1.15 → 쉬운 강도(페이스 폴백) + 롱런 거리 → LSD  /  환산: 530×e^−0.15 ≈ 456 → 이지·거리주·LSD 아님 → 롱런
         let hist = (1...6).map { run(daysAgo: $0 * 4, km: 8, pace: 400, temp: 15) }
         let hot = run(daysAgo: 0, km: 12, pace: 530, temp: 30)
         let splits = flatSplits(count: 12, pace: 530)
-        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: hot, history: hist, splits: splits), .easy)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: hot, history: hist, splits: splits), .lsd)
         XCTAssertEqual(WorkoutTypeClassifier.classify(activity: hot, history: hist, splits: splits, heat: hotModel), .longRun)
     }
 
@@ -79,6 +79,23 @@ final class WorkoutTypeBaselineTests: XCTestCase {
         ]
         XCTAssertEqual(WorkoutTypeClassifier.classify(activity: fast, history: hist, splits: splits), .tempo)
         XCTAssertEqual(WorkoutTypeClassifier.classify(activity: fast, history: hist, splits: splits, hrZones: zones), .easy)
+    }
+
+    /// 쉬운 심박이라도 롱런 거리면 LSD — 거리를 보기 전에 이지런으로 끝나 19.6km(평소 2.2배, Zone 2 63%)가
+    /// 이지런이 되던 결함(2026-10-16). 평소 거리면 그대로 이지런.
+    func testLongEasyHeartRateIsLSD() {
+        let hist = (1...6).map { run(daysAgo: $0 * 4, km: 9, pace: 389) }
+        let zones = [
+            HRZoneData(id: 1, name: "Z1", minBPM: 90,  maxBPM: 119, seconds: 400,  fraction: 0.05),
+            HRZoneData(id: 2, name: "Z2", minBPM: 120, maxBPM: 139, seconds: 4900, fraction: 0.63),
+            HRZoneData(id: 3, name: "Z3", minBPM: 140, maxBPM: 154, seconds: 2500, fraction: 0.32),
+        ]
+        let long = run(daysAgo: 0, km: 19.6, pace: 400)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: long, history: hist,
+                                                      splits: flatSplits(count: 19, pace: 400), hrZones: zones), .lsd)
+        let normal = run(daysAgo: 0, km: 9, pace: 400)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: normal, history: hist,
+                                                      splits: flatSplits(count: 9, pace: 400), hrZones: zones), .easy)
     }
 
     // MARK: - baselinePace

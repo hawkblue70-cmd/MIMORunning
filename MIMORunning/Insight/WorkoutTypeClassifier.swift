@@ -35,7 +35,11 @@ struct WorkoutTypeClassifier {
         let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
 
         if isPlanInterval(intervalSegments: intervalSegments)              { return .interval    }
-        if isEasy(activity: activity, base: base, hrZones: hrZones)        { return .easy        }
+        // 쉬운 강도라도 롱런 거리면 LSD — 길게·천천히·고르게. 거리를 보기 전에 이지런으로 끝나
+        // 평소 2.2배 19.6km(Zone 2 63%)가 "편안한 페이스로 회복하는 러닝"이 됐다(2026-10-16)
+        if isEasy(activity: activity, base: base, hrZones: hrZones) {
+            return isLongRun(activity: activity, base: base) ? .lsd : .easy
+        }
         if isBuildUp(splits: splits)                                       { return .buildUp     }
         if isDistanceRun(activity: activity, base: base)                   { return .distanceRun }
         if isLSD(activity: activity, base: base, splits: splits)           { return .lsd         }
@@ -342,6 +346,9 @@ struct WorkoutTypeClassifier {
             let pct = Int((zone12 * 100).rounded())
             if zone12 >= 0.65 {
                 // 심박 우선 — 기준선보다 빨라도 이지런(isEasy와 같은 규칙)
+                if isLongRun(activity: activity, base: base) {
+                    return (.lsd, "LSD(심박): Zone2 \(pct)% ≥ 65% + 롱런 거리 · \(baseStr)")
+                }
                 return (.easy, "이지: Zone2 \(pct)% ≥ 65% · \(baseStr)")
             } else {
                 notes.append("이지탈락: Zone2 \(pct)% < 65%")
@@ -349,6 +356,9 @@ struct WorkoutTypeClassifier {
         } else if let pace = myPace, let m = med {
             let thr = m * 1.15
             if pace > thr {
+                if isLongRun(activity: activity, base: base) {
+                    return (.lsd, "LSD(페이스폴백): \(pf(pace)) > 기준\(pf(m))×1.15 + 롱런 거리 · \(baseStr)")
+                }
                 return (.easy, "이지(페이스폴백): \(pf(pace)) > 기준\(pf(m))×1.15=\(pf(thr)) · \(baseStr)")
             }
             notes.append("이지탈락: Zone2없음·페이스 \(pf(pace)) ≤ \(pf(thr))(기준\(pf(m))×1.15)")
