@@ -423,8 +423,9 @@ enum TabDigestRhythm {
                     return c.second - c.first >= GradeAdjustedPace.halvesClimbGapM && c.second > 0
                 }()
                 if lateClimb {
+                    // 문장만 지형을 밝히고 판정 무게(isProblem)는 그대로 — 요약 블록·맨 위 요약의 느낌이 바뀌지 않게(2026-10-17 사용자 결정)
                     return Verdict(text: L.s("후반 오르막에서 페이스가 느려졌습니다", "Pace slowed on the late climb", ja: "後半の上りでペースが落ちました"),
-                                   isProblem: false, shade: .neutral, paceShape: .slowedLate,
+                                   isProblem: true, shade: .neutral, paceShape: .slowedLate,
                                    short: L.s("후반 오르막 페이스 \(d)초/km", "Late climb pace \(d) s/km", ja: "後半の上りペース\(d)秒/km"))
                 }
                 return Verdict(text: L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"),

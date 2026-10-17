@@ -216,9 +216,8 @@ enum RunSummary {
         // 값은 모두 마지막 구간 것이다 — 상세 타일(러닝 전체 평균)과 숫자가 다른 까닭을 맨 앞에 한 번 밝힌다.
         // 예전엔 보폭에만 "마지막 2km"가 붙어 케이던스·지면접촉이 전체 평균처럼 읽혔다(173 vs 175).
         let joined = pieces.joined(separator: " · ")
-        // 말기가 오르막이면 그 사실을 붙인다 — 오르막 보폭 감소를 피로로만 읽지 않게(2026-10-17)
-        let hill = f.lateUphill ? L.s("(오르막)", " (uphill)", ja: "(上り)") : ""
-        return L.s("마지막 \(lateKm)km\(hill) \(joined)", "Last \(lateKm) km\(hill): \(joined)", ja: "最後の\(lateKm)km\(hill) \(joined)")
+        // "(오르막)"은 붙이지 않는다 — 사용자가 체감과 맞다고 한 "마지막 2km 살짝 무거워짐"을 지형 탓으로 흐리게 읽혀서(2026-10-17 사용자 결정)
+        return L.s("마지막 \(lateKm)km \(joined)", "Last \(lateKm) km: \(joined)", ja: "最後の\(lateKm)km \(joined)")
     }
 
     /// `.heavier`는 피로 방향으로 처음 벗어난 지표(순서 고정: 케이던스 → 보폭 → 접지)만 짚어 다음 행동을 준다 —
