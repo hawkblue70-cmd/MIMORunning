@@ -67,6 +67,9 @@ enum FormPhase {
         /// 폼 카드의 전체 러닝 범위와 다를 수 있어 근거 줄에 숫자로 밝힌다.
         var lateStrideRange: ClosedRange<Double>? = nil
         var lateGroundContactRange: ClosedRange<Double>? = nil
+        /// 말기 구간이 오르막인가(평지 환산 배율 < 0.98 = 평지 환산이 실측보다 2%↑ 빠름). 근거에 "(오르막)"을 붙인다 —
+        /// 오르막에선 피로 없이도 보폭이 짧아진다(2026-10-17 U자 코스).
+        var lateUphill: Bool = false
         var isHeld: Bool { late == .held }
         /// 이지 프레임에서 케이던스만 내려간 말기는 "무거워짐"이 아니라 편한 날의 자연스러운 변화.
         /// (`.heavier([.cadence, .verticalOsc])`처럼 다른 신호가 섞이면 소프트가 아니다.)
@@ -339,7 +342,8 @@ enum FormPhase {
                       signals: PhaseSignals(early: eS, mid: mS, late: lS),
                       isEasyFrame: easyFrame,
                       lateStrideRange: displayRange(lBand?.stride, metric: .stride),
-                      lateGroundContactRange: displayRange(lBand?.groundContact, metric: .groundContact))
+                      lateGroundContactRange: displayRange(lBand?.groundContact, metric: .groundContact),
+                      lateUphill: lScale < 0.98)
     }
 
     /// 세 단계에 같은 배율을 쓰는 편의 오버로드 — 기존 단일 스케일 호출부·테스트가 그대로 동작한다.

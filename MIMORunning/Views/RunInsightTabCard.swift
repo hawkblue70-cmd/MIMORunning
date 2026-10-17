@@ -2339,7 +2339,8 @@ private struct RhythmInsightCard: View {
         // 기준선이 없거나 이 페이스 구간의 케이던스 기준이 빠졌으면(범위가 너무 넓어 제외 등) 일반 범위 문장 —
         // 아래 라벨이 "일반 참고 범위"인데 "평소 범위예요"라고 하면 어긋난다
         guard let bl = formBaseline, bl.baseline(for: activity, gradeAdjustedPace: runGAP)?.cadence != nil else {
-            let inRange = (160...175).contains(cad)
+            // 라벨 "일반 참고 범위 160–180"과 같은 경계 — 160~175로 비교해 178이 "높습니다"로 나왔다(2026-10-17)
+            let inRange = (160...180).contains(cad)
             let text = inRange
                 ? L.s("일반적인 범위입니다", "Typical range", ja: "一般的な範囲です")
                 : cad < 160
@@ -2382,7 +2383,7 @@ private struct RhythmInsightCard: View {
 
     private func cadenceSection(_ cadence: Int) -> some View {
         let L = AppLanguage.shared
-        let inRange = (160...175).contains(cadence)
+        let inRange = (160...180).contains(cadence)   // 라벨 160–180과 같은 경계
         let statusText = inRange
             ? L.s("일반적인 범위입니다", "Typical range", ja: "一般的な範囲です")
             : cadence < 160

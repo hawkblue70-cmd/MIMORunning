@@ -340,6 +340,13 @@ struct RunSummaryTests {
         #expect(out[0].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
+    @Test func evidenceShowsFourWeekAverageBehindHighLabel() {
+        // 상태어는 4주 평균 대비 "높음"인데 근거엔 +5%만 있어 헷갈렸다 — 기준값을 함께(2026-10-17)
+        var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .high
+        i.sevenDayAU = 1003; i.previousSevenAU = 951; i.fourWeekAvgAU = 760
+        #expect(lines(i)[0].evidence == "7일 1,003 AU · 이전 7일 951 · 4주 평균 760 · 최근 7일 +5%")
+    }
+
     @Test func evidenceAppendsSignedWeekOverWeek() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.234; i.acuteChronic = .steady
         i.sevenDayAU = 1573; i.previousSevenAU = 1274

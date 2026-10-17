@@ -416,6 +416,17 @@ enum TabDigestRhythm {
             } else if second.overallPaceSecPerKm - first.overallPaceSecPerKm >= FormPhase.paceDeltaSec {
                 // 꾸준히 처진 러닝은 편차(cv)가 작아도 "고르게"가 아니다 — 6'20"→6'31"→6'47"이 "처음부터 끝까지 고르게"로 나왔다(2026-10-08)
                 let d = TabDigest.signed(Int((second.overallPaceSecPerKm - first.overallPaceSecPerKm).rounded()))
+                // 후반이 오르막(전후반 오르내림 차 15m↑, 후반이 오름)이면 지형 탓 — 심박 차트 "후반 오르막에서…"와 같은 말(2026-10-17)
+                let lateClimb: Bool = {
+                    guard let c = GradeAdjustedPace.halvesNetClimb(altitudeProfile.map { (x: $0.distanceKm, altitude: $0.altitude) })
+                    else { return false }
+                    return c.second - c.first >= GradeAdjustedPace.halvesClimbGapM && c.second > 0
+                }()
+                if lateClimb {
+                    return Verdict(text: L.s("후반 오르막에서 페이스가 느려졌습니다", "Pace slowed on the late climb", ja: "後半の上りでペースが落ちました"),
+                                   isProblem: false, shade: .neutral, paceShape: .slowedLate,
+                                   short: L.s("후반 오르막 페이스 \(d)초/km", "Late climb pace \(d) s/km", ja: "後半の上りペース\(d)秒/km"))
+                }
                 return Verdict(text: L.s("후반으로 갈수록 페이스가 느려졌습니다", "Pace eased off in the second half", ja: "後半になるほどペースが落ちました"),
                                isProblem: true, shade: .neutral, paceShape: .slowedLate,
                                short: L.s("후반 페이스 \(d)초/km", "Late pace \(d) s/km", ja: "後半ペース\(d)秒/km"))

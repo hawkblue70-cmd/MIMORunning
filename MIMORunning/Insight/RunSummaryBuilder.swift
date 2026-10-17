@@ -236,13 +236,16 @@ enum RunSummaryBuilder {
         if let idx = c.effortIndex {
             let runs = effortLoadRuns(activity: c.activity, history: c.history, index: idx).runs
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: c.activity.date)
-            input.acuteChronic = EffortLoad.rollingAcuteChronic(runs: runs, asOf: c.activity.date)?.label
+            let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: c.activity.date)
+            input.acuteChronic = ac?.label
             // 같은 러닝 목록으로 하루 전 창의 라벨 — 36일 창이 어제 기준 7+28일을 덮는다
             input.acuteChronicYesterday = EffortLoad.rollingAcuteChronicYesterday(runs: runs, asOf: c.activity.date)?.label
             input.loadSentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: c.activity.date)
             if let au = sevenDayAU(runs: runs, asOf: c.activity.date) {
                 input.sevenDayAU = au.current
                 input.previousSevenAU = au.previous
+                // 상태어 기준값 — 7일 합 ÷ 비율 = 직전 4주 평균
+                if let r = ac?.ratio, r > 0 { input.fourWeekAvgAU = au.current / r }
             }
             // 이 러닝의 강도가 아직 없으면 위 합계에 오늘이 0으로 들어가 있다 — 상태어가 그 사실을 말하게 한다
             input.todayEffortMissing = idx.resolve(c.activity.id) == nil

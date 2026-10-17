@@ -48,6 +48,8 @@ struct RunSummaryInput {
     var peakHeartRate: Int? = nil
     var temperatureC: Double? = nil
     var sevenDayAU: Double? = nil
+    /// 직전 4주(7일 창 4개) 평균 AU — 상태어 "4주 평균 대비"의 기준값. 근거에 숫자로 적는다.
+    var fourWeekAvgAU: Double? = nil
     var previousSevenAU: Double? = nil
     var loadSentence: EffortLoad.SentenceKind? = nil
     /// 이 러닝의 체감 강도가 아직 없음 — 7일 합에 오늘이 0으로 들어가 있으므로 높다/가볍다를 말하지 않는다
@@ -214,7 +216,9 @@ enum RunSummary {
         // 값은 모두 마지막 구간 것이다 — 상세 타일(러닝 전체 평균)과 숫자가 다른 까닭을 맨 앞에 한 번 밝힌다.
         // 예전엔 보폭에만 "마지막 2km"가 붙어 케이던스·지면접촉이 전체 평균처럼 읽혔다(173 vs 175).
         let joined = pieces.joined(separator: " · ")
-        return L.s("마지막 \(lateKm)km \(joined)", "Last \(lateKm) km: \(joined)", ja: "最後の\(lateKm)km \(joined)")
+        // 말기가 오르막이면 그 사실을 붙인다 — 오르막 보폭 감소를 피로로만 읽지 않게(2026-10-17)
+        let hill = f.lateUphill ? L.s("(오르막)", " (uphill)", ja: "(上り)") : ""
+        return L.s("마지막 \(lateKm)km\(hill) \(joined)", "Last \(lateKm) km\(hill): \(joined)", ja: "最後の\(lateKm)km\(hill) \(joined)")
     }
 
     /// `.heavier`는 피로 방향으로 처음 벗어난 지표(순서 고정: 케이던스 → 보폭 → 접지)만 짚어 다음 행동을 준다 —
@@ -489,6 +493,10 @@ enum RunSummary {
             parts.append(L.s("7일 \(groupedInt(au)) AU", "7-day \(groupedInt(au)) AU", ja: "7日 \(groupedInt(au)) AU"))
             if let prev = i.previousSevenAU {
                 parts.append(L.s("이전 7일 \(groupedInt(prev))", "previous 7 days \(groupedInt(prev)) AU", ja: "前の7日 \(groupedInt(prev))"))
+            }
+            // 상태어는 4주 평균 대비인데 근거엔 이전 7일만 있어 "+5%인데 왜 높음?"으로 읽혔다(2026-10-17) — 기준값을 함께 적는다
+            if let avg = i.fourWeekAvgAU, avg > 0 {
+                parts.append(L.s("4주 평균 \(groupedInt(avg))", "4-wk avg \(groupedInt(avg)) AU", ja: "4週平均 \(groupedInt(avg))"))
             }
         }
         if let w = i.weekOverWeek {
