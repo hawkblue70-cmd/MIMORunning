@@ -68,9 +68,9 @@ enum FormNarrative {
         }
         // 케이던스↑ + 보폭 범위 안 — 수직진폭까지 작았으면 같은 문장 안에서 함께 말한다(가벼운 쪽으로 같은 방향)
         let cadUpStrideInRange = i.vo == .below
-            ? L.s("발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았습니다.",
+            ? L.s("케이던스가 평소보다 높았습니다. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았습니다.",
                   "Cadence was above your usual. Stride length was within your typical range, and vertical oscillation was lower than usual.", ja: "ピッチが普段より速かったです。ストライドは普段の範囲で、上下動は普段より小さかったです。")
-            : L.s("발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였습니다.",
+            : L.s("케이던스가 평소보다 높았습니다. 보폭은 평소 범위였습니다.",
                   "Cadence was above your usual. Stride length was within your typical range.", ja: "ピッチが普段より速かったです。ストライドは普段の範囲でした。")
 
         // MARK: 1. 지면접촉
@@ -94,26 +94,27 @@ enum FormNarrative {
                 }
                 switch frame {
                 case .general:
-                    return L.s("발걸음이 평소보다 빠르게 돌았습니다. 지면접촉이 \(g)ms로 짧았습니다.",
+                    return L.s("케이던스가 평소보다 높았습니다. 지면접촉이 \(g)ms로 짧았습니다.",
                                "Cadence was faster than usual. Ground contact was short at \(g) ms.", ja: "ピッチが普段より速く回りました。接地時間は\(g)msと短かったです。")
                 case .easy:
                     if i.cad == .above {
-                        return L.s("발걸음이 빠르게 돌고 지면접촉이 \(g)ms로 짧았습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.",
-                                   "Quick cadence with ground contact short at \(g) ms. On an easy day it's fine to relax the rhythm a little.", ja: "ピッチが速く回り、接地時間は\(g)msと短かったです。楽な日はリズムを少し落としても大丈夫です。")
+                        // 이지런의 높은 케이던스는 문제가 아니다 — "리듬을 늦춰도"는 범례("케이던스는 높을수록")와 반대였다(2026-10-17)
+                        return L.s("케이던스가 높고 지면접촉이 \(g)ms로 짧았습니다.",
+                                   "Quick cadence with ground contact short at \(g) ms.", ja: "ピッチが速く回り、接地時間は\(g)msと短かったです。")
                     }
                     if i.cad == .below {
-                        return L.s("발걸음은 평소보다 느렸지만 지면접촉이 \(g)ms로 짧았습니다. 편하게 뛴 날입니다.",
+                        return L.s("케이던스는 평소보다 낮았지만 지면접촉이 \(g)ms로 짧았습니다. 편하게 뛴 날입니다.",
                                    "Cadence was below your usual, but ground contact stayed short at \(g) ms. A relaxed day.", ja: "ピッチは普段より遅めでしたが、接地時間は\(g)msと短かったです。楽に走れた日です。")
                     }
                     return L.s("지면접촉이 \(g)ms로 짧았습니다. 가볍게 뛴 날입니다.",
                                "Ground contact was short at \(g) ms. A light, easy day.", ja: "接地時間は\(g)msと短かったです。軽やかに走れた日です。")
                 case .fast:
                     if i.cad == .above {
-                        return L.s("발걸음이 빠르게 돌고 지면접촉도 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
+                        return L.s("케이던스가 높고 지면접촉도 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
                                    "Quick cadence and ground contact short at \(g) ms — form that suits a fast pace.", ja: "ピッチが速く回り、接地時間も\(g)msと短かったです。速いペースに合ったフォームです。")
                     }
                     if i.cad == .below {
-                        return L.s("발걸음은 평소보다 느렸지만 지면접촉이 \(g)ms로 짧았습니다.",
+                        return L.s("케이던스는 평소보다 낮았지만 지면접촉이 \(g)ms로 짧았습니다.",
                                    "Cadence was below your usual, but ground contact stayed short at \(g) ms.", ja: "ピッチは普段より遅めでしたが、接地時間は\(g)msと短かったです。")
                     }
                     return L.s("지면접촉이 \(g)ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.",
@@ -160,25 +161,25 @@ enum FormNarrative {
                                "Cadence and stride were both a little below your usual.", ja: "ケイデンスとストライドが普段より少し小さかったです。")
                 }
                 let sfx = i.slStr.map { " \($0)m" } ?? ""
-                return L.s("발걸음이 평소보다 느렸습니다. 보폭\(sfx)으로 페이스를 만들었습니다.",
+                return L.s("케이던스가 평소보다 낮았습니다. 보폭\(sfx)으로 페이스를 만들었습니다.",
                            "Cadence was below your usual. Stride\(sfx) carried the pace.", ja: "ピッチが普段より遅かったです。ストライド\(sfx)でペースをつくりました。")
             case .easy:
                 if i.sl == .below {
-                    return L.s("발걸음도 보폭도 평소보다 조금 작았습니다. 편하게 뛴 날입니다.",
+                    return L.s("케이던스는 조금 낮고 보폭은 조금 짧았습니다. 편하게 뛴 날입니다.",
                                "Both cadence and stride were a little below your usual. A relaxed day.", ja: "ピッチもストライドも普段より少し小さかったです。楽に走れた日です。")
                 }
-                return L.s("발걸음이 평소보다 느렸습니다. 편한 날엔 자연스러운 변화입니다.",
+                return L.s("케이던스가 평소보다 낮았습니다. 편한 날엔 자연스러운 변화입니다.",
                            "Cadence was below your usual — a natural change on an easy day.", ja: "ピッチが普段より遅かったです。楽な日には自然な変化です。")
             case .fast:
                 if i.sl == .above, let sl = i.slStr {
-                    return L.s("보폭 \(sl)m로 속도를 냈습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.",
+                    return L.s("보폭 \(sl)m로 속도를 냈습니다. 빠른 날엔 케이던스를 조금 더 높이는 쪽이 부담이 덜합니다.",
                                "You made the pace with a \(sl) m stride. On fast days, turning your feet over a little quicker is easier on the body.", ja: "ストライド\(sl)mでスピードを出しました。速い日はピッチを少し速く回すほうが負担が少ないです。")
                 }
                 if i.sl == .below {
-                    return L.s("발걸음과 보폭이 모두 평소보다 작아 페이스가 덜 나온 날입니다.",
+                    return L.s("케이던스는 낮고 보폭은 짧아 페이스가 덜 나온 날입니다.",
                                "Both cadence and stride were below your usual, so the pace didn't quite come.", ja: "ピッチとストライドがどちらも普段より小さく、ペースが出きらなかった日です。")
                 }
-                return L.s("발걸음이 평소보다 느렸습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.",
+                return L.s("케이던스가 평소보다 낮았습니다. 빠른 날엔 케이던스를 조금 더 높이는 쪽이 부담이 덜합니다.",
                            "Cadence was below your usual. On fast days, turning your feet over a little quicker is easier on the body.", ja: "ピッチが普段より遅かったです。速い日はピッチを少し速く回すほうが負担が少ないです。")
             }
         }
@@ -186,16 +187,16 @@ enum FormNarrative {
             switch frame {
             case .general:
                 if i.sl == .inRange { return cadUpStrideInRange }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
+                return withStride(L.s("케이던스가 평소보다 높았습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             case .easy:
                 if i.sl == .below {
-                    return L.s("잰걸음이었습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.",
+                    return L.s("잰걸음이었습니다.",
                                "Short, quick steps. On an easy day it's fine to relax the rhythm a little.", ja: "小刻みな走りでした。楽な日はリズムを少し落としても大丈夫です。")
                 }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
+                return withStride(L.s("케이던스가 평소보다 높았습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             case .fast:
                 if i.sl == .inRange { return cadUpStrideInRange }
-                return withStride(L.s("발걸음이 평소보다 빨랐습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
+                return withStride(L.s("케이던스가 평소보다 높았습니다.", "Cadence was above your usual.", ja: "ピッチが普段より速かったです。"))
             }
         }
 

@@ -592,13 +592,19 @@ struct RunFormCardView: View {
 
         // [주법] 평소 대비 걸음수/보폭 관찰 — 유형 라벨 없이 사실만
         let style = runningStyleClassification
-        if (style == .quickStep || style == .bigStride), items.count < 3 {
+        // 위 폼 문장이 이미 케이던스 이탈(범위 위·아래)을 말했으면 같은 말이라 생략한다(2026-10-17)
+        let cadenceAlreadySaid: Bool = {
+            guard let c = avgCadence, let stat = bb?.cadence else { return false }
+            let st = metricStatus(rawValue: Double(c), stat: stat, dir: .cadence)
+            return st == .above || st == .below
+        }()
+        if (style == .quickStep || style == .bigStride), items.count < 3, !cadenceAlreadySaid {
             let text: String
             switch style {
             case .quickStep:
-                text = L.s("평소보다 발걸음이 빠르고 보폭이 짧았습니다.", "Cadence was higher and stride shorter than usual.", ja: "普段よりピッチが速く、ストライドが短かったです。")
+                text = L.s("평소보다 케이던스가 높고 보폭이 짧았습니다.", "Cadence was higher and stride shorter than usual.", ja: "普段よりピッチが速く、ストライドが短かったです。")
             case .bigStride:
-                text = L.s("평소보다 보폭이 크고 발걸음이 느렸습니다.", "Stride was longer and cadence slower than usual.", ja: "普段よりストライドが大きく、ピッチが遅かったです。")
+                text = L.s("평소보다 보폭이 길고 케이던스가 낮았습니다.", "Stride was longer and cadence slower than usual.", ja: "普段よりストライドが大きく、ピッチが遅かったです。")
             default:
                 text = ""
             }
@@ -1607,9 +1613,15 @@ struct RunFormCardView: View {
         }.count, 5)
         // 범례는 모양으로 말한다(2026-10-08 사용자 요청) — '눈금 사이'·'흰 점'은 무엇을 가리키는지 알기 어려웠다.
         //   실제 모양: 양 끝 눈금 사이 회색 막대 = 평소 범위 · 빈 원 = 최근 비슷한 거리 · 꽉 찬 점 = 오늘(초록/회색)
+        // 라벨 범위는 그 구간 과거 러닝의 실제 최저~최고 페이스 — 판정은 구간 경계로 해서 오늘이 이 범위 밖(6'45" vs 6'22"~6'42")이어도
+        // 같은 구간일 수 있다. 그때는 오늘도 같은 구간임을 밝힌다(2026-10-17)
+        let todayOutside = actPaceBS > 0 && (actPaceBS < paceMin - 0.5 || actPaceBS > paceMax + 0.5)
+        let todayNoteKo = todayOutside ? " · 오늘 \(pf(actPaceBS))도 같은 구간" : ""
+        let todayNoteEn = todayOutside ? " · today's \(pf(actPaceBS)) is in the same band" : ""
+        let todayNoteJa = todayOutside ? " · 今日の\(pf(actPaceBS))も同じ区間" : ""
         let line1 = L.s(
-            "▬ 회색 막대 = 내 평소 범위 (페이스 \(pr) 러닝 \(n)회)",
-            "▬ Gray bar = your usual range (\(n) runs at \(pr))", ja: "▬ 灰色の棒 = いつもの範囲 (ペース\(pr)のラン\(n)回)")
+            "▬ 회색 막대 = 내 평소 범위 (페이스 \(pr) 러닝 \(n)회\(todayNoteKo))",
+            "▬ Gray bar = your usual range (\(n) runs at \(pr)\(todayNoteEn))", ja: "▬ 灰色の棒 = いつもの範囲 (ペース\(pr)のラン\(n)回\(todayNoteJa))")
         // [93] 0건일 때 "비교할 만한 거리의 러닝이 없어요", 2건 이상만 흰 점 표기
         let dotLine: String
         if recentCount == 0 {

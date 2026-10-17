@@ -256,12 +256,12 @@ struct IntervalFatigueCard: View {
         let L = AppLanguage.shared
         if interpretationType == .muscFatigue {
             return L.s(
-                "후반에 보폭이 \(String(format: "%.1f", sdAbs))% 줄어 발걸음(\(String(format: "%.1f", cdAbs))%)보다 컸습니다.",
+                "후반에 보폭이 \(String(format: "%.1f", sdAbs))% 줄어 케이던스(\(String(format: "%.1f", cdAbs))%)보다 컸습니다.",
                 "In the later reps stride dropped \(String(format: "%.1f", sdAbs))% vs cadence (\(String(format: "%.1f", cdAbs))%).", ja: "後半にストライドが\(String(format: "%.1f", sdAbs))%落ち、ピッチ(\(String(format: "%.1f", cdAbs))%)より大きく落ちました。"
             )
         } else if interpretationType == .rhythmCollapse {
             return L.s(
-                "후반에 발걸음이 \(String(format: "%.1f", cdAbs))% 줄어 보폭(\(String(format: "%.1f", sdAbs))%)보다 컸습니다.",
+                "후반에 케이던스가 \(String(format: "%.1f", cdAbs))% 줄어 보폭(\(String(format: "%.1f", sdAbs))%)보다 컸습니다.",
                 "In the later reps cadence dropped \(String(format: "%.1f", cdAbs))% vs stride (\(String(format: "%.1f", sdAbs))%).", ja: "後半にピッチが\(String(format: "%.1f", cdAbs))%落ち、ストライド(\(String(format: "%.1f", sdAbs))%)より大きく落ちました。"
             )
         }
@@ -311,7 +311,7 @@ struct IntervalFatigueCard: View {
         let L = AppLanguage.shared
         switch normBadgeKind {
         case .muscFatigue:    return L.s("보폭이 더 크게 떨어졌습니다",          "Stride dropped more than cadence", ja: "ストライドの方が大きく落ちました")
-        case .rhythmCollapse: return L.s("발걸음이 더 크게 떨어졌습니다",         "Cadence dropped more than stride", ja: "ピッチの方が大きく落ちました")
+        case .rhythmCollapse: return L.s("케이던스가 더 크게 떨어졌습니다",         "Cadence dropped more than stride", ja: "ピッチの方が大きく落ちました")
         case .bothDecline:    return L.s("둘 다 나란히 떨어졌습니다",             "Both declined together", ja: "両方そろって落ちました")
         case .styleChange:    return L.s("같은 속도를 다른 방식으로 만들었습니다", "Same speed, different mechanics", ja: "同じ速度を別の方法でつくりました")
         case .stable:         return L.s("둘 다 유지됐습니다",                   "Both held steady", ja: "両方とも保たれました")
@@ -460,7 +460,7 @@ struct IntervalFatigueCard: View {
         case .normal:
             if let ec = earlyCad, let lc = lateCad, lc > ec {
                 return L.s(
-                    "페이스를 지키면서 발걸음이 오히려 올랐습니다. 후반까지 리듬이 살아 있었다는 뜻입니다.",
+                    "페이스를 지키면서 케이던스가 오히려 올랐습니다. 후반까지 리듬이 살아 있었다는 뜻입니다.",
                     "Pace held while cadence actually climbed — rhythm stayed strong to the end.", ja: "ペースを保ちながらピッチがむしろ上がりました。後半までリズムが生きていたということです。"
                 )
             } else if let es = earlyStride, let ls = lateStride, ls >= es * 0.995 {
@@ -477,7 +477,7 @@ struct IntervalFatigueCard: View {
         case .lateBoost:
             if let ec = earlyCad, let lc = lateCad, lc > ec {
                 return L.s(
-                    "발걸음이 올라가면서 속도가 붙었습니다. 여유가 남아 있었다는 뜻입니다.",
+                    "케이던스가 올라가면서 속도가 붙었습니다. 여유가 남아 있었다는 뜻입니다.",
                     "Cadence climbed and pace followed — more in the tank.", ja: "ピッチが上がるにつれて速度が乗りました。余裕が残っていたということです。"
                 )
             } else {
@@ -523,7 +523,7 @@ struct IntervalFatigueCard: View {
             }
         case .rhythmCollapse:
             // ③ 리듬 붕괴: cadence-dominant drop, HR stable
-            parts.append(L.s("후반으로 갈수록 발걸음 리듬이 흐트러졌습니다.",
+            parts.append(L.s("후반으로 갈수록 케이던스가 흐트러졌습니다.",
                               "Stride rhythm broke down in the later reps.", ja: "後半になるほどピッチのリズムが乱れました。"))
         }
 

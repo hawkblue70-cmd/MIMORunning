@@ -47,10 +47,10 @@ struct FormNarrativeTests {
 
     @Test func generalCadenceBelowStrideInRangeKeepsOldSentence() {
         let i = input(cad: .below, sl: .inRange)
-        #expect(ko(i, .general) == "발걸음이 평소보다 느렸습니다. 보폭 1.12m으로 페이스를 만들었습니다.")
+        #expect(ko(i, .general) == "케이던스가 평소보다 낮았습니다. 보폭 1.12m으로 페이스를 만들었습니다.")
         // 보폭 미상도 옛 문장 유지
         let noSl = input(cad: .below, sl: .unknown, slStr: nil)
-        #expect(ko(noSl, .general) == "발걸음이 평소보다 느렸습니다. 보폭으로 페이스를 만들었습니다.")
+        #expect(ko(noSl, .general) == "케이던스가 평소보다 낮았습니다. 보폭으로 페이스를 만들었습니다.")
     }
 
     @Test func generalStrideOnlyDeviationIsStated() {
@@ -72,13 +72,13 @@ struct FormNarrativeTests {
 
     @Test func easyBothBelow() {
         let i = input(cad: .below, sl: .below)
-        #expect(ko(i, .easy) == "발걸음도 보폭도 평소보다 조금 작았습니다. 편하게 뛴 날입니다.")
+        #expect(ko(i, .easy) == "케이던스는 조금 낮고 보폭은 조금 짧았습니다. 편하게 뛴 날입니다.")
         #expect(en(i, .easy) == "Both cadence and stride were a little below your usual. A relaxed day.")
     }
 
     @Test func easyCadenceBelowStrideNotBelow() {
-        #expect(ko(input(cad: .below), .easy) == "발걸음이 평소보다 느렸습니다. 편한 날엔 자연스러운 변화입니다.")
-        #expect(ko(input(cad: .below, sl: .above), .easy) == "발걸음이 평소보다 느렸습니다. 편한 날엔 자연스러운 변화입니다.")
+        #expect(ko(input(cad: .below), .easy) == "케이던스가 평소보다 낮았습니다. 편한 날엔 자연스러운 변화입니다.")
+        #expect(ko(input(cad: .below, sl: .above), .easy) == "케이던스가 평소보다 낮았습니다. 편한 날엔 자연스러운 변화입니다.")
     }
 
     @Test func easyGctAboveWithStrideClause() {
@@ -108,12 +108,12 @@ struct FormNarrativeTests {
     @Test func easyGctBelowWithCadenceInRangeOrAbove() {
         #expect(ko(input(gct: .below), .easy) == "평소 리듬대로 176spm을 유지했고, 지면접촉이 240ms로 짧았습니다. 가볍게 뛴 날입니다.")
         #expect(ko(input(cad: .above, gct: .below), .easy)
-                == "발걸음이 빠르게 돌고 지면접촉이 240ms로 짧았습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.")
+                == "케이던스가 높고 지면접촉이 240ms로 짧았습니다.")
     }
 
     @Test func easyQuickShortSteps() {
-        #expect(ko(input(cad: .above, sl: .below), .easy) == "잰걸음이었습니다. 편한 날엔 리듬을 조금 늦춰도 괜찮습니다.")
-        #expect(ko(input(cad: .above, sl: .above), .easy) == "발걸음이 평소보다 빨랐습니다. 보폭이 1.12m로 평소보다 컸습니다.")
+        #expect(ko(input(cad: .above, sl: .below), .easy) == "잰걸음이었습니다.")
+        #expect(ko(input(cad: .above, sl: .above), .easy) == "케이던스가 평소보다 높았습니다. 보폭이 1.12m로 평소보다 컸습니다.")
     }
 
     @Test func easyAllInRangeWithAndWithoutStride() {
@@ -125,13 +125,13 @@ struct FormNarrativeTests {
 
     @Test func fastCadenceBelowStrideAbove() {
         let i = input(cad: .below, sl: .above, slStr: "1.31")
-        #expect(ko(i, .fast) == "보폭 1.31m로 속도를 냈습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.")
+        #expect(ko(i, .fast) == "보폭 1.31m로 속도를 냈습니다. 빠른 날엔 케이던스를 조금 더 높이는 쪽이 부담이 덜합니다.")
         #expect(en(i, .fast) == "You made the pace with a 1.31 m stride. On fast days, turning your feet over a little quicker is easier on the body.")
     }
 
     @Test func fastCadenceBelowOtherCombos() {
-        #expect(ko(input(cad: .below, sl: .below), .fast) == "발걸음과 보폭이 모두 평소보다 작아 페이스가 덜 나온 날입니다.")
-        #expect(ko(input(cad: .below), .fast) == "발걸음이 평소보다 느렸습니다. 빠른 날엔 발걸음을 조금 더 빨리 돌리는 쪽이 부담이 덜합니다.")
+        #expect(ko(input(cad: .below, sl: .below), .fast) == "케이던스는 낮고 보폭은 짧아 페이스가 덜 나온 날입니다.")
+        #expect(ko(input(cad: .below), .fast) == "케이던스가 평소보다 낮았습니다. 빠른 날엔 케이던스를 조금 더 높이는 쪽이 부담이 덜합니다.")
     }
 
     @Test func fastGctAbove() {
@@ -143,16 +143,16 @@ struct FormNarrativeTests {
     @Test func fastGctBelow() {
         #expect(ko(input(gct: .below, gctStr: "228"), .fast) == "평소 리듬 176spm에 지면접촉이 228ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.")
         #expect(ko(input(cad: .above, gct: .below, gctStr: "228"), .fast)
-                == "발걸음이 빠르게 돌고 지면접촉도 228ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.")
+                == "케이던스가 높고 지면접촉도 228ms로 짧았습니다. 빠른 페이스에 맞는 폼입니다.")
     }
 
     @Test func fastCadenceAbove() {
-        #expect(ko(input(cad: .above), .fast) == "발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였습니다.")
+        #expect(ko(input(cad: .above), .fast) == "케이던스가 평소보다 높았습니다. 보폭은 평소 범위였습니다.")
         var lowVO = input(cad: .above); lowVO.vo = .below
-        #expect(ko(lowVO, .fast) == "발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았습니다.")
+        #expect(ko(lowVO, .fast) == "케이던스가 평소보다 높았습니다. 보폭은 평소 범위였고, 위아래 움직임은 평소보다 작았습니다.")
         var highVO = input(cad: .above); highVO.vo = .above
-        #expect(ko(highVO, .fast) == "발걸음이 평소보다 빨랐습니다. 보폭은 평소 범위였습니다.")
-        #expect(ko(input(cad: .above, sl: .above, slStr: "1.30"), .fast) == "발걸음이 평소보다 빨랐습니다. 보폭이 1.30m로 평소보다 컸습니다.")
+        #expect(ko(highVO, .fast) == "케이던스가 평소보다 높았습니다. 보폭은 평소 범위였습니다.")
+        #expect(ko(input(cad: .above, sl: .above, slStr: "1.30"), .fast) == "케이던스가 평소보다 높았습니다. 보폭이 1.30m로 평소보다 컸습니다.")
     }
 
     @Test func fastAllInRangeWithAndWithoutStride() {

@@ -301,7 +301,7 @@ struct FormPhaseTests {
     }
 
     @Test func cadenceDefendedAndBouncier() {
-        #expect(ko(result(late: .cadenceDefended)) == "마지막 4km엔 속도가 떨어졌지만 발 회전은 지켰습니다.")
+        #expect(ko(result(late: .cadenceDefended)) == "마지막 4km엔 속도가 떨어졌지만 케이던스는 지켰습니다.")
         #expect(ko(result(late: .bouncier)) == "마지막 4km엔 앞보다 위로 가는 움직임이 늘었습니다.")
     }
 
@@ -311,14 +311,14 @@ struct FormPhaseTests {
     }
 
     @Test func midVariants() {
-        #expect(ko(result(mid: .cadenceDriven, late: .held)) == "중반엔 발 회전으로 속도를 냈고, 끝까지 폼을 유지했습니다.")
-        #expect(ko(result(mid: .both, late: .held)) == "중반엔 보폭과 회전을 함께 올려 속도를 냈고, 끝까지 폼을 유지했습니다.")
+        #expect(ko(result(mid: .cadenceDriven, late: .held)) == "중반엔 케이던스로 속도를 냈고, 끝까지 폼을 유지했습니다.")
+        #expect(ko(result(mid: .both, late: .held)) == "중반엔 보폭과 케이던스를 함께 올려 속도를 냈고, 끝까지 폼을 유지했습니다.")
     }
 
     @Test func shortStates() {
         #expect(FormPhase.shortState(result(late: .held)) == "끝까지 유지")
         #expect(FormPhase.shortState(result(late: .heavier([.stride]))) == "마지막 4km 살짝 무거워짐")
-        #expect(FormPhase.shortState(result(late: .cadenceDefended)) == "후반 회전은 유지")
+        #expect(FormPhase.shortState(result(late: .cadenceDefended)) == "후반 케이던스는 유지")
         #expect(FormPhase.shortState(result(late: .bouncier)) == "후반 위로 튐")
     }
 

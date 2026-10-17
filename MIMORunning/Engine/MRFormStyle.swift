@@ -403,8 +403,8 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
                     ? "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 올랐습니다."
                     : "같은 페이스에서 케이던스가 3개월 새 \(cadVal) 내려갔습니다."
                 let l2 = s.delta > 0
-                    ? "발걸음이 더 잦아지고 있다는 뜻입니다."
-                    : "발걸음이 느려지고 있다는 뜻입니다."
+                    ? "케이던스가 높아지고 있다는 뜻입니다."
+                    : "케이던스가 낮아지고 있다는 뜻입니다."
                 return "\(l1)\n\(l2)"
             case "gct":
                 let l1 = s.delta < 0
@@ -427,8 +427,8 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
                     ? "같은 페이스에서 케이던스가 \(dur) 조금씩 올라가고 있습니다."
                     : "같은 페이스에서 케이던스가 \(dur) 조금씩 내려가고 있습니다."
                 let l2 = s.delta > 0
-                    ? "발걸음이 서서히 잦아지는 추세입니다."
-                    : "발걸음이 서서히 느려지는 추세입니다."
+                    ? "케이던스가 서서히 높아지는 추세입니다."
+                    : "케이던스가 서서히 낮아지는 추세입니다."
                 return "\(l1)\n\(l2)"
             case "gct":
                 let l1 = s.delta < 0

@@ -223,16 +223,16 @@ enum TabDigestRhythm {
             let scI = Int(sc.rounded())
             if sc >= expectedCad, let fc, sc - fc >= 2 {
                 let up = Int((sc - fc).rounded())
-                return Verdict(text: L.s("후반에 발걸음까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"),
+                return Verdict(text: L.s("후반에 케이던스까지 끌어올렸습니다", "Cadence lifted in the second half — great buildup", ja: "後半はピッチまで引き上げました"),
                                isProblem: false, shade: .good, aboutForm: true,
                                short: L.s("후반 케이던스 +\(up)spm · \(scI)spm", "Late cadence +\(up) spm · \(scI) spm", ja: "後半ケイデンス+\(up)spm · \(scI)spm"))
             } else if sc >= expectedCad {
-                return Verdict(text: L.s("빨라진 후반에도 발걸음이 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"),
+                return Verdict(text: L.s("빨라진 후반에도 케이던스가 평소 이상이었습니다", "Cadence held above your usual as the pace rose", ja: "速くなった後半もピッチが普段以上でした"),
                                isProblem: false, shade: .good, aboutForm: true,
                                short: L.s("후반 케이던스 \(scI)spm · 평소 이상", "Late cadence \(scI) spm · above usual", ja: "後半ケイデンス\(scI)spm · 普段以上"))
             } else if sc <= expectedCad - 2 {
                 let gap = Int((expectedCad - sc).rounded())
-                return Verdict(text: L.s("페이스를 주로 보폭으로 올렸습니다. 발걸음을 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"),
+                return Verdict(text: L.s("페이스를 주로 보폭으로 올렸습니다. 케이던스를 함께 올리면 무릎 부담이 줄어듭니다", "Stride-led buildup — adding cadence reduces knee load", ja: "ペースを主にストライドで上げました。ピッチも一緒に上げると膝の負担が減ります"),
                                isProblem: true, shade: .caution, aboutForm: true,
                                short: L.s("보폭 위주 빌드업 · 후반 케이던스 평소 -\(gap)spm", "Stride-led buildup · late cadence -\(gap) spm vs usual", ja: "ストライド主体のビルドアップ · 後半ケイデンス普段比-\(gap)spm"))
             } else {
@@ -274,7 +274,7 @@ enum TabDigestRhythm {
                                    short: L.s("후반까지 폼 유지 · 케이던스 \(c)spm", "Form held late · cadence \(c) spm", ja: "後半までフォーム維持 · ケイデンス\(c)spm"))
                 } else {
                     let drop = Int(cadDrop.rounded())
-                    return Verdict(text: L.s("후반에 발걸음이 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
+                    return Verdict(text: L.s("후반에 케이던스가 \(drop)spm 줄었습니다. 템포 페이스가 살짝 빠를 수 있습니다",
                                              "Cadence dropped \(drop)spm — pace may be slightly high", ja: "後半にピッチが\(drop)spm落ちました。テンポのペースが少し速いかもしれません"),
                                    isProblem: true, shade: .caution, aboutForm: true,
                                    short: L.s("후반 케이던스 -\(drop)spm", "Late cadence -\(drop) spm", ja: "後半ケイデンス-\(drop)spm"))

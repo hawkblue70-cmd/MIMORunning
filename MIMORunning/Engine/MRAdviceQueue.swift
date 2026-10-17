@@ -289,10 +289,10 @@ func mrBuildAdvice(runs: [MRWorkout],
         var timeliness: Double
         if verdict.latestPositiveIsToday {
             slot = "todayRun"; timeliness = 0.8
-            text = adv("오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌습니다. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 발걸음이 느려지는 패턴입니다. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있습니다.", "Your cadence dropped \(dropStr)% late in today's long run — \(verdict.positive) of your last \(verdict.evaluated) long runs did the same. It's the pattern of steps slowing as legs tire. Heavy strength work and jumps can help delay it.", ja: "今日のロング走の後半にケイデンスが\(dropStr)%落ちました。直近のロング走\(verdict.evaluated)回のうち\(verdict.positive)回がそうでした。脚が疲れるとピッチが落ちるパターンです。重い重量の筋力トレーニングとジャンプ系の運動が、これを遅らせるのに役立つことがあります。")
+            text = adv("오늘 롱런 후반에 케이던스가 \(dropStr)% 떨어졌습니다. 최근 롱런 \(verdict.evaluated)번 중 \(verdict.positive)번이 그랬습니다. 다리가 지치면 케이던스가 떨어지는 패턴입니다. 무거운 무게를 드는 근력운동과 점프 운동이 이걸 늦추는 데 도움이 될 수 있습니다.", "Your cadence dropped \(dropStr)% late in today's long run — \(verdict.positive) of your last \(verdict.evaluated) long runs did the same. It's the pattern of steps slowing as legs tire. Heavy strength work and jumps can help delay it.", ja: "今日のロング走の後半にケイデンスが\(dropStr)%落ちました。直近のロング走\(verdict.evaluated)回のうち\(verdict.positive)回がそうでした。脚が疲れるとピッチが落ちるパターンです。重い重量の筋力トレーニングとジャンプ系の運動が、これを遅らせるのに役立つことがあります。")
         } else {
             slot = "weekly"; timeliness = 0.4
-            text = adv("최근 롱런 후반에 발걸음이 느려지는 패턴이 반복됐습니다. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다.", "Your steps have repeatedly slowed late in recent long runs. Heavy strength work and jumps help hold your late pace.", ja: "最近のロング走の後半でピッチが落ちるパターンが繰り返されました。重い重量の筋力トレーニングとジャンプ系の運動が、後半のペースを保つのに役立ちます。")
+            text = adv("최근 롱런 후반에 케이던스가 떨어지는 패턴이 반복됐습니다. 무거운 무게를 드는 근력운동과 점프 운동이 후반 페이스를 지키는 데 도움이 됩니다.", "Your steps have repeatedly slowed late in recent long runs. Heavy strength work and jumps help hold your late pace.", ja: "最近のロング走の後半でピッチが落ちるパターンが繰り返されました。重い重量の筋力トレーニングとジャンプ系の運動が、後半のペースを保つのに役立ちます。")
         }
         if strengthPerWeek < 1.0 { timeliness += 0.1 }
         out.append(MRAdvice(key: "durability", text: text,
