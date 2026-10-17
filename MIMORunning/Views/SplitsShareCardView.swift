@@ -165,8 +165,10 @@ struct SplitsShareCardView: View {
         return max(375, 198 + CGFloat(splitCount) * 16 + zonesH + metricsH)
     }
 
+    /// 구간 기록 내보내기 묶음 — 25km까지 1km마다, 넘으면 2km마다, 30km 넘으면 3km마다(사용자 결정 2026-10-17, 16 → 25).
+    /// 차트 패널(CardCharts, 최대 16줄)은 그대로.
     private var groupSize: Int {
-        if splits.count <= 16 { return 1 }
+        if splits.count <= 25 { return 1 }
         if splits.count <= 30 { return 2 }
         return 3
     }
