@@ -2081,7 +2081,10 @@ private struct RhythmInsightCard: View {
                     firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
                     cadStr: det.avgCadence.map { "\($0)" } ?? "--",
                     slStr: det.avgStrideLength.map { String(format: "%.2f", $0) },
-                    paceStr: activity.formattedPace ?? "--")
+                    paceStr: activity.formattedPace ?? "--",
+                    warmupGCT: FormNarrative.warmupGCT(FormPhase.result(
+                        splits: det.splits, altitudeProfile: det.altitudeProfile,
+                        baseline: formBaseline, formShifts: formShifts, workoutType: wt)))
                 let text = FormNarrative.longDistanceSentence(input)
                 return [(text: text, color: ink.fg(0.75))]
             }

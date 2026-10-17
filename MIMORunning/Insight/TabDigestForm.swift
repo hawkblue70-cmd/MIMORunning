@@ -203,7 +203,8 @@ enum TabDigestForm {
                 firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
                 cadStr: cadStr, slStr: slStr, paceStr: paceStr,
                 // 말기가 범위를 벗어났을 때만 "평균으로는"으로 범위를 좁힌다 — 끝까지 유지면 두 문장이 모순되지 않는다
-                hasPhaseSentence: x.phase.map { !$0.isHeld } ?? false)
+                hasPhaseSentence: x.phase.map { !$0.isHeld } ?? false,
+                warmupGCT: FormNarrative.warmupGCT(x.phase))
             return .longDistance(input)
         }
 

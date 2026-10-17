@@ -197,6 +197,14 @@ struct FormNarrativeTests {
             hasPhaseSentence: hasPhaseSentence)
     }
 
+    @Test func longGctAboveFromWarmupSaysWhere() {
+        // 19.6km LSD — 평균 지면접촉이 길었던 건 초반(288ms) 때문, 후반 268ms는 평소 범위(2026-10-17)
+        var i = longInput(distKm: 19.6, typeName: "LSD", gct: .above)
+        #expect(koLong(i) == "19.6km를 뛰면서 지면접촉이 평소보다 조금 길었습니다.")
+        i.warmupGCT = FormNarrative.WarmupGCT(earlyKm: 6, earlyMs: 288, lateMs: 268)
+        #expect(koLong(i) == "19.6km를 뛰면서 지면접촉이 평소보다 조금 길었습니다. 몸을 풀던 초반 6km가 288ms로 길었고, 후반은 268ms로 평소 범위였습니다.")
+    }
+
     private func koLong(_ i: FormNarrative.LongDistanceInput) -> String {
         return FormNarrative.longDistanceSentence(i)
     }

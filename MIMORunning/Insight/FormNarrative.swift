@@ -258,6 +258,21 @@ extension FormNarrative {
         let paceStr: String
         /// 카드가 전반/후반 3단계 문장(FormPhase.sentence)을 함께 보여주면, 전체 평균 문장을 "평균으로는" 범위로 좁힌다.
         var hasPhaseSentence: Bool = false
+        /// 지면접촉이 길었던 게 몸 풀던 초반 때문이면 그 사실 — `warmupGCT(_:)`로 만든다.
+        var warmupGCT: WarmupGCT? = nil
+    }
+
+    /// 초반(몸 풀기로 판정된 구간)만 지면접촉이 길고 후반은 평소 범위로 돌아온 장거리 러닝.
+    struct WarmupGCT: Equatable { let earlyKm: Int; let earlyMs: Int; let lateMs: Int }
+
+    /// 몸 풀기 초반 + 후반 지면접촉 평소 범위 안(또는 더 짧음)일 때만 값. 후반이 길면 nil(말기 판정이 따로 말한다).
+    /// 평균 지면접촉이 길게 나온 원인이 러닝 종류(LSD)가 아니라 초반임을 밝힌다 — 19.6km LSD 288→277→268ms(2026-10-17).
+    static func warmupGCT(_ r: FormPhase.Result?) -> WarmupGCT? {
+        guard let r, r.early == .warmup,
+              let e = r.phases.early.groundContact, let l = r.phases.late.groundContact,
+              r.signals.late.groundContact == .inRange || r.signals.late.groundContact == .below,
+              e > l else { return nil }
+        return WarmupGCT(earlyKm: Int(r.earlyEndKm.rounded()), earlyMs: Int(e.rounded()), lateMs: Int(l.rounded()))
     }
 
     /// 전반→후반 변화 방향 임계값. 이 미만은 "유지"로 본다.
@@ -281,8 +296,14 @@ extension FormNarrative {
         let anyBelow = i.cad == .below || i.sl == .below
         if allInRange || !anyBelow {
             if !allInRange, i.gct == .above {
-                return L.s("\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었습니다.",
-                           "Ground contact ran a bit longer than usual in this \(distKmStr) km run.", ja: "\(distKmStr)kmを走る間、接地時間が普段より少し長かったです。")
+                let base = L.s("\(distKmStr)km를 뛰면서 지면접촉이 평소보다 조금 길었습니다.",
+                               "Ground contact ran a bit longer than usual in this \(distKmStr) km run.", ja: "\(distKmStr)kmを走る間、接地時間が普段より少し長かったです。")
+                if let w = i.warmupGCT {
+                    return base + " " + L.s("몸을 풀던 초반 \(w.earlyKm)km가 \(w.earlyMs)ms로 길었고, 후반은 \(w.lateMs)ms로 평소 범위였습니다.",
+                                            "It was the warm-up — the first \(w.earlyKm) km ran \(w.earlyMs) ms, and the late stretch was back in range at \(w.lateMs) ms.",
+                                            ja: "体がほぐれる前の序盤\(w.earlyKm)kmが\(w.earlyMs)msと長く、後半は\(w.lateMs)msで普段の範囲でした。")
+                }
+                return base
             }
             if i.hasPhaseSentence {
                 return L.s("\(distKmStr)km를 뛰면서 평균으로는 폼이 평소 범위 안이었습니다.",
