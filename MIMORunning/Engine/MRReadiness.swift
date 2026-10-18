@@ -15,6 +15,9 @@ struct MRReadiness: Equatable {
     let hrvPending: Bool
     /// 왜 그 판정인지 한두 문장 — 둘째 줄 앞부분
     var why: String = ""
+    /// 이지 기준 숫자(이지를 권하는 날에만) — 러닝 하루 카드 "→ 실제" 비교가 문장 대신 이 값을 읽는다(2026-10-20)
+    var easyCapHR: Int? = nil
+    var easyPaceSecPerKm: Double? = nil
     /// 판정과 무관하게 항상 보여주는 데이터 조각(HRV 어젯밤·이번 주·평소, 마지막 고강도, 연속일) — 둘째 줄 뒷부분
     var data: [String] = []
 
@@ -431,6 +434,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
             let pace = t.paceSecPerKm.map { L.s(", \(mrFormatPace($0)) 근처로", ", around \(mrFormatPace($0))", ja: "、\(mrFormatPace($0))前後で") } ?? ""
             let guide = L.s("이지는 심박 \(t.lt1HR) 아래\(pace).", "Easy means HR under \(t.lt1HR)\(pace).", ja: "イージーは心拍\(t.lt1HR)未満\(pace)。")
             r.why = r.why.isEmpty ? guide : r.why + " " + guide
+            r.easyCapHR = t.lt1HR
+            r.easyPaceSecPerKm = t.paceSecPerKm
         }
         return r
     }

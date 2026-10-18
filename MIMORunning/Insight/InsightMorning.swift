@@ -20,6 +20,9 @@ struct InsightMorning: Equatable {
         let data: String
         /// 이번 주 계획 진행(홈 셋째 줄). 계획이 없으면 ""
         let planLine: String
+        /// 이지 기준 숫자(있으면) — "→ 실제" 비교용. 옛 기록엔 없어 문장에서 읽는 폴백을 쓴다
+        var easyCapHR: Int? = nil
+        var easyPaceSec: Double? = nil
     }
     /// 그날 아침
     var morningOf: Entry?
@@ -81,13 +84,15 @@ struct InsightMorning: Equatable {
     }
 
     private static func entry(label: String, snapshot s: MRReadinessSnapshot) -> Entry {
-        Entry(label: label, level: s.level, line: s.line, why: s.why, data: s.data, planLine: s.planLine)
+        Entry(label: label, level: s.level, line: s.line, why: s.why, data: s.data, planLine: s.planLine,
+              easyCapHR: s.easyCapHR > 0 ? s.easyCapHR : nil, easyPaceSec: s.easyPaceSec > 0 ? s.easyPaceSec : nil)
     }
 
     private static func entry(label: String, readiness r: MRReadiness) -> Entry {
         // 재계산은 지난 시각 기준 — 그 밤 값이 없으면 '동기화 전'이 아니라 없음이라 꼬리를 붙이지 않는다
         Entry(label: label, level: MRReadinessSnapshotStore.levelString(r.level), line: r.line(includePending: false),
-              why: r.why, data: r.data.joined(separator: " · "), planLine: r.planLine ?? "")
+              why: r.why, data: r.data.joined(separator: " · "), planLine: r.planLine ?? "",
+              easyCapHR: r.easyCapHR, easyPaceSec: r.easyPaceSecPerKm)
     }
 
     static func level(from s: String) -> MRReadiness.Level? {

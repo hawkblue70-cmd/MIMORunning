@@ -472,21 +472,31 @@ struct RunDayShareCard: View {
     private var morningVsActual: String? {
         // 판정이 이지런인 날 + "강도 OK"인데 오늘 세션이 이지인 날("오늘은 이지 8.3km · 강도 여유 있음") — 둘 다 이지 상한 문장이 붙는다.
         // 휴식 날은 "제안대로"가 맞지 않아 뺀다(2026-10-20: 10/15 강도 OK + 이지 세션 날 줄이 빠졌다)
-        guard let e = morning?.morningOf, e.level != "rest", let hr = activity.avgHeartRate else { return nil }
+        guard let e = morning?.morningOf else { return nil }
+        let L = AppLanguage.shared
+        // 휴식 제안 날 달렸으면 그 사실만(2026-10-20) — "제안대로"·"높았다"를 따지지 않는다
+        if e.level == "rest" {
+            let d = activity.distance / 1000
+            let km = abs(d - d.rounded()) < 0.05 ? String(format: "%.0f", d) : String(format: "%.1f", d)
+            let hrPart = activity.avgHeartRate.map { L.s(" · 평균 심박 \($0)", " · avg HR \($0)", ja: " · 平均心拍\($0)") } ?? ""
+            return L.s("→ 실제: 쉬라는 날 \(km)km를 달렸습니다", "→ Actual: ran \(km) km on a suggested rest day", ja: "→ 実際: 休養の提案の日に\(km)km走りました") + hrPart
+        }
+        guard let hr = activity.avgHeartRate else { return nil }
         let text = e.why + " " + e.data
         func firstMatch(_ patterns: [String]) -> String? {
             for p in patterns { if let r = text.range(of: p, options: .regularExpression) { return String(text[r]) } }
             return nil
         }
-        guard let capStr = firstMatch([#"심박 \d{2,3} 아래"#, #"HR under \d{2,3}"#, #"心拍\d{2,3}未満"#]),
-              let cap = Int(capStr.filter(\.isNumber)) else { return nil }
+        // 숫자 칸 우선(2026-10-20부터 저장) — 옛 기록은 제안 문장에서 읽는다
+        let parsedCap = firstMatch([#"심박 \d{2,3} 아래"#, #"HR under \d{2,3}"#, #"心拍\d{2,3}未満"#]).flatMap { Int($0.filter(\.isNumber)) }
+        guard let cap = e.easyCapHR ?? parsedCap else { return nil }
         // 목표 페이스 "6'31"" — 분·초 두 자리
-        let targetPace: Double? = firstMatch([#"\d{1,2}'\d{2}\" 근처"#, #"around \d{1,2}'\d{2}\""#, #"\d{1,2}'\d{2}\"前後"#]).flatMap { m in
+        let parsedPace: Double? = firstMatch([#"\d{1,2}'\d{2}\" 근처"#, #"around \d{1,2}'\d{2}\""#, #"\d{1,2}'\d{2}\"前後"#]).flatMap { m in
             guard let r = m.range(of: #"\d{1,2}'\d{2}"#, options: .regularExpression) else { return nil }
             let parts = m[r].split(separator: "'").compactMap { Double($0) }
             return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
         }
-        let L = AppLanguage.shared
+        let targetPace = e.easyPaceSec ?? parsedPace
         let hrHigh = hr > cap
         guard let tp = targetPace, let ap = activity.paceSecPerKm, let apStr = activity.formattedPace else {
             return hrHigh

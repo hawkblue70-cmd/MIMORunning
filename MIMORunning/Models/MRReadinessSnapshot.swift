@@ -16,6 +16,9 @@ final class MRReadinessSnapshot {
     var computedAt: Date = Date.distantPast
     /// 저장 당시 그 밤 HRV가 아직 없었나(워치 동기화 전) — 다음 날 블록은 이 스냅샷 대신 재계산으로 넘어간다
     var hrvPending: Bool = false
+    /// 이지 기준 숫자 — 0 = 없음(옛 기록·이지 아닌 날). CloudKit 규칙대로 기본값이 있는 새 속성(2026-10-20)
+    var easyCapHR: Int = 0
+    var easyPaceSec: Double = 0
 
     init(dateKey: String = "", level: String = "", line: String = "", why: String = "",
          data: String = "", planLine: String = "", computedAt: Date = Date.distantPast,
@@ -55,7 +58,8 @@ enum MRReadinessSnapshotStore {
             // 내용이 같으면 쓰지 않는다 — computedAt이 러닝 시작 뒤로 밀려 진짜 러닝 전 스냅샷이 버려지고, 매번 저장·CloudKit 내보내기가 일어나는 것을 막는다
             if existing.level == levelString(r.level), existing.line == r.line, existing.why == r.why,
                existing.data == newData, existing.planLine == (r.planLine ?? ""),
-               existing.hrvPending == r.hrvPending { return }
+               existing.hrvPending == r.hrvPending,
+               existing.easyCapHR == (r.easyCapHR ?? 0), existing.easyPaceSec == (r.easyPaceSecPerKm ?? 0) { return }
             snap = existing
         } else {
             snap = MRReadinessSnapshot(dateKey: key)
@@ -68,6 +72,8 @@ enum MRReadinessSnapshotStore {
         snap.planLine = r.planLine ?? ""
         snap.computedAt = at
         snap.hrvPending = r.hrvPending
+        snap.easyCapHR = r.easyCapHR ?? 0
+        snap.easyPaceSec = r.easyPaceSecPerKm ?? 0
         try? context.save()
     }
 
