@@ -268,7 +268,11 @@ struct GrowthView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+                        // 세로로만 — 안쪽 줄 하나라도 화면보다 넓으면 내용 폭이 늘어나 좌우로 끌렸다(나 탭과 같은 처리).
+                        // 내용 폭을 화면 폭에 고정하고, 넘치는 줄은 그 안에서 잘린다.
+                        .containerRelativeFrame(.horizontal)
                     }
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                     .onAppear {
                         // 상세에서 강도를 고치고 돌아오거나(활동 수 불변) 앱을 새로 켠 직후(.task가 동기화보다 먼저 돈 경우)에도
                         // 강도 의존 캐시(유형별 평소 강도·기록 막대)가 최신 입력을 반영하도록 동기화 뒤 재계산
