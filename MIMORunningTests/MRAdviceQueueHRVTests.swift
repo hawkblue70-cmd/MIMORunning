@@ -64,7 +64,7 @@ struct MRAdviceQueueHRVTests {
     @Test func noAdviceWhenTwoHardRunsInFourteenDays() {
         var runs = easyBlock()
         runs[1] = run(daysAgo: 11, interval: true)
-        runs[3] = run(daysAgo: 6, hr: 160)
+        runs[3] = run(daysAgo: 6, interval: true)   // 심박만 높은 러닝은 더 이상 고강도가 아니라 인터벌로(2026-10-19)
         #expect(hrvAdvice(build(runs: runs, trend: trend(state: .above))) == nil)
     }
 

@@ -254,15 +254,16 @@ struct MRHRVTrendTests {
                   hrAvg: hr, hrMax: 170, tempC: 15, humidity: nil, indoor: false, isInterval: interval)
     }
 
-    @Test func hardCountUsesIntervalAndLT1() {
+    @Test func hardCountIgnoresRunsOnlyOverLT1() {
+        // 평균 심박이 LT1(150)을 넘기만 한 러닝(155)은 고강도가 아니다 — 인터벌·앱 판정만 센다(2026-10-19)
         var phys = MRPhysiology()
         phys.lt1HR = MRInference(value: 150, confidence: .high, basis: [])
         let runs = [run(daysAgo: 1, hr: 140), run(daysAgo: 3, hr: 155), run(daysAgo: 5, hr: 140, interval: true),
                     run(daysAgo: 20, hr: 160)]   // 14일 밖
         let c = mrRecentHardRunCount(runs: runs, phys: phys, heatHR: MRHeatHRModel(), days: 14, asOf: Date())
-        #expect(c.hard == 2)
+        #expect(c.hard == 1)
         #expect(c.total == 3)
-        #expect(c.lastHardDaysAgo == 3)
+        #expect(c.lastHardDaysAgo == 5)
     }
 
     @Test func hardCountIncludesAppSideStarts() {

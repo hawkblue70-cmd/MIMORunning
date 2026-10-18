@@ -365,19 +365,19 @@ struct MorningSuggestionView: View {
                     .foregroundStyle(color)
                     .fixedSize(horizontal: false, vertical: true)
                 if !e.why.isEmpty {
-                    Text(e.why)
+                    Text(e.why.keepingNumberUnitsTogether)
                         .font(.subheadline)
                         .foregroundStyle(isLight ? RunCardLight.text : .white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.data.isEmpty {
-                    Text(e.data)
+                    Text(e.data.keepingNumberUnitsTogether)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.planLine.isEmpty {
-                    Text(e.planLine)
+                    Text(e.planLine.keepingNumberUnitsTogether)
                         .font(.footnote)
                         .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)

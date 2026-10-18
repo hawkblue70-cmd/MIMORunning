@@ -198,9 +198,10 @@ enum MRPrepComparison {
         }
         if pastKm >= 1, r.now.weeklyKm >= r.past.weeklyKm * (1 + gainThreshold) - 1e-9 {
             let pct = Int(((r.now.weeklyKm / r.past.weeklyKm - 1) * 100).rounded())
-            return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많습니다 · \(nowKm)km / \(pastKm)km",
-                       "Weekly distance \(pct)% higher than \(subjectEn) · \(nowKm) km / \(pastKm) km",
-                       ja: "\(subjectJa)より週間距離が\(pct)%多いです · \(nowKm)km / \(pastKm)km")
+            // "46km / 32km"는 진행률(실제/목표)처럼 읽혀 — 지금 값과 그때 값을 따로 적는다(2026-10-19)
+            return L.s("\(subjectKo)보다 주간 거리 \(pct)% 많습니다 · 지금 \(nowKm)km(그때 \(pastKm)km)",
+                       "Weekly distance \(pct)% higher than \(subjectEn) · now \(nowKm) km (then \(pastKm) km)",
+                       ja: "\(subjectJa)より週間距離が\(pct)%多いです · 現在\(nowKm)km(当時\(pastKm)km)")
         }
         let subjectEnCap = subjectEn.prefix(1).uppercased() + subjectEn.dropFirst()
         return L.s("\(subjectKo) 주간 \(pastKm)km · 지금 \(nowKm)km",

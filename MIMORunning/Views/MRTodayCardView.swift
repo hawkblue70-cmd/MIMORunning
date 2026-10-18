@@ -57,7 +57,7 @@ struct MRTodayCardView: View {
                         .padding(.top, 6)
                     // 둘째 줄 — 왜 그 판정인지 + 데이터. 판정 줄보다 작고 흐리게(12pt · 0.72).
                     if let detail = c.readinessDetail, !detail.isEmpty {
-                        Text(detail)
+                        Text(detail.keepingNumberUnitsTogether)   // 숫자·단위 사이 줄바꿈 방지("7 / 일 남음")
                             .font(.system(size: 12))
                             .foregroundStyle(Color.white.opacity(0.72))
                             .lineSpacing(2)
@@ -66,7 +66,7 @@ struct MRTodayCardView: View {
                     }
                     // 셋째 줄 — 대회 계획 이번 주 진행. HRV 데이터와 섞이지 않게 따로(같은 12pt, 조금 더 흐리게 0.6).
                     if let plan = c.readinessPlan, !plan.isEmpty {
-                        Text(plan)
+                        Text(plan.keepingNumberUnitsTogether)
                             .font(.system(size: 12))
                             .foregroundStyle(Color.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
@@ -116,7 +116,7 @@ struct MRTodayCardView: View {
 
                     // 대회 준비 비교(B) — 안내 줄 아래 한 줄, 작고 흐리게
                     if let prep = c.prepLine {
-                        Text(prep)
+                        Text(prep.keepingNumberUnitsTogether)
                             .font(.system(size: 12))
                             .foregroundStyle(Color.white.opacity(0.6))
                             .padding(.top, 4)

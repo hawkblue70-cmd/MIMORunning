@@ -181,7 +181,10 @@ func mrHRVTrend(nights: [(date: Date, value: Double)], asOf: Date,
 
 // MARK: - 최근 N일 고강도 횟수 (조언 큐용, MRWorkout 세계)
 
-/// 인터벌이거나 15°C 보정 평균심박이 LT1 이상이면 고강도. LT1이 없으면 인터벌만 센다.
+/// 인터벌이거나 앱 쪽 고강도 판정(`extraHardStarts`)이면 고강도 — 앱 전체(총평·리스트)와 같은 기준.
+/// ⚠ 예전엔 15°C 보정 평균 심박이 LT1(이지 상한) 이상이기만 해도 고강도로 셌다. LT1은 이지의 끝이지 고강도의 시작이 아니라,
+///   손목 온도로 심박이 9 높았던 일반 러닝(평균 145, Zone 3)이 "마지막 고강도 1일 전 · 고강도 다음 날은 쉬운 날"을 만들었다(2026-10-19).
+///   LT1만 넘은 러닝은 `mrGrayZoneWeek`("애매하게 빠른 러닝")로만 센다. `phys`·`heatHR`는 호출부 호환용으로 남긴다.
 /// 창은 `asOf` 자정 기준 직전 `days`일(오늘 포함). `lastHardDaysAgo`는 창 안 가장 최근 고강도까지의 일수(없으면 nil).
 /// `extraHardStarts`: 앱 쪽 판정(분류된 유형·체감 강도·존 분포)으로 고강도인 러닝의 시작 시각 — 엔진의 `isInterval`은
 /// WorkoutKit 구조화 운동만 잡아서, 앱이 "인터벌"로 분류한 러닝을 놓친다.
@@ -196,12 +199,7 @@ func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatH
         let d = calendar.dateComponents([.day], from: w.date, to: today).day ?? Int.min
         guard d >= 0 && d < days else { continue }
         total += 1
-        // refHR는 hrAvg가 nil일 때만 nil — 심박 없는 러닝은 고강도로 세지 않는다
-        let overLT1: Bool = {
-            guard let lt1 = phys.lt1HR?.value, let hr = heatHR.refHR(of: w) else { return false }
-            return hr >= lt1
-        }()
-        if w.isInterval || overLT1 || extraHardStarts.contains(w.start) {
+        if w.isInterval || extraHardStarts.contains(w.start) {
             hard += 1
             lastHard = min(lastHard ?? d, d)
         }
