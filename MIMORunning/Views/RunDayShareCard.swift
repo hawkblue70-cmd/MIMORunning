@@ -456,24 +456,54 @@ struct RunDayShareCard: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// 아침 이지런 제안의 심박 상한과 실제 평균 심박 비교 — "→ 실제: 평균 심박 145 · 아침 제안(140 아래)보다 높았습니다".
-    /// 상한은 엔진이 만든 제안 문장("이지는 심박 140 아래" / "HR under 140" / "心拍140未満")에서 읽는다 — 스냅샷에
-    /// 숫자 칸이 따로 없어서(2026-10-18). 이지런 제안이 아니거나 숫자가 없으면 nil.
+    /// 아침 이지런 제안(심박 상한 · 목표 페이스)과 실제 비교 — "→ 실제: 6'35"로 페이스는 지켰고, 평균 심박 145로 제안(140 아래)보다 높았습니다".
+    /// 페이스를 지켰는데 심박이 높으면 몸 상태 쪽 신호, 페이스가 빨라 심박이 높으면 제안을 넘긴 것 — 읽는 법이 달라 둘을 함께 적는다(2026-10-18).
+    /// 숫자는 엔진이 만든 제안 문장("이지는 심박 140 아래, 6'31" 근처로" / "HR under 140, around 6'31"" / "心拍140未満、6'31"前後で")에서
+    /// 읽는다 — 스냅샷에 숫자 칸이 따로 없어서. 이지런 제안이 아니거나 심박 상한이 없으면 nil.
     private var morningVsActual: String? {
         guard let e = morning?.morningOf, e.level == "easy", let hr = activity.avgHeartRate else { return nil }
         let text = e.why + " " + e.data
-        let patterns = [#"심박 (\d{2,3}) 아래"#, #"HR under (\d{2,3})"#, #"心拍(\d{2,3})未満"#]
-        var cap: Int? = nil
-        for p in patterns {
-            if let r = text.range(of: p, options: .regularExpression) {
-                cap = Int(text[r].filter(\.isNumber)); break
-            }
+        func firstMatch(_ patterns: [String]) -> String? {
+            for p in patterns { if let r = text.range(of: p, options: .regularExpression) { return String(text[r]) } }
+            return nil
         }
-        guard let c = cap else { return nil }
+        guard let capStr = firstMatch([#"심박 \d{2,3} 아래"#, #"HR under \d{2,3}"#, #"心拍\d{2,3}未満"#]),
+              let cap = Int(capStr.filter(\.isNumber)) else { return nil }
+        // 목표 페이스 "6'31"" — 분·초 두 자리
+        let targetPace: Double? = firstMatch([#"\d{1,2}'\d{2}\" 근처"#, #"around \d{1,2}'\d{2}\""#, #"\d{1,2}'\d{2}\"前後"#]).flatMap { m in
+            guard let r = m.range(of: #"\d{1,2}'\d{2}"#, options: .regularExpression) else { return nil }
+            let parts = m[r].split(separator: "'").compactMap { Double($0) }
+            return parts.count == 2 ? parts[0] * 60 + parts[1] : nil
+        }
         let L = AppLanguage.shared
-        return hr > c
-            ? L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(c) 아래)보다 높았습니다", "→ Actual: avg HR \(hr) · above the morning's guide (under \(c))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(c)未満)より高めでした")
-            : L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(c) 아래)대로 달렸습니다", "→ Actual: avg HR \(hr) · within the morning's guide (under \(c))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(c)未満)どおりでした")
+        let hrHigh = hr > cap
+        guard let tp = targetPace, let ap = activity.paceSecPerKm, let apStr = activity.formattedPace else {
+            return hrHigh
+                ? L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(cap) 아래)보다 높았습니다", "→ Actual: avg HR \(hr) · above the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(cap)未満)より高めでした")
+                : L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(cap) 아래)대로 달렸습니다", "→ Actual: avg HR \(hr) · within the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(cap)未満)どおりでした")
+        }
+        // 제안보다 10초/km 이내로 빠르거나 더 느리면 페이스는 지킨 것(폼 3단계 페이스 차이와 같은 문턱)
+        let faster = Int((tp - ap).rounded())
+        let paceHeld = Double(faster) < FormPhase.paceDeltaSec
+        let tpStr = mrFormatPace(tp)
+        switch (paceHeld, hrHigh) {
+        case (true, true):
+            return L.s("→ 실제: \(apStr)로 페이스는 지켰고, 평균 심박 \(hr)로 제안(\(cap) 아래)보다 높았습니다",
+                       "→ Actual: pace held at \(apStr), but avg HR \(hr) was above the guide (under \(cap))",
+                       ja: "→ 実際: \(apStr)でペースは守り、平均心拍\(hr)で提案(\(cap)未満)より高めでした")
+        case (true, false):
+            return L.s("→ 실제: \(apStr) · 평균 심박 \(hr)로 아침 제안(\(tpStr) 근처 · \(cap) 아래)대로 달렸습니다",
+                       "→ Actual: \(apStr) · avg HR \(hr) — as the morning suggested (around \(tpStr) · under \(cap))",
+                       ja: "→ 実際: \(apStr) · 平均心拍\(hr)で朝の提案(\(tpStr)前後 · \(cap)未満)どおりでした")
+        case (false, true):
+            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐고, 평균 심박 \(hr)로 제안(\(cap) 아래)보다 높았습니다",
+                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), and avg HR \(hr) was above it (under \(cap))",
+                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速く、平均心拍\(hr)で提案(\(cap)未満)より高めでした")
+        case (false, false):
+            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐지만, 평균 심박 \(hr)로 \(cap) 아래였습니다",
+                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hr) stayed under \(cap)",
+                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hr)で\(cap)未満でした")
+        }
     }
 
     var body: some View {
