@@ -344,6 +344,14 @@ struct RunStatsRow: View {
 /// 라벨("당일 아침") + 제안 줄(판정 색 = 홈과 같은 displayColor) + why 전체 + data + planLine.
 /// 제안이 없고 `direction`이 있으면 "→ 다음: {방향}" 한 줄. 둘 다 없으면 아무것도 그리지 않는다.
 struct MorningSuggestionView: View {
+    /// 옛 진행 표기(실제/계획 나눗셈) → 지금 표기. "이지 1/3회" → "이지 1회 · 계획 3회" (한·영·일)
+    static func modernPlanLine(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: #"이지 (\d+)/(\d+)회"#, with: "이지 $1회 · 계획 $2회", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"easy (\d+)/(\d+)"#, with: "easy $1 · plan $2", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"イージー (\d+)/(\d+)回"#, with: "イージー$1回 · 計画$2回", options: .regularExpression)
+        return t
+    }
+
     let label: String
     let entry: InsightMorning.Entry?
     var direction: String? = nil
@@ -377,7 +385,8 @@ struct MorningSuggestionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !e.planLine.isEmpty {
-                    Text(e.planLine.keepingNumberUnitsTogether)
+                    // 10/18 전에 저장된 아침 기록은 "이지 1/3회" 형식 — 화면에서 지금 형식("이지 1회 · 계획 3회")으로 바꿔 보여 준다
+                    Text(Self.modernPlanLine(e.planLine).keepingNumberUnitsTogether)
                         .font(.footnote)
                         .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
@@ -461,7 +470,9 @@ struct RunDayShareCard: View {
     /// 숫자는 엔진이 만든 제안 문장("이지는 심박 140 아래, 6'31" 근처로" / "HR under 140, around 6'31"" / "心拍140未満、6'31"前後で")에서
     /// 읽는다 — 스냅샷에 숫자 칸이 따로 없어서. 이지런 제안이 아니거나 심박 상한이 없으면 nil.
     private var morningVsActual: String? {
-        guard let e = morning?.morningOf, e.level == "easy", let hr = activity.avgHeartRate else { return nil }
+        // 판정이 이지런인 날 + "강도 OK"인데 오늘 세션이 이지인 날("오늘은 이지 8.3km · 강도 여유 있음") — 둘 다 이지 상한 문장이 붙는다.
+        // 휴식 날은 "제안대로"가 맞지 않아 뺀다(2026-10-20: 10/15 강도 OK + 이지 세션 날 줄이 빠졌다)
+        guard let e = morning?.morningOf, e.level != "rest", let hr = activity.avgHeartRate else { return nil }
         let text = e.why + " " + e.data
         func firstMatch(_ patterns: [String]) -> String? {
             for p in patterns { if let r = text.range(of: p, options: .regularExpression) { return String(text[r]) } }
