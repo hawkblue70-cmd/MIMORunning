@@ -142,11 +142,13 @@ enum TabDigestPerformance {
             switch $0 {
             case .monotony: return L.s("편차 적음", "little variation", ja: "差が小さい")
             case .veryHigh: return L.s("급증", "surging", ja: "急増")
-            case .high:     return L.s("조금 높은 편", "slightly heavy", ja: "やや高め")
+            case .high:     return L.s("조금 높은 편", "slightly heavy", ja: "やや高め")   // 라벨이 이미 '높음'이면 아래에서 뺀다
             case .low:      return L.s("감소", "easing", ja: "減少")
             }
         }
-        let parts = [ratio.map(loadRatioText), k].compactMap { $0 }
+        // "4주 평균 대비 높음 · 조금 높은 편"은 같은 말 두 번 — 라벨이 높음·크게 높음이면 '조금 높은 편'은 뺀다(2026-10-18)
+        let redundant = kind == .high && (ratio == .high || ratio == .veryHigh)
+        let parts = [ratio.map(loadRatioText), redundant ? nil : k].compactMap { $0 }
         guard !parts.isEmpty else { return nil }
         return L.s("강도 부하 ", "Training load ", ja: "強度負荷 ") + parts.joined(separator: " · ")  // 카드 차트 제목("강도 부하")과 같은 이름
     }
@@ -399,8 +401,15 @@ enum TabDigestPerformance {
         // P2 — 7일 부하 크게 증가 / 단조. 카드처럼 오늘 강도 입력 전이면 말하지 않는다(7일 합에 오늘이 빠짐).
         let jumped = i.acuteChronic == .high || i.acuteChronic == .veryHigh
         if !i.todayEffortMissing, jumped || i.loadSentence == .monotony,
-           let text = loadLine(ratio: i.acuteChronic.map(loadRatioText), sentence: i.loadSentence.flatMap(loadSentence)) {
-            problem(2, .load, text, loadNext, short: loadShort(ratio: i.acuteChronic, kind: i.loadSentence))
+           let line = loadLine(ratio: i.acuteChronic.map(loadRatioText), sentence: i.loadSentence.flatMap(loadSentence)) {
+            // 요약(short)이 이미 "4주 평균 대비 높음"을 말한다 — 아랫줄은 같은 말 대신 근거 숫자(2026-10-18)
+            let L = AppLanguage.shared
+            let numbers: String? = {
+                guard let au = i.sevenDayAU, let avg = i.fourWeekAvgAU, avg > 0 else { return nil }
+                let f = { (v: Double) in Int(v.rounded()).formatted(.number.grouping(.automatic)) }
+                return L.s("7일 \(f(au)) AU · 4주 평균 \(f(avg))", "7-day \(f(au)) AU · 4-wk avg \(f(avg))", ja: "7日 \(f(au)) AU · 4週平均 \(f(avg))")
+            }()
+            problem(2, .load, numbers ?? line, loadNext, short: loadShort(ratio: i.acuteChronic, kind: i.loadSentence))
         }
 
         // P3 — 디커플링. 값이 계산되면 .lateHR 신호를 정확히 1개 낸다(설계 §5: 후반 심박은 퍼포먼스 소유 — 리듬 R4가 다른 말을 하지 않게)

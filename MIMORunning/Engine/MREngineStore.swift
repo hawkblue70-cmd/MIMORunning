@@ -181,6 +181,19 @@ final class MREngineStore: ObservableObject {
         return (decode(r), decode(t))
     }
 
+    /// 저장된 밤 활력 징후로 그날 아침의 이상 징후(손목 온도·호흡수) — 러닝 뒤 "같은 페이스 심박이 높다" 문장이
+    /// 아침 카드와 같은 사실을 원인 자리에 적도록(2026-10-18). 캐시가 없거나 벗어난 게 없으면 nil.
+    static func persistedVitalSignal(asOf: Date) -> MRVitalSignal? {
+        let ud = UserDefaults.standard
+        guard ud.integer(forKey: hrvCacheRuleKey) == hrvNightRuleVersion,
+              let r = ud.array(forKey: vitalRespKey) as? [[Double]],
+              let t = ud.array(forKey: vitalTempKey) as? [[Double]] else { return nil }
+        func decode(_ a: [[Double]]) -> [(date: Date, value: Double)] {
+            a.compactMap { $0.count == 2 ? (Date(timeIntervalSince1970: $0[0]), $0[1]) : nil }
+        }
+        return mrVitalSignal(respNights: decode(r), tempNights: decode(t), asOf: asOf)
+    }
+
     private func persistVitals(resp: [(date: Date, value: Double)], temp: [(date: Date, value: Double)]) {
         let ud = UserDefaults.standard
         ud.set(resp.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.vitalRespKey)

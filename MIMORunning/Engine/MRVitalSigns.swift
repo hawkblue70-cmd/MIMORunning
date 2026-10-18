@@ -98,6 +98,23 @@ struct MRVitalSignal: Equatable {
         }
     }
 
+    /// 러닝 뒤 원인 자리 문장 — "어젯밤 손목 온도가 평소보다 1.1°C 높았습니다." 진단하지 않고 같은 날의 사실만.
+    var postRunCause: String {
+        let L = AppLanguage.shared
+        let parts: [String] = elevations.map { e in
+            switch e.kind {
+            case .respiratory:
+                let d = String(format: "%.1f", e.rise)
+                return L.s("호흡수가 평소보다 \(d)회", "respiratory rate \(d)/min above usual", ja: "呼吸数が普段より\(d)回")
+            case .wristTemp:
+                let d = String(format: "%.1f", e.rise)
+                return L.s("손목 온도가 평소보다 \(d)°C", "wrist temperature \(d)°C above usual", ja: "手首温度が普段より\(d)°C")
+            }
+        }
+        let joined = parts.joined(separator: L.s(", ", ", ", ja: "、"))
+        return L.s("어젯밤 \(joined) 높았습니다.", "Last night: \(joined).", ja: "昨夜は\(joined)高めでした。")
+    }
+
     /// 판정 줄 태그 — "호흡수·손목 온도 높음"
     var tag: String {
         let L = AppLanguage.shared

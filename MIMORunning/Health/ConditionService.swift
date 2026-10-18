@@ -9,7 +9,7 @@ enum SleepGrade: String, Codable {
     var label: String {
         let L = AppLanguage.shared
         return switch self {
-        case .excellent:    L.s("매우높음", "Excellent", ja: "とても高い")
+        case .excellent:    L.s("매우 높음", "Excellent", ja: "とても高い")
         case .good:         L.s("높음",     "Good", ja: "高い")
         case .fair:         L.s("보통",     "Fair", ja: "普通")
         case .insufficient: L.s("낮음",     "Poor", ja: "低い")

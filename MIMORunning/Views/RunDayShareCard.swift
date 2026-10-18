@@ -456,6 +456,26 @@ struct RunDayShareCard: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// 아침 이지런 제안의 심박 상한과 실제 평균 심박 비교 — "→ 실제: 평균 심박 145 · 아침 제안(140 아래)보다 높았습니다".
+    /// 상한은 엔진이 만든 제안 문장("이지는 심박 140 아래" / "HR under 140" / "心拍140未満")에서 읽는다 — 스냅샷에
+    /// 숫자 칸이 따로 없어서(2026-10-18). 이지런 제안이 아니거나 숫자가 없으면 nil.
+    private var morningVsActual: String? {
+        guard let e = morning?.morningOf, e.level == "easy", let hr = activity.avgHeartRate else { return nil }
+        let text = e.why + " " + e.data
+        let patterns = [#"심박 (\d{2,3}) 아래"#, #"HR under (\d{2,3})"#, #"心拍(\d{2,3})未満"#]
+        var cap: Int? = nil
+        for p in patterns {
+            if let r = text.range(of: p, options: .regularExpression) {
+                cap = Int(text[r].filter(\.isNumber)); break
+            }
+        }
+        guard let c = cap else { return nil }
+        let L = AppLanguage.shared
+        return hr > c
+            ? L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(c) 아래)보다 높았습니다", "→ Actual: avg HR \(hr) · above the morning's guide (under \(c))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(c)未満)より高めでした")
+            : L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(c) 아래)대로 달렸습니다", "→ Actual: avg HR \(hr) · within the morning's guide (under \(c))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(c)未満)どおりでした")
+    }
+
     var body: some View {
         let L = AppLanguage.shared
         let ofLabel = L.s("당일 아침", "That morning", ja: "当日の朝")
@@ -513,6 +533,12 @@ struct RunDayShareCard: View {
             if hasMorningOf {
                 divider
                 MorningSuggestionView(label: ofLabel, entry: morning?.morningOf)
+                if let line = morningVsActual {
+                    Text(line)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

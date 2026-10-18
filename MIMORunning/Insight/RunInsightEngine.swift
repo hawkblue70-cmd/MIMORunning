@@ -1382,6 +1382,8 @@ enum RunInsightEngine {
             let g = Calendar.current.dateComponents([.day], from: last.date, to: activity.date).day ?? 0
             if g >= 14 { return L.s("\(g)일 공백의 영향일 수 있습니다.", "\(g)-day break may be a factor.", ja: "\(g)日のブランクの影響かもしれません。") }
         }
+        // 그날 아침 손목 온도·호흡수가 평소보다 높았으면 그 사실을 원인 자리에 — 아침 카드가 짚은 것을 러닝 뒤에도 잇는다(2026-10-18)
+        if let v = MREngineStore.persistedVitalSignal(asOf: activity.date) { return v.postRunCause }
         return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.", ja: "今日のコンディションを反映しているのかもしれません。")
     }
 

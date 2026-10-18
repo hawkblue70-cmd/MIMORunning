@@ -208,7 +208,8 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
     if plan.point != nil {
         progress.append(pointDone ? L.s("강도 훈련 완료", "hard session done", ja: "強度練習 完了") : L.s("강도 훈련 아직", "hard session still to do", ja: "強度練習 まだ"))
     }
-    progress.append(L.s("이지 \(easyDone)/\(plan.easyRuns)회", "easy \(easyDone)/\(plan.easyRuns)", ja: "イージー \(easyDone)/\(plan.easyRuns)回"))
+    // 실제/계획 나눗셈("2/3회")은 진행률 표시 — 두 값을 따로 적는다(2026-10-18 사용자 결정, 9/22 진행률 금지와 같은 줄기)
+    progress.append(L.s("이지 \(easyDone)회 · 계획 \(plan.easyRuns)회", "easy \(easyDone) · plan \(plan.easyRuns)", ja: "イージー\(easyDone)回 · 計画\(plan.easyRuns)回"))
     // 주 끝에 포인트를 몰아넣지 않는다 — 남은 날 2일 이하면 이번 주 포인트는 건너뛴다(다음 주로 미루지 않음)
     let pointSkippable = pointLeft && daysLeft <= 2
     if pointSkippable {
