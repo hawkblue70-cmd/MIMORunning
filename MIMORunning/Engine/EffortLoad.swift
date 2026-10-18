@@ -8,6 +8,8 @@ enum EffortLoad {
         let date: Date
         let durationMin: Double
         let effort: Int?          // nil = 강도 없음 → 부하 미합산, runCount에는 포함
+        /// 거리(km) — 부하 비율의 절대량 안전장치(최근 7일 거리가 지난 12주 최고 주간 거리 아래면 '크게 높음' 한 단계 낮춤)
+        var distanceKm: Double? = nil
     }
 
     struct WeekLoad: Equatable {
@@ -78,7 +80,8 @@ enum EffortLoad {
     /// 러닝 활동 → Run. 걷기·하이킹은 제외.
     static func runs(from activities: [Activity], index: EffortIndex) -> [Run] {
         activities.filter { $0.type == .running }
-            .map { Run(date: $0.date, durationMin: $0.duration / 60, effort: index.resolve($0.id)?.value) }
+            .map { Run(date: $0.date, durationMin: $0.duration / 60, effort: index.resolve($0.id)?.value,
+                       distanceKm: $0.distance / 1000) }
     }
 
     /// 평균 ÷ 모표준편차(모집단 기준). 임계값 2.0은 이 정의(모표준편차)에 맞춰 고른 값이다. sd 0이면 nil.
@@ -213,6 +216,77 @@ enum EffortLoad {
         return (r, ratioLabel(r))
     }
 
+    // MARK: 지수 가중 부하 비율 (2026-10-19)
+
+    /// 부하 비율 결과 — 라벨과 함께 근거에 적을 주간 환산 값(AU/주).
+    struct LoadRatio: Equatable {
+        let ratio: Double
+        let label: RatioLabel
+        /// 최근 흐름(7일 지수 가중 평균 × 7)
+        let acuteWeeklyAU: Double
+        /// 지난 4주 흐름(28일 지수 가중 평균 × 7)
+        let chronicWeeklyAU: Double
+        /// 절대량 안전장치로 '크게 높음'에서 한 단계 내려왔는가
+        let cappedByMaxWeek: Bool
+    }
+
+    /// 7일·4주 지수 가중 평균(EWMA, Williams 2017: λ = 2/(N+1)) 비율.
+    /// ⚠ 예전 롤링 창(최근 7일 합 ÷ 이전 4×7일 평균)은 큰 하루가 7일 창에 있는 동안 매일 같은 '크게 높음'을 내다가
+    ///   7일째 창에서 빠지는 날 비율이 뚝 떨어졌다 — 큰 날 뒤 한 주 내내 "1~2일 쉬세요"가 반복됐다(2026-10-19 사용자 검토).
+    ///   지수 가중은 지난 날의 무게가 매일 조금씩 줄어 절벽이 없다.
+    /// 자료: 첫 기록이 28일 이상 전이어야 한다(4주 흐름). 최근 7일 강도 커버리지 0.5 미만이면 nil.
+    /// 절대량 안전장치: '크게 높음'인데 최근 7일 거리가 지난 12주(최근 7일 제외) 최고 7일 거리 이하면 '높음'으로 —
+    ///   쉬었다 돌아와 기준이 낮아진 뒤의 평범한 주가 과하게 울리지 않게.
+    static func loadRatio(runs: [Run], asOf: Date, calendar: Calendar = .current) -> LoadRatio? {
+        let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
+        guard current.coverage >= minCoverage else { return nil }
+        let today = calendar.startOfDay(for: asOf)
+        guard let first = runs.map(\.date).min().map({ calendar.startOfDay(for: $0) }),
+              let need = calendar.date(byAdding: .day, value: -28, to: today), first <= need else { return nil }
+        let day0 = max(first, calendar.date(byAdding: .day, value: -83, to: today) ?? first)
+        let n = (calendar.dateComponents([.day], from: day0, to: today).day ?? 0) + 1
+        guard n >= 29 else { return nil }
+        var daily = Array(repeating: 0.0, count: n)
+        for r in runs {
+            guard let e = r.effort else { continue }
+            let i = calendar.dateComponents([.day], from: day0, to: calendar.startOfDay(for: r.date)).day ?? -1
+            if i >= 0 && i < n { daily[i] += sessionAU(effort: e, durationMin: r.durationMin) }
+        }
+        // 첫 28일 평균으로 두 평균을 함께 시작해, 나머지 날을 지수 가중으로 굴린다
+        let seed = daily[0..<28].reduce(0, +) / 28
+        var acute = seed, chronic = seed
+        let la = 2.0 / 8.0, lc = 2.0 / 29.0
+        for i in 28..<n {
+            acute = la * daily[i] + (1 - la) * acute
+            chronic = lc * daily[i] + (1 - lc) * chronic
+        }
+        guard chronic > 0 else { return nil }
+        let r = acute / chronic
+        var label = ratioLabel(r)
+        var capped = false
+        if label == .veryHigh {
+            let km = { (w: WindowLoad) -> Double in
+                runs.filter { $0.date >= w.start && $0.date < w.end }.compactMap(\.distanceKm).reduce(0, +)
+            }
+            let curKm = km(current)
+            var end = current.start
+            var maxKm = 0.0
+            for _ in 0..<78 {   // 12주 동안 하루씩 밀며 7일 창 거리의 최댓값
+                let w = window(runs: runs, endingBefore: end, days: 7, calendar: calendar)
+                maxKm = max(maxKm, km(w))
+                end = calendar.date(byAdding: .day, value: -1, to: end) ?? w.start
+            }
+            if curKm > 0, maxKm > 0, curKm <= maxKm { label = .high; capped = true }
+        }
+        return LoadRatio(ratio: r, label: label, acuteWeeklyAU: acute * 7, chronicWeeklyAU: chronic * 7, cappedByMaxWeek: capped)
+    }
+
+    /// 하루 전 기준 지수 가중 비율 — 총평 훈련부하 줄의 저장 없는 히스테리시스용.
+    static func loadRatioYesterday(runs: [Run], asOf: Date, calendar: Calendar = .current) -> LoadRatio? {
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: asOf) else { return nil }
+        return loadRatio(runs: runs, asOf: yesterday, calendar: calendar)
+    }
+
     /// 하루 전 기준(asOf −1일)의 롤링 4주 평균 대비 — 총평 훈련부하 줄의 저장 없는 히스테리시스용.
     /// 오늘 창에서 8일 전 고강도 하루가 빠져 라벨이 내려온 날을 "회복 완료"로 오판하지 않게 어제 라벨을 함께 본다.
     static func rollingAcuteChronicYesterday(runs: [Run], asOf: Date, calendar: Calendar = .current) -> (ratio: Double, label: RatioLabel)? {
@@ -234,7 +308,7 @@ enum EffortLoad {
         if current.coverage >= 1.0, let m = monotony(daily: current.daily), m >= monotonyThreshold {
             return .monotony
         }
-        guard let ac = rollingAcuteChronic(runs: runs, asOf: asOf, calendar: calendar) else { return nil }
+        guard let ac = loadRatio(runs: runs, asOf: asOf, calendar: calendar) else { return nil }
         switch ac.label {
         case .low:      return .low
         case .steady:   return nil

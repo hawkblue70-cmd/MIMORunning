@@ -888,6 +888,8 @@ struct RunInsightTabCard: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 대회 계획 이번 주 목표 거리(km) — 총평 부하 줄이 계획된 증량 주를 계획과 비교한다
+    var planWeekKm: Double? = nil
     /// 회복 곡선 한 줄 입력 — 리듬 카드와 내보내기 시트가 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -958,6 +960,7 @@ struct RunInsightTabCard: View {
                 effortIndex: effortIndex,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
+                planWeekKm: planWeekKm,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands
@@ -1076,6 +1079,7 @@ struct RunInsightTabCard: View {
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
+                planWeekKm: planWeekKm,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands
@@ -1596,6 +1600,8 @@ private struct RhythmInsightCard: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 대회 계획 이번 주 목표 거리(km) — 총평 부하 줄이 계획된 증량 주를 계획과 비교한다
+    var planWeekKm: Double? = nil
     /// 회복 곡선 한 줄. nil이면 캡션 둘째 줄을 그리지 않는다 — "회복 데이터 없음" 문구는 쓰지 않는다.
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -2516,7 +2522,7 @@ private struct RhythmInsightCard: View {
             effortIndex: effortIndex, heatHRModel: heatHRModel,
             age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
             planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
-            hrvNights: hrvNights, hrMax: hrMax
+            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm
         ))
     }
 
@@ -2642,7 +2648,7 @@ private struct PerformanceInsightCard: View {
         let w = EffortLoad.window(runs: runs, endingBefore: dayEnd, days: 7)
         guard w.coveredCount > 0 else { return nil }
         let thisAU = idx.resolve(activity.id).map { EffortLoad.sessionAU(effort: $0.value, durationMin: activity.duration / 60) }
-        let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+        let ac = EffortLoad.loadRatio(runs: runs, asOf: activity.date)?.label   // 총평과 같은 지수 가중 비율
         let sentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: activity.date)
 
         // 성장 탭 "러닝 흐름"과 같은 컴포넌트에 넘길 일별 버킷 — 이 러닝 날짜로 끝나는 **14일**.
@@ -4501,8 +4507,8 @@ private struct PerformanceInsightCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
-            Text(L.s("AU = 체감 강도 × 분 · 7일 합을 4주 평균과 비교합니다",
-                     "AU = perceived effort × minutes · 7-day sum vs 4-week average", ja: "AU = 体感強度 × 分 · 7日間の合計を4週平均と比べます"))
+            Text(L.s("AU = 체감 강도 × 분 · 최근 흐름을 지난 4주 흐름과 비교합니다",
+                     "AU = perceived effort × minutes · recent trend vs last 4 weeks", ja: "AU = 体感強度 × 分 · 最近の流れを直近4週の流れと比べます"))
                 .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
@@ -5467,6 +5473,8 @@ struct InsightExportSheet: View {
     var easyPaceLookup: MRHRPaceLookup? = nil
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
+    /// 대회 계획 이번 주 목표 거리(km) — 총평 부하 줄이 계획된 증량 주를 계획과 비교한다
+    var planWeekKm: Double? = nil
     /// 회복 곡선 한 줄 입력 — 미리보기 = 출력이므로 리듬 카드와 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -5677,6 +5685,7 @@ struct InsightExportSheet: View {
                 raceDetailFn: raceDetailFn,
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
+                planWeekKm: planWeekKm,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,

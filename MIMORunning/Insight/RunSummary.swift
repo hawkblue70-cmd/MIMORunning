@@ -48,8 +48,20 @@ struct RunSummaryInput {
     var peakHeartRate: Int? = nil
     var temperatureC: Double? = nil
     var sevenDayAU: Double? = nil
-    /// 직전 4주(7일 창 4개) 평균 AU — 상태어 "4주 평균 대비"의 기준값. 근거에 숫자로 적는다.
+    /// 지난 4주 흐름(28일 지수 가중 평균, AU/주) — 상태어 "지난 4주 대비"의 기준값. 근거에 숫자로 적는다.
     var fourWeekAvgAU: Double? = nil
+    /// 최근 흐름(7일 지수 가중 평균, AU/주) — 상태어 비율의 분자
+    var recentWeeklyAU: Double? = nil
+    /// 최근 7일 중 부하(AU)가 가장 큰 러닝 — 부하 급증의 원인이 된 날(2026-10-19)
+    var spikeRunDate: Date? = nil
+    var spikeRunKm: Double? = nil
+    /// 그 러닝이 며칠 전인가(오늘 = 0)
+    var spikeDaysAgo: Int? = nil
+    /// 그 뒤 러닝(오늘 포함)이 모두 쉬운 러닝(체감 강도 4 이하)이었나
+    var easySinceSpike: Bool = false
+    /// 대회 계획의 이번 주 목표 거리(km)와 이번 주(월요일 시작) 지금까지 거리 — 계획된 증량 주는 계획과 비교한다
+    var planWeekKm: Double? = nil
+    var weekKmSoFar: Double? = nil
     var previousSevenAU: Double? = nil
     var loadSentence: EffortLoad.SentenceKind? = nil
     /// 이 러닝의 체감 강도가 아직 없음 — 7일 합에 오늘이 0으로 들어가 있으므로 높다/가볍다를 말하지 않는다
@@ -439,16 +451,16 @@ enum RunSummary {
         var tone: RunSummaryLine.Tone
         switch i.acuteChronic {
         case .veryHigh:
-            state = L.s("4주 평균 대비 크게 높음", "Well above 4-wk avg", ja: "4週平均より大きく高い")
+            state = L.s("지난 4주 대비 크게 높음", "Well above last 4 wks", ja: "直近4週より大きく高い")
             tone = .neutral
         case .high:
-            state = L.s("4주 평균 대비 높음", "Above 4-wk avg", ja: "4週平均より高い")
+            state = L.s("지난 4주 대비 높음", "Above last 4 wks", ja: "直近4週より高い")
             tone = .neutral
         case .low:
             state = L.s("평소보다 가볍게", "Lighter than usual", ja: "普段より軽め")
             tone = .good
         case .steady:
-            state = L.s("4주 평균 수준", "Around 4-wk avg", ja: "4週平均並み")
+            state = L.s("지난 4주 수준", "In line with last 4 wks", ja: "直近4週並み")
             tone = .good
         case nil:
             // 4주 비교가 아직 안 되는 기간(유효 창 3개 미만) — 증감 %만으로 높다/가볍다를 말하지 않고 7일 합만 적는다
@@ -493,9 +505,11 @@ enum RunSummary {
             if let prev = i.previousSevenAU {
                 parts.append(L.s("이전 7일 \(groupedInt(prev))", "previous 7 days \(groupedInt(prev)) AU", ja: "前の7日 \(groupedInt(prev))"))
             }
-            // 상태어는 4주 평균 대비인데 근거엔 이전 7일만 있어 "+5%인데 왜 높음?"으로 읽혔다(2026-10-17) — 기준값을 함께 적는다
+            // 상태어는 지난 4주 대비인데 근거엔 이전 7일만 있어 "+5%인데 왜 높음?"으로 읽혔다(2026-10-17) — 비교한 두 흐름을 함께 적는다.
+            // 2026-10-19부터 비율은 지수 가중 평균(최근 7일 흐름 ÷ 4주 흐름, AU/주 환산)
             if let avg = i.fourWeekAvgAU, avg > 0 {
-                parts.append(L.s("4주 평균 \(groupedInt(avg))", "4-wk avg \(groupedInt(avg)) AU", ja: "4週平均 \(groupedInt(avg))"))
+                let recent = i.recentWeeklyAU.map { L.s("최근 흐름 \(groupedInt($0)) · ", "recent \(groupedInt($0)) · ", ja: "最近の流れ \(groupedInt($0)) · ") } ?? ""
+                parts.append(recent + L.s("4주 흐름 \(groupedInt(avg))", "4-wk trend \(groupedInt(avg)) AU/wk", ja: "4週の流れ \(groupedInt(avg))"))
             }
         }
         if let w = i.weekOverWeek {
@@ -562,15 +576,28 @@ enum RunSummary {
                 return L.s("대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a taper week — keep it easy.", ja: "レース計画ではテーパー週です。イージーラン中心にしてください。")
             }
         }
+        // 대회 계획의 증량 주 — 지난 4주 대신 계획과 비교한다. 의도한 증량을 "쉬세요"로 막지 않게(2026-10-19).
+        // (회복·테이퍼·대회 뒤 주는 위에서 이미 계획 문장으로 끝났다)
+        if jumped, let target = i.planWeekKm, target > 0, let wk = i.weekKmSoFar, let phase = i.planPhase {
+            let wkStr = String(format: "%.1f", wk), tStr = String(format: "%.0f", target)
+            if wk <= target * 1.1 {
+                return L.s("대회 계획의 \(phase) 주입니다. 이번 주 \(wkStr)km · 계획 \(tStr)km로 계획 안이라, 부하가 늘어난 건 예정된 증량입니다.",
+                           "It's a \(phase) week in your race plan — \(wkStr) km this week vs \(tStr) km planned, so the rise is the planned build.",
+                           ja: "レース計画の\(phase)週です。今週\(wkStr)km · 計画\(tStr)kmで計画内なので、負荷の増加は予定どおりの増量です。")
+            }
+            return L.s("이번 주 \(wkStr)km로 계획 \(tStr)km보다 많습니다. 남은 날은 이지런으로 가세요.",
+                       "\(wkStr) km this week is above the \(tStr) km planned — keep the rest of the week easy.",
+                       ja: "今週\(wkStr)kmで計画の\(tStr)kmより多いです。残りの日はイージーランにしてください。")
+        }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
             // 이유를 앞에 — 맨 위 요약엔 이 문장만 나와 이지런 다음 날에도 "또 이지런?"으로 읽혔다(2026-10-19).
             // 우선순위: 부하 급증 > 연속일 > 편차 적음.
             let reason: String = {
                 if i.acuteChronic == .veryHigh {
-                    return L.s("최근 7일 부하가 4주 평균보다 크게 높습니다. ", "Your 7-day load is well above your 4-week average. ", ja: "直近7日の負荷が4週平均より大きく高いです。")
+                    return L.s("최근 부하가 지난 4주보다 크게 늘었습니다. ", "Your recent load has risen well above the last 4 weeks. ", ja: "最近の負荷が直近4週より大きく増えました。")
                 }
                 if jumped {
-                    return L.s("최근 7일 부하가 4주 평균보다 높습니다. ", "Your 7-day load is above your 4-week average. ", ja: "直近7日の負荷が4週平均より高いです。")
+                    return L.s("최근 부하가 지난 4주보다 늘었습니다. ", "Your recent load has risen above the last 4 weeks. ", ja: "最近の負荷が直近4週より増えました。")
                 }
                 if i.streakDays >= 4 {
                     return L.s("\(i.streakDays)일 연속 달렸습니다. ", "\(i.streakDays) days in a row. ", ja: "\(i.streakDays)日連続で走りました。")
@@ -581,6 +608,15 @@ enum RunSummary {
             let z12 = (i.zoneFractions[1] ?? 0) + (i.zoneFractions[2] ?? 0)
             let zTotal = i.zoneFractions.values.reduce(0, +)
             let todayEasy = i.workoutType == .easy || i.workoutType == .lsd || (zTotal > 0 && z12 / zTotal >= 0.65)
+            // 원인이 된 큰 날이 3일 이상 지났고 그 뒤로 쉬운 러닝만 했으면 — 매일 같은 "쉬세요"를 반복하지 않고 오늘을 인정한다(2026-10-19)
+            if jumped, todayEasy, i.easySinceSpike, let d = i.spikeDaysAgo, d >= 3, let date = i.spikeRunDate,
+               i.hrvTrend?.isSuppressed != true, !lastNightLow(i) {   // HRV가 낮으면 누그러뜨리지 않는다
+                let df = DateFormatter(); df.dateFormat = "M/d"
+                let km = i.spikeRunKm.map { " " + (abs($0 - $0.rounded()) < 0.05 ? String(format: "%.0fkm", $0) : String(format: "%.1fkm", $0)) } ?? ""
+                return L.s("큰 부하 날(\(df.string(from: date))\(km))의 영향이 아직 남아 있습니다. 오늘 같은 쉬운 러닝은 괜찮습니다.",
+                           "The big day (\(df.string(from: date))\(km)) is still showing in your load. Easy runs like today's are fine.",
+                           ja: "負荷の大きかった日(\(df.string(from: date))\(km))の影響がまだ残っています。今日のような楽なランは大丈夫です。")
+            }
             var s = reason + (todayEasy
                 ? L.s("오늘처럼 1~2일 더 이지런으로 가거나 쉬세요.", "Keep it easy like today for another day or two, or rest.", ja: "今日のようにもう1~2日イージーランにするか休んでください。")
                 : L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.",

@@ -105,7 +105,7 @@ struct RunSummaryTests {
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
         #expect(out[2] == RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good))
         // 최근 7일 +55%라도 상태어는 4주 평균 대비로만 — 증감은 근거 줄의 숫자. 4일 연속이라 톤은 중립.
-        #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준 · 4일 연속", tone: .neutral))
+        #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "지난 4주 수준 · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
     }
 
@@ -253,7 +253,7 @@ struct RunSummaryTests {
         var i = RunSummaryInput(); i.weekOverWeek = -0.2; i.acuteChronic = .steady; i.streakDays = 4; i.planPhase = "테이퍼"
         let line = RunSummary.lines(i).first { $0.axis == "훈련부하" }
         #expect(line?.tone == .good)
-        #expect(line?.state == "4주 평균 수준 · 4일 연속")
+        #expect(line?.state == "지난 4주 수준 · 4일 연속")
         #expect(line?.next == "대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요.")
         i.planPhase = nil
         #expect(RunSummary.lines(i).first { $0.axis == "훈련부하" }?.tone == .neutral)
@@ -289,17 +289,17 @@ struct RunSummaryTests {
 
     @Test func steadyLoadIsGood() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 수준", tone: .good)])
     }
 
     @Test func highRatioWithoutWeekOverWeekUsesFourWeekWording() {
         var i = RunSummaryInput(); i.acuteChronic = .high
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 대비 높음", tone: .neutral)])
     }
 
     @Test func veryHighRatioWithNegativeWeekOverWeekUsesFourWeekWording() {
         var i = RunSummaryInput(); i.acuteChronic = .veryHigh; i.weekOverWeek = -0.17
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 크게 높음", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 대비 크게 높음", tone: .neutral)])
         #expect(lines(i)[0].evidence == "최근 7일 -17%")
     }
 
@@ -318,17 +318,17 @@ struct RunSummaryTests {
 
     @Test func streakBelowThreeNotAppended() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.0; i.acuteChronic = .steady; i.streakDays = 2
-        #expect(lines(i).first?.state == "4주 평균 수준")
+        #expect(lines(i).first?.state == "지난 4주 수준")
     }
 
     // MARK: 훈련부하 — 상태어는 4주 평균 대비로만, 증감은 근거 숫자 (창 경계 하루 차이로 결론이 뒤집히지 않게)
 
     @Test func bigWeekOverWeekWithSteadyRatioIsNotJumped() {
-        // 실제 사례: 7일 1,691 · 이전 7일 1,046(+62%)이어도 4주 평균 대비 유지면 "이번 주 +62%"가 아니라 "4주 평균 수준"
+        // 실제 사례: 7일 1,691 · 이전 7일 1,046(+62%)이어도 4주 평균 대비 유지면 "이번 주 +62%"가 아니라 "지난 4주 수준"
         var i = RunSummaryInput(); i.weekOverWeek = 0.62; i.acuteChronic = .steady
         i.sevenDayAU = 1691; i.previousSevenAU = 1046
         let out = lines(i)
-        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준", tone: .good)])
+        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 수준", tone: .good)])
         #expect(out[0].next != "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
         #expect(out[0].state.contains("이번 주") == false)
     }
@@ -336,15 +336,15 @@ struct RunSummaryTests {
     @Test func highRatioIsAboveFourWeekAvgWithRestAdvice() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.10; i.acuteChronic = .high; i.sevenDayAU = 1691
         let out = lines(i)
-        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
-        #expect(out[0].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 대비 높음", tone: .neutral)])
+        #expect(out[0].next == "최근 부하가 지난 4주보다 늘었습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func evidenceShowsFourWeekAverageBehindHighLabel() {
         // 상태어는 4주 평균 대비 "높음"인데 근거엔 +5%만 있어 헷갈렸다 — 기준값을 함께(2026-10-17)
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .high
         i.sevenDayAU = 1003; i.previousSevenAU = 951; i.fourWeekAvgAU = 760
-        #expect(lines(i)[0].evidence == "7일 1,003 AU · 이전 7일 951 · 4주 평균 760 · 최근 7일 +5%")
+        #expect(lines(i)[0].evidence == "7일 1,003 AU · 이전 7일 951 · 4주 흐름 760 · 최근 7일 +5%")
     }
 
     @Test func evidenceAppendsSignedWeekOverWeek() {
@@ -356,7 +356,7 @@ struct RunSummaryTests {
 
     @Test func steadyLoadWithLongStreakIsNeutral() {
         var i = RunSummaryInput(); i.weekOverWeek = 0.05; i.acuteChronic = .steady; i.streakDays = 4
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 수준 · 4일 연속", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "훈련부하", state: "지난 4주 수준 · 4일 연속", tone: .neutral)])
     }
 
     // MARK: 유산소
@@ -387,7 +387,7 @@ struct RunSummaryTests {
         #expect(out[2].next == nil)
         // 연속일은 상태어에만 — 근거 줄에서는 빼서 같은 말이 두 번 보이지 않게 한다
         #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 최근 7일 +55%")
-        #expect(out[3].state == "4주 평균 수준 · 4일 연속")
+        #expect(out[3].state == "지난 4주 수준 · 4일 연속")
         #expect(out[3].next == "4일 연속 달렸습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
         #expect(out[4].evidence == "VO2max 45.4 · 8주 전 대비 +0.8")
         #expect(out[4].next == nil)
@@ -515,19 +515,19 @@ struct RunSummaryTests {
         // 부하가 크게 높은 주의 이지런 — 이유를 앞에 두고 오늘을 인정한다(2026-10-19)
         var i = RunSummaryInput(); i.acuteChronic = .veryHigh; i.sevenDayAU = 2375
         i.workoutType = .easy; i.zoneFractions = [1: 0.10, 2: 0.71, 3: 0.19]
-        #expect(lines(i).first { $0.axis == "훈련부하" }?.next == "최근 7일 부하가 4주 평균보다 크게 높습니다. 오늘처럼 1~2일 더 이지런으로 가거나 쉬세요.")
+        #expect(lines(i).first { $0.axis == "훈련부하" }?.next == "최근 부하가 지난 4주보다 크게 늘었습니다. 오늘처럼 1~2일 더 이지런으로 가거나 쉬세요.")
     }
 
     @Test func hrvSuppressedAppendsToJumpSentence() {
         var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
         i.hrvTrend = hrv(.below)
-        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다. HRV도 기준선 아래로 흔들리고 있습니다.")
+        #expect(lines(i)[3].next == "최근 부하가 지난 4주보다 늘었습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다. HRV도 기준선 아래로 흔들리고 있습니다.")
     }
 
     @Test func hrvAboveDoesNotTouchJumpSentence() {
         var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
         i.hrvTrend = hrv(.above)
-        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(lines(i)[3].next == "최근 부하가 지난 4주보다 늘었습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func hrvNilChangesNothing() {
@@ -547,7 +547,7 @@ struct RunSummaryTests {
     @Test func loadSpikeBeatsHardDay() {
         // 4주 평균 대비 높음이면 오늘 강도를 냈어도 급증 경고가 우선한다 (연속일 규칙과 겹치지 않게 streak 2)
         var i = todayInput(); i.todayIsHard = true; i.acuteChronic = .high; i.streakDays = 2
-        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(lines(i)[3].next == "최근 부하가 지난 4주보다 늘었습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func steadyAfterHighYesterdaySaysComingDown() {

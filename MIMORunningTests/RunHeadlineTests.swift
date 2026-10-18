@@ -11,7 +11,7 @@ struct RunHeadlineTests {
     private let taperNext = "대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요."
     private var todayLines: [RunSummaryLine] {
         [line("러닝폼", "끝까지 유지"), line("심박", "Zone 2 중심"),
-         line("훈련부하", "4주 평균 수준 · 4일 연속", next: taperNext), line("유산소", "50대 남성 기준 높음")]
+         line("훈련부하", "지난 4주 수준 · 4일 연속", next: taperNext), line("유산소", "50대 남성 기준 높음")]
     }
     private var efficiency7: RunInsight {
         RunInsight(category: .efficiency, tone: .good, badge: "효율 향상",
@@ -48,10 +48,10 @@ struct RunHeadlineTests {
 
     @Test func restSignalBeatsGoodSignal() {
         var lines = todayLines
-        lines[2] = line("훈련부하", "4주 평균 대비 높음", .neutral, next: "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        lines[2] = line("훈련부하", "지난 4주 대비 높음", .neutral, next: "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
         let h = RunHeadline.make(insight: nil, summaryInput: input(ac: .high), summaryLines: lines, efficiency: efficiency7)
         #expect(h?.title == "쌓이는 러닝")
-        #expect(h?.fact == "4주 평균 대비 높음 · 같은 페이스에 심박 7bpm 낮음")
+        #expect(h?.fact == "지난 4주 대비 높음 · 같은 페이스에 심박 7bpm 낮음")
         #expect(h?.next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
@@ -72,10 +72,10 @@ struct RunHeadlineTests {
     @Test func secondFactSkipsSameAxis() {
         // 부하 급증 + 4일 연속(계획 없음) — 둘 다 훈련부하 축이라 두 번째 사실로 붙지 않는다
         var lines = todayLines
-        lines[2] = line("훈련부하", "4주 평균 대비 높음 · 4일 연속", .neutral)
+        lines[2] = line("훈련부하", "지난 4주 대비 높음 · 4일 연속", .neutral)
         let h = RunHeadline.make(insight: nil, summaryInput: input(late: nil, ac: .high, streak: 4),
                                  summaryLines: lines, efficiency: nil)
-        #expect(h?.fact == "4주 평균 대비 높음 · 4일 연속")
+        #expect(h?.fact == "지난 4주 대비 높음 · 4일 연속")
     }
 
     @Test func nextActionFallsBackThroughAxes() {

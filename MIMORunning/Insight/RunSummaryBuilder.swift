@@ -24,6 +24,8 @@ enum RunSummaryBuilder {
         var hrvNights: [(date: Date, value: Double)] = []
         /// 관측 최대심박(엔진 산출) — 리듬 심박 캡션(`TabDigestRhythm.hrVerdict`)의 "최고 강도" 판정용. nil이면 나이(Tanaka)로.
         var hrMax: Double? = nil
+        /// 대회 계획 이번 주 목표 거리(km) — 계획된 증량 주는 지난 4주 대신 계획과 비교한다(2026-10-19)
+        var planWeekKm: Double? = nil
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만일 때의 한 줄 칩 폴백은 호출부(카드) 몫.
@@ -173,7 +175,7 @@ enum RunSummaryBuilder {
         var au: (current: Double, previous: Double)? = nil
         if let idx = effortIndex {
             let runs = effortLoadRuns(activity: activity, history: history, index: idx).runs
-            label = EffortLoad.rollingAcuteChronic(runs: runs, asOf: activity.date)?.label
+            label = EffortLoad.loadRatio(runs: runs, asOf: activity.date)?.label
             au = sevenDayAU(runs: runs, asOf: activity.date)
         }
         let loadHigh = label == .high || label == .veryHigh
@@ -184,7 +186,7 @@ enum RunSummaryBuilder {
             let pct = Int(((a.current / a.previous - 1) * 100).rounded())
             parts.append(L.s("7일 강도 부하 \(pct >= 0 ? "+" : "")\(pct)%", "7-day training load \(pct >= 0 ? "+" : "")\(pct)%", ja: "7日間の強度負荷 \(pct >= 0 ? "+" : "")\(pct)%"))
         } else if loadHigh {
-            parts.append(L.s("강도 부하 4주 평균보다 높음", "training load above 4-week avg", ja: "強度負荷が4週平均より高い"))
+            parts.append(L.s("강도 부하 지난 4주보다 늘어남", "training load up on the last 4 weeks", ja: "強度負荷が直近4週より増加"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -236,19 +238,46 @@ enum RunSummaryBuilder {
         if let idx = c.effortIndex {
             let runs = effortLoadRuns(activity: c.activity, history: c.history, index: idx).runs
             input.weekOverWeek = EffortLoad.rollingWeekOverWeek(runs: runs, asOf: c.activity.date)
-            let ac = EffortLoad.rollingAcuteChronic(runs: runs, asOf: c.activity.date)
+            // 지수 가중 비율(EffortLoad.loadRatio) — 큰 하루가 7일 창에 있는 내내 같은 경고가 반복되던 롤링 창 대신(2026-10-19)
+            let ac = EffortLoad.loadRatio(runs: runs, asOf: c.activity.date)
             input.acuteChronic = ac?.label
-            // 같은 러닝 목록으로 하루 전 창의 라벨 — 36일 창이 어제 기준 7+28일을 덮는다
-            input.acuteChronicYesterday = EffortLoad.rollingAcuteChronicYesterday(runs: runs, asOf: c.activity.date)?.label
+            input.recentWeeklyAU = ac?.acuteWeeklyAU
+            input.fourWeekAvgAU = ac?.chronicWeeklyAU
+            // 같은 러닝 목록으로 하루 전 라벨 — 90일 창이 어제 기준 계산을 덮는다
+            input.acuteChronicYesterday = EffortLoad.loadRatioYesterday(runs: runs, asOf: c.activity.date)?.label
             input.loadSentence = EffortLoad.rollingSentenceKind(runs: runs, asOf: c.activity.date)
             if let au = sevenDayAU(runs: runs, asOf: c.activity.date) {
                 input.sevenDayAU = au.current
                 input.previousSevenAU = au.previous
-                // 상태어 기준값 — 7일 합 ÷ 비율 = 직전 4주 평균
-                if let r = ac?.ratio, r > 0 { input.fourWeekAvgAU = au.current / r }
             }
             // 이 러닝의 강도가 아직 없으면 위 합계에 오늘이 0으로 들어가 있다 — 상태어가 그 사실을 말하게 한다
             input.todayEffortMissing = idx.resolve(c.activity.id) == nil
+
+            // 부하 급증의 원인이 된 날 — 최근 7일(오늘 포함) 중 AU가 가장 큰 러닝. 그 뒤 러닝이 모두 쉬웠는지(체감 4 이하).
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: c.activity.date)
+            let weekAgo = cal.date(byAdding: .day, value: -6, to: today) ?? today
+            var acts = c.history.filter { $0.type == .running && $0.date >= weekAgo && $0.date <= c.activity.date }
+            if !acts.contains(where: { $0.id == c.activity.id }) { acts.append(c.activity) }
+            let scored: [(a: Activity, au: Double, effort: Int)] = acts.compactMap { a in
+                guard let e = idx.resolve(a.id)?.value else { return nil }
+                return (a, EffortLoad.sessionAU(effort: e, durationMin: a.duration / 60), e)
+            }
+            if let spike = scored.max(by: { $0.au < $1.au }) {
+                input.spikeRunDate = spike.a.date
+                input.spikeRunKm = spike.a.distance / 1000
+                input.spikeDaysAgo = cal.dateComponents([.day], from: cal.startOfDay(for: spike.a.date), to: today).day
+                let after = scored.filter { $0.a.date > spike.a.date }
+                input.easySinceSpike = !after.isEmpty && after.allSatisfy { $0.effort <= 4 }
+            }
+        }
+        // 이번 주(월요일 시작) 지금까지 거리 — 계획된 증량 주 비교용
+        input.planWeekKm = c.planWeekKm
+        if c.planWeekKm != nil {
+            let monday = EffortLoad.mondayStart(of: c.activity.date)
+            var weekActs = c.history.filter { $0.type == .running && $0.date >= monday && $0.date <= c.activity.date }
+            if !weekActs.contains(where: { $0.id == c.activity.id }) { weekActs.append(c.activity) }
+            input.weekKmSoFar = weekActs.map(\.distance).reduce(0, +) / 1000
         }
         input.streakDays = computeRunningStreak(activity: c.activity, history: c.history)
         if let fi = vo2Info(detail: c.detail, age: c.age, isMale: c.isMale), let v = c.detail?.vo2Max {
@@ -305,7 +334,8 @@ func effortLoadRuns(activity: Activity, history: [Activity], index: EffortIndex)
     -> (runs: [EffortLoad.Run], acts: [Activity], dayEnd: Date) {
     let cal = Calendar.current
     let dayEnd = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: activity.date)) ?? activity.date
-    let since = cal.date(byAdding: .day, value: -36, to: activity.date) ?? .distantPast
+    // 지수 가중 4주 흐름은 84일까지 거슬러 굴린다(EffortLoad.loadRatio) — 90일
+    let since = cal.date(byAdding: .day, value: -90, to: activity.date) ?? .distantPast
     var acts = history.filter { $0.date >= since && $0.date < dayEnd }
     // history가 이 러닝을 포함하지 않는 호출부에서도 이 러닝이 창에 들어가야 한다.
     if !acts.contains(where: { $0.id == activity.id }) { acts.append(activity) }

@@ -56,10 +56,10 @@ struct TabDigestPerformanceTests {
 
     /// `SentenceKind`에는 '유지'가 없다(엔진이 nil로 침묵) — 네 경우 모두 문장이 있다.
     @Test func loadTexts() {
-        #expect(TabDigestPerformance.loadRatioText(.veryHigh) == "4주 평균 대비 크게 높음")
+        #expect(TabDigestPerformance.loadRatioText(.veryHigh) == "지난 4주 대비 크게 높음")
         #expect(TabDigestPerformance.loadSentence(.monotony) == "부하 편차 적음 — 강약 나누기")
         #expect(TabDigestPerformance.loadSentence(.low) == "회복 방향으로 진행 중")
-        #expect(TabDigestPerformance.loadLine(ratio: "4주 평균 대비 높음", sentence: "부하 조금 높은 편") == "4주 평균 대비 높음, 부하 조금 높은 편")
+        #expect(TabDigestPerformance.loadLine(ratio: "지난 4주 대비 높음", sentence: "부하 조금 높은 편") == "지난 4주 대비 높음, 부하 조금 높은 편")
         #expect(TabDigestPerformance.loadLine(ratio: nil, sentence: nil) == nil)
     }
 
@@ -93,7 +93,7 @@ struct TabDigestPerformanceTests {
                                              insights: [], easyAlertText: nil)
         let p2 = s.first { $0.kind == .problem && $0.priority == 2 }
         #expect(p2?.family == .load)
-        #expect(p2?.text == "4주 평균 대비 크게 높음, 부하 크게 증가 중 — 회복 챙기기")
+        #expect(p2?.text == "지난 4주 대비 크게 높음, 부하 크게 증가 중 — 회복 챙기기")
         #expect(p2?.direction == loadLines[0].next)
         #expect(p2?.tab == .performance)
         #expect(TabDigestPerformance.defaultDirection(lines: loadLines) == loadLines[0].next)
@@ -198,7 +198,7 @@ struct TabDigestPerformanceTests {
         let s = TabDigestPerformance.signals(context: .stub(workoutType: .general), input: i, lines: loadLines,
                                              insights: [], easyAlertText: nil)
         let p2 = s.first { $0.kind == .problem && $0.priority == 2 }
-        #expect(p2?.short == "강도 부하 4주 평균 대비 크게 높음 · 급증")
+        #expect(p2?.short == "강도 부하 지난 4주 대비 크게 높음 · 급증")
 
         let splits = (1...10).map { i in
             SplitData(id: i, distanceM: 1000, duration: 360, avgHeartRate: i <= 5 ? 140 : 155, avgCadence: nil,

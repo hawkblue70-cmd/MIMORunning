@@ -119,7 +119,7 @@ enum TabDigestPerformance {
         case .high:     t = L.s("높음", "higher", ja: "高い")
         case .veryHigh: t = L.s("크게 높음", "much higher", ja: "大きく高い")
         }
-        return L.s("4주 평균 대비 \(t)", "vs 4-wk avg \(t)", ja: "4週平均比 \(t)")
+        return L.s("지난 4주 대비 \(t)", "vs last 4 wks \(t)", ja: "直近4週比 \(t)")
     }
 
     /// 단조도 / 4주 평균 대비 문장 — "부상·위험" 표현 없음(Impellizzeri 2020).
@@ -405,9 +405,9 @@ enum TabDigestPerformance {
             // 요약(short)이 이미 "4주 평균 대비 높음"을 말한다 — 아랫줄은 같은 말 대신 근거 숫자(2026-10-18)
             let L = AppLanguage.shared
             let numbers: String? = {
-                guard let au = i.sevenDayAU, let avg = i.fourWeekAvgAU, avg > 0 else { return nil }
+                guard let recent = i.recentWeeklyAU, let avg = i.fourWeekAvgAU, avg > 0 else { return nil }
                 let f = { (v: Double) in Int(v.rounded()).formatted(.number.grouping(.automatic)) }
-                return L.s("7일 \(f(au)) AU · 4주 평균 \(f(avg))", "7-day \(f(au)) AU · 4-wk avg \(f(avg))", ja: "7日 \(f(au)) AU · 4週平均 \(f(avg))")
+                return L.s("최근 흐름 \(f(recent)) · 4주 흐름 \(f(avg)) (AU/주)", "recent \(f(recent)) · 4-wk trend \(f(avg)) (AU/wk)", ja: "最近の流れ \(f(recent)) · 4週の流れ \(f(avg)) (AU/週)")
             }()
             problem(2, .load, numbers ?? line, loadNext, short: loadShort(ratio: i.acuteChronic, kind: i.loadSentence))
         }

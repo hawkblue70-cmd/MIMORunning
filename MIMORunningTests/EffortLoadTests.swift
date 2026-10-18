@@ -207,11 +207,40 @@ struct EffortLoadTests {
         // 급증 → veryHigh
         let base = [run(-7, min: 120, effort: 5), run(-14, min: 120, effort: 5),
                     run(-21, min: 120, effort: 5), run(-28, min: 120, effort: 5)]   // 이전 4창 각 600
-        let spike = [run(0, min: 240, effort: 5)] + base
+        // 지수 가중 비율(2026-10-19) — 하루 급증 1,200 AU는 '높음', 이틀 연속이면 '크게 높음'
+        let spike = [run(0, min: 240, effort: 5), run(1, min: 240, effort: 5)] + base
         #expect(EffortLoad.rollingSentenceKind(runs: spike, asOf: asOf, calendar: cal) == .veryHigh)
         // 유지 → 침묵
         let steady = [run(0, min: 120, effort: 5)] + base
         #expect(EffortLoad.rollingSentenceKind(runs: steady, asOf: asOf, calendar: cal) == nil)
+    }
+
+    /// 지수 가중 비율 — 큰 하루가 7일째 되는 날에도 비율이 뚝 떨어지지 않고 매일 조금씩 내려온다(롤링 창 절벽 없음, 2026-10-19).
+    @Test func loadRatioDecaysWithoutCliff() {
+        let base = (1...8).map { run(-7 * $0, min: 120, effort: 5) }          // 8주 동안 주 1회 600 AU
+        // 오늘 1,800 AU + 이후 매일 아주 가벼운 러닝(1 AU) — 최근 7일 창이 비면 커버리지 0이라 비율이 없다
+        let runs = base + [run(0, min: 360, effort: 5)] + (1...8).map { run($0, min: 1, effort: 1) }
+        var prev = Double.infinity
+        var ratios: [Double] = []
+        for d in 0...8 {
+            let r = EffortLoad.loadRatio(runs: runs, asOf: day(d, hour: 22), calendar: cal)!.ratio
+            #expect(r < prev)                                                   // 매일 내려온다
+            ratios.append(r); prev = r
+        }
+        // 6일째→7일째(롤링 창이라면 큰 날이 빠지는 날)에 낙차가 다른 날보다 크지 않다
+        let drops = zip(ratios, ratios.dropFirst()).map { $0 - $1 }
+        #expect(drops[6] <= drops[0])
+    }
+
+    /// 절대량 안전장치 — '크게 높음'이어도 최근 7일 거리가 지난 12주 최고 7일 거리 이하면 '높음'으로.
+    @Test func loadRatioCapsVeryHighBelowRecentMaxWeek() {
+        func r(_ d: Int, _ m: Double, km: Double) -> EffortLoad.Run { .init(date: day(d), durationMin: m, effort: 5, distanceKm: km) }
+        let bigOld = [r(-60, 300, km: 40)]                                      // 두 달 전 큰 주 40km
+        let base = (1...8).map { r(-7 * $0, 60, km: 8) }
+        let spike = [r(0, 180, km: 25), r(1, 180, km: 10)]                       // 이번 35km — 40km 이하
+        let x = EffortLoad.loadRatio(runs: bigOld + base + spike, asOf: day(1, hour: 22), calendar: cal)!
+        #expect(x.label == .high)
+        #expect(x.cappedByMaxWeek)
     }
 
     @Test func rollingSummaryPartialWeekIsNotPenalised() {
