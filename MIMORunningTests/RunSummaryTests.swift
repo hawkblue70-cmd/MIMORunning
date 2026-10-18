@@ -337,7 +337,7 @@ struct RunSummaryTests {
         var i = RunSummaryInput(); i.weekOverWeek = 0.10; i.acuteChronic = .high; i.sevenDayAU = 1691
         let out = lines(i)
         #expect(bare(out) == [RunSummaryLine(axis: "훈련부하", state: "4주 평균 대비 높음", tone: .neutral)])
-        #expect(out[0].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(out[0].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func evidenceShowsFourWeekAverageBehindHighLabel() {
@@ -388,7 +388,7 @@ struct RunSummaryTests {
         // 연속일은 상태어에만 — 근거 줄에서는 빼서 같은 말이 두 번 보이지 않게 한다
         #expect(out[3].evidence == "7일 1,783 AU · 이전 7일 1,149 · 최근 7일 +55%")
         #expect(out[3].state == "4주 평균 수준 · 4일 연속")
-        #expect(out[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(out[3].next == "4일 연속 달렸습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
         #expect(out[4].evidence == "VO2max 45.4 · 8주 전 대비 +0.8")
         #expect(out[4].next == nil)
     }
@@ -511,16 +511,23 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next == "부하는 내려왔지만 이번 주 HRV가 크게 흔들립니다. 강도는 빼고 이지런으로 가세요.")
     }
 
+    @Test func easyDayUnderHighLoadSaysKeepItEasyLikeToday() {
+        // 부하가 크게 높은 주의 이지런 — 이유를 앞에 두고 오늘을 인정한다(2026-10-19)
+        var i = RunSummaryInput(); i.acuteChronic = .veryHigh; i.sevenDayAU = 2375
+        i.workoutType = .easy; i.zoneFractions = [1: 0.10, 2: 0.71, 3: 0.19]
+        #expect(lines(i).first { $0.axis == "훈련부하" }?.next == "최근 7일 부하가 4주 평균보다 크게 높습니다. 오늘처럼 1~2일 더 이지런으로 가거나 쉬세요.")
+    }
+
     @Test func hrvSuppressedAppendsToJumpSentence() {
         var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
         i.hrvTrend = hrv(.below)
-        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다. HRV도 기준선 아래로 흔들리고 있습니다.")
+        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다. HRV도 기준선 아래로 흔들리고 있습니다.")
     }
 
     @Test func hrvAboveDoesNotTouchJumpSentence() {
         var i = todayInput(); i.acuteChronic = .high; i.loadSentence = .high; i.streakDays = 0; i.todayIsHard = false
         i.hrvTrend = hrv(.above)
-        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func hrvNilChangesNothing() {
@@ -540,7 +547,7 @@ struct RunSummaryTests {
     @Test func loadSpikeBeatsHardDay() {
         // 4주 평균 대비 높음이면 오늘 강도를 냈어도 급증 경고가 우선한다 (연속일 규칙과 겹치지 않게 streak 2)
         var i = todayInput(); i.todayIsHard = true; i.acuteChronic = .high; i.streakDays = 2
-        #expect(lines(i)[3].next == "다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
+        #expect(lines(i)[3].next == "최근 7일 부하가 4주 평균보다 높습니다. 다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.")
     }
 
     @Test func steadyAfterHighYesterdaySaysComingDown() {

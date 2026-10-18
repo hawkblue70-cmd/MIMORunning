@@ -563,8 +563,28 @@ enum RunSummary {
             }
         }
         if jumped || i.loadSentence == .monotony || i.streakDays >= 4 {
-            var s = L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.",
-                        "Take a 30–40 min recovery run or rest for the next day or two.", ja: "次の1~2日は30~40分の回復イージーランか休養がよいです。")
+            // 이유를 앞에 — 맨 위 요약엔 이 문장만 나와 이지런 다음 날에도 "또 이지런?"으로 읽혔다(2026-10-19).
+            // 우선순위: 부하 급증 > 연속일 > 편차 적음.
+            let reason: String = {
+                if i.acuteChronic == .veryHigh {
+                    return L.s("최근 7일 부하가 4주 평균보다 크게 높습니다. ", "Your 7-day load is well above your 4-week average. ", ja: "直近7日の負荷が4週平均より大きく高いです。")
+                }
+                if jumped {
+                    return L.s("최근 7일 부하가 4주 평균보다 높습니다. ", "Your 7-day load is above your 4-week average. ", ja: "直近7日の負荷が4週平均より高いです。")
+                }
+                if i.streakDays >= 4 {
+                    return L.s("\(i.streakDays)일 연속 달렸습니다. ", "\(i.streakDays) days in a row. ", ja: "\(i.streakDays)日連続で走りました。")
+                }
+                return L.s("매일 비슷한 강도로 달렸습니다. ", "Every day has been at a similar effort. ", ja: "毎日同じくらいの強度で走りました。")
+            }()
+            // 오늘이 이미 쉬운 러닝이면 그걸 인정한다 — "회복 이지런"을 다시 권하면 오늘이 부족했다는 뜻으로 읽힌다
+            let z12 = (i.zoneFractions[1] ?? 0) + (i.zoneFractions[2] ?? 0)
+            let zTotal = i.zoneFractions.values.reduce(0, +)
+            let todayEasy = i.workoutType == .easy || i.workoutType == .lsd || (zTotal > 0 && z12 / zTotal >= 0.65)
+            var s = reason + (todayEasy
+                ? L.s("오늘처럼 1~2일 더 이지런으로 가거나 쉬세요.", "Keep it easy like today for another day or two, or rest.", ja: "今日のようにもう1~2日イージーランにするか休んでください。")
+                : L.s("다음 1~2일은 30~40분 회복 이지런이나 휴식이 좋습니다.",
+                      "Take a 30–40 min recovery run or rest for the next day or two.", ja: "次の1~2日は30~40分の回復イージーランか休養がよいです。"))
             if i.hrvTrend?.isSuppressed == true {
                 s += L.s(" HRV도 기준선 아래로 흔들리고 있습니다.", " Your HRV is also wobbling below baseline.", ja: " HRVも基準線の下で揺れています。")
             } else if lastNightLow(i) {
