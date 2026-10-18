@@ -234,32 +234,15 @@ enum EffortLoad {
     /// ⚠ 예전 롤링 창(최근 7일 합 ÷ 이전 4×7일 평균)은 큰 하루가 7일 창에 있는 동안 매일 같은 '크게 높음'을 내다가
     ///   7일째 창에서 빠지는 날 비율이 뚝 떨어졌다 — 큰 날 뒤 한 주 내내 "1~2일 쉬세요"가 반복됐다(2026-10-19 사용자 검토).
     ///   지수 가중은 지난 날의 무게가 매일 조금씩 줄어 절벽이 없다.
-    /// 자료: 첫 기록이 28일 이상 전이어야 한다(4주 흐름). 최근 7일 강도 커버리지 0.5 미만이면 nil.
+    /// 자료: 첫 기록이 21일 이상 전이어야 한다(`ewma`). 최근 7일 강도 커버리지 0.5 미만이면 nil.
     /// 절대량 안전장치: '크게 높음'인데 최근 7일 거리가 지난 12주(최근 7일 제외) 최고 7일 거리 이하면 '높음'으로 —
     ///   쉬었다 돌아와 기준이 낮아진 뒤의 평범한 주가 과하게 울리지 않게.
     static func loadRatio(runs: [Run], asOf: Date, calendar: Calendar = .current) -> LoadRatio? {
         let current = lastSevenDays(runs: runs, asOf: asOf, calendar: calendar)
         guard current.coverage >= minCoverage else { return nil }
-        let today = calendar.startOfDay(for: asOf)
-        guard let first = runs.map(\.date).min().map({ calendar.startOfDay(for: $0) }),
-              let need = calendar.date(byAdding: .day, value: -28, to: today), first <= need else { return nil }
-        let day0 = max(first, calendar.date(byAdding: .day, value: -83, to: today) ?? first)
-        let n = (calendar.dateComponents([.day], from: day0, to: today).day ?? 0) + 1
-        guard n >= 29 else { return nil }
-        var daily = Array(repeating: 0.0, count: n)
-        for r in runs {
-            guard let e = r.effort else { continue }
-            let i = calendar.dateComponents([.day], from: day0, to: calendar.startOfDay(for: r.date)).day ?? -1
-            if i >= 0 && i < n { daily[i] += sessionAU(effort: e, durationMin: r.durationMin) }
-        }
-        // 첫 28일 평균으로 두 평균을 함께 시작해, 나머지 날을 지수 가중으로 굴린다
-        let seed = daily[0..<28].reduce(0, +) / 28
-        var acute = seed, chronic = seed
-        let la = 2.0 / 8.0, lc = 2.0 / 29.0
-        for i in 28..<n {
-            acute = la * daily[i] + (1 - la) * acute
-            chronic = lc * daily[i] + (1 - lc) * chronic
-        }
+        guard let daily = dailySeries(runs: runs, asOf: asOf, calendar: calendar, value: { r in
+            r.effort.map { sessionAU(effort: $0, durationMin: r.durationMin) }
+        }), let (acute, chronic) = ewma(daily: daily) else { return nil }
         guard chronic > 0 else { return nil }
         let r = acute / chronic
         var label = ratioLabel(r)
@@ -279,6 +262,44 @@ enum EffortLoad {
             if curKm > 0, maxKm > 0, curKm <= maxKm { label = .high; capped = true }
         }
         return LoadRatio(ratio: r, label: label, acuteWeeklyAU: acute * 7, chronicWeeklyAU: chronic * 7, cappedByMaxWeek: capped)
+    }
+
+    /// 오늘로 끝나는 일별 값(최대 84일, 오래된→최신). 첫 기록이 21일 이상 전이 아니면 nil.
+    /// `value`가 nil인 러닝(강도 없음)은 0으로 — 롤링 창과 같은 규칙. 아침 제안(분)·총평(AU)이 같이 쓴다.
+    static func dailySeries<R>(runs: [R], asOf: Date, calendar: Calendar = .current,
+                               date: (R) -> Date, value: (R) -> Double?) -> [Double]? {
+        let today = calendar.startOfDay(for: asOf)
+        guard let first = runs.map(date).min().map({ calendar.startOfDay(for: $0) }),
+              let need = calendar.date(byAdding: .day, value: -21, to: today), first <= need else { return nil }
+        let day0 = max(first, calendar.date(byAdding: .day, value: -83, to: today) ?? first)
+        let n = (calendar.dateComponents([.day], from: day0, to: today).day ?? 0) + 1
+        guard n >= 22 else { return nil }
+        var daily = Array(repeating: 0.0, count: n)
+        for r in runs {
+            guard let v = value(r) else { continue }
+            let i = calendar.dateComponents([.day], from: day0, to: calendar.startOfDay(for: date(r))).day ?? -1
+            if i >= 0 && i < n { daily[i] += v }
+        }
+        return daily
+    }
+    static func dailySeries(runs: [Run], asOf: Date, calendar: Calendar = .current, value: (Run) -> Double?) -> [Double]? {
+        dailySeries(runs: runs, asOf: asOf, calendar: calendar, date: { $0.date }, value: value)
+    }
+
+    /// 7일·28일 지수 가중 평균(일 단위) — 아침 제안과 총평이 같은 함수(λ = 2/(N+1)).
+    /// 마지막 7일은 반드시 굴리도록, 앞쪽(최대 28일) 평균으로 두 평균을 함께 시작한다. 22일 미만이면 nil.
+    static func ewma(daily: [Double]) -> (acute: Double, chronic: Double)? {
+        let n = daily.count
+        guard n >= 22 else { return nil }
+        let seedEnd = min(28, n - 7)
+        let seed = daily[0..<seedEnd].reduce(0, +) / Double(seedEnd)
+        var acute = seed, chronic = seed
+        let la = 2.0 / 8.0, lc = 2.0 / 29.0
+        for i in seedEnd..<n {
+            acute = la * daily[i] + (1 - la) * acute
+            chronic = lc * daily[i] + (1 - lc) * chronic
+        }
+        return (acute, chronic)
     }
 
     /// 하루 전 기준 지수 가중 비율 — 총평 훈련부하 줄의 저장 없는 히스테리시스용.

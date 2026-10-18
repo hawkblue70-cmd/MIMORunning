@@ -702,6 +702,10 @@ enum RunSummary {
         if i.acuteChronic == .steady {
             let rising = (i.weekOverWeek ?? 0) >= restedWeekOverWeekMax
             guard rising else { return L.s("지금 리듬을 유지하면 좋습니다.", "Keep this rhythm.", ja: "今のリズムを維持するとよいです。") }
+            // "고강도 사이에 쉬운 날"은 강도를 넣어도 된다는 뜻 — 공용 판정이 막으면 강도 없이(아침 제안과 같은 조건, 2026-10-20)
+            if let g = MRIntensityGate.closedReason(vital: i.vitalSignal, hrvTrend: i.hrvTrend, lastNightHRV: i.lastNightHRV) {
+                return L.s("지금 리듬을 유지하되 강도는 빼세요. ", "Keep this rhythm but skip the intensity. ", ja: "今のリズムは保ちつつ、強度は抜いてください。") + MRIntensityGate.fact(g)
+            }
             if i.hrvTrend?.isReadyHigh == true {
                 return L.s("지금 리듬을 유지하면 좋습니다. HRV는 좋고 직전 7일보다 부하가 늘었으니, 고강도 사이에는 쉬운 날 하루를 두세요.",
                            "Keep this rhythm. HRV looks good and load is up on the previous 7 days, so leave an easy day between hard sessions.", ja: "今のリズムを維持するとよいです。HRVは良好で直前の7日より負荷が増えているので、高強度の間には楽な日を1日入れてください。")

@@ -543,11 +543,12 @@ struct MRReadinessTests {
     }
 
     @Test func durationAcuteChronicRatio() {
-        // 직전 28일(−34…−7): 주 1회 60분 × 4주 = 240분 합 → 주 60분. 최근 7일: 90분 → 1.5
+        // 주 1회 60분 × 4주 + 이틀 전 90분. 지수 가중 평균(총평과 같은 EffortLoad.ewma, 2026-10-20)으로 ≈ 1.22
+        // (롤링 창이었다면 90 ÷ 60 = 1.5 — 큰 하루의 무게가 날마다 줄어드는 만큼 낮다)
         var runs = [30, 23, 16, 9].map { run(daysAgo: $0, minutes: 60) }
         runs.append(run(daysAgo: 2, minutes: 90))
         let a = mrDurationAcuteChronic(runs: runs, asOf: now)
-        #expect(a.ratio == 1.5)
+        #expect(abs((a.ratio ?? 0) - 1.223) < 0.01)
         #expect(a.rising == true)   // 직전 7일(−13…−7)은 60분(9일 전) → 90 ≥ 69
     }
 

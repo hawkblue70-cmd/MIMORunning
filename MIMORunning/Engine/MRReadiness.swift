@@ -313,11 +313,17 @@ func mrDurationAcuteChronic(runs: [MRWorkout], asOf: Date,
             if d <= 13 { previous += w.durationMin }
         }
     }
-    // 만성은 4주 중 3주 이상 러닝이 있어야 센다(EffortLoad.minChronicWeeks와 같은 규칙). 빈 주는 0으로 넣어 4로 나눈다 —
-    // 한 주가 비면 평균이 깎여 평소 부하도 급증처럼 보이므로, 자료가 모자라면 아예 판정하지 않는다.
+    // 만성은 4주 중 3주 이상 러닝이 있어야 센다(EffortLoad.minChronicWeeks와 같은 규칙) — 자료가 모자라면 판정하지 않는다.
+    // 비율은 총평과 같은 지수 가중 평균(EffortLoad.ewma, 2026-10-20) — 7일·4주를 딱 자르면 큰 하루가 7일 창에 있는 내내
+    // 같은 '급증'이 반복되다 7일째 뚝 떨어졌다. 분 단위인 건 그대로(아침엔 강도 입력이 없을 수 있다).
     let validWeeks = weekly.filter { $0 > 0 }.count
-    let chronic = weekly.reduce(0, +)
-    let ratio: Double? = (validWeeks >= 3 && chronic > 0) ? acute / (chronic / 4) : nil
+    let ratio: Double? = {
+        guard validWeeks >= 3,
+              let daily = EffortLoad.dailySeries(runs: runs.filter { $0.date < calendar.date(byAdding: .day, value: 1, to: today)! },
+                                                 asOf: asOf, calendar: calendar, date: { $0.date }, value: { $0.durationMin }),
+              let e = EffortLoad.ewma(daily: daily), e.chronic > 0 else { return nil }
+        return e.acute / e.chronic
+    }()
     let rising = previous > 0 && acute >= previous * MRReadiness.risingRatio
     return (ratio, rising)
 }
@@ -546,6 +552,12 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         return make(.easy, [L.s("부하 오르는 중", "load rising", ja: "負荷が上昇中")],
                     why: L.s("직전 7일보다 부하가 늘었습니다. 여기에 강도까지 얹으면 급증이 됩니다.",
                              "Load is up on the previous 7 days. Adding a hard session on top would make it a spike.", ja: "直前の7日より負荷が増えています。ここに強度まで乗せると急増になります。"))
+    }
+    // 강도 허용 공용 판정(MRIntensityGate) — 여기부터는 "강도 OK"가 나올 수 있는 규칙. 러닝 뒤 총평과 같은 조건으로
+    // 한 번 더 막는다(위 규칙들이 대부분 먼저 잡지만, 규칙 순서가 바뀌어도 두 화면이 어긋나지 않게, 2026-10-20).
+    if let g = MRIntensityGate.closedReason(vital: vital, hrvTrend: trend, lastNightHRV: todayNight) {
+        return make(.easy, [MRIntensityGate.tag(g)],
+                    why: MRIntensityGate.fact(g) + " " + L.s("오늘은 강도를 빼고 이지런으로 가세요.", "Skip the intensity today and keep it easy.", ja: "今日は強度を抜いてイージーランにしてください。"))
     }
     // 규칙 6 — HRV 좋음
     if ready {

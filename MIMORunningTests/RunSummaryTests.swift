@@ -424,6 +424,22 @@ struct RunSummaryTests {
         #expect(lines(i)[3].next == "부하는 내려왔지만 어젯밤 손목 온도가 평소보다 1.1°C 높았습니다. 강도는 몸 상태가 평소로 돌아온 뒤에 넣으세요.")
     }
 
+    @Test func steadyRisingLoadSkipsIntensityWhenGateClosed() {
+        // "고강도 사이에 쉬운 날"은 강도를 넣어도 된다는 뜻 — 공용 판정(MRIntensityGate)이 막으면 강도 없이(2026-10-20)
+        var i = todayInput(); i.acuteChronic = .steady; i.weekOverWeek = 0.30; i.loadSentence = nil
+        i.streakDays = 0; i.todayIsHard = false; i.daysSinceHardRun = 1
+        i.vitalSignal = MRVitalSignal(elevations: [MRVitalElevation(kind: .wristTemp, nights: 1, latest: 35.6, usual: 34.5)])
+        #expect(lines(i)[3].next == "지금 리듬을 유지하되 강도는 빼세요. 어젯밤 손목 온도가 평소보다 1.1°C 높았습니다.")
+    }
+
+    @Test func intensityGatePriority() {
+        let v = MRVitalSignal(elevations: [MRVitalElevation(kind: .wristTemp, nights: 1, latest: 35.6, usual: 34.5)])
+        #expect(MRIntensityGate.closedReason(vital: v, hrvTrend: hrv(.below), lastNightHRV: nil) == .vital(v))
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: hrv(.below), lastNightHRV: nil) == .hrvBelow)
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: hrv(.above), lastNightHRV: nil) == nil)
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: nil, lastNightHRV: nil) == nil)
+    }
+
     @Test func lowLastNightHRVShowsInNextAction() {
         // 추세 보통 + 어젯밤 낮음(19 / 평소 30) — 회복 판정 날엔 "충분히 회복" 대신 하루 미룸, 연속 4일 날엔 기본 문장 뒤에 한 문장
         var rested = restedInput(); rested.hrvTrend = hrv(.within); rested.lastNightHRV = 19
