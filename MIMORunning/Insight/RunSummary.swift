@@ -62,6 +62,8 @@ struct RunSummaryInput {
     /// 대회 계획의 이번 주 목표 거리(km)와 이번 주(월요일 시작) 지금까지 거리 — 계획된 증량 주는 계획과 비교한다
     var planWeekKm: Double? = nil
     var weekKmSoFar: Double? = nil
+    /// 그날 아침 밤 활력 징후 이상(손목 온도·호흡수) — 있으면 "강도 넣기 좋은 시점"을 말하지 않는다(아침 제안과 같은 사실, 2026-10-20)
+    var vitalSignal: MRVitalSignal? = nil
     var previousSevenAU: Double? = nil
     var loadSentence: EffortLoad.SentenceKind? = nil
     /// 이 러닝의 체감 강도가 아직 없음 — 7일 합에 오늘이 0으로 들어가 있으므로 높다/가볍다를 말하지 않는다
@@ -661,6 +663,11 @@ enum RunSummary {
                 return L.s("대회 \(d)일 뒤입니다. 부하는 회복됐지만 대회 뒤 \(total)일은 강도 없이 이지런으로 가세요(\(left)일 남음).",
                            "\(d) days after your race. Load has recovered, but keep the \(total) days after a race easy — no intensity (\(left) days left).",
                            ja: "レースから\(d)日後です。負荷は回復しましたが、レース後\(total)日間は強度なしでイージーランにしてください(残り\(left)日)。")
+            }
+            // 아침 제안이 손목 온도·호흡수 이상으로 이지런을 권한 날 — 부하가 내려왔어도 "강도 넣기 좋은 시점"은 아침과 반대다(2026-10-20)
+            if let v = i.vitalSignal {
+                return L.s("부하는 내려왔지만 ", "Load has come down, but ", ja: "負荷は下がりましたが、") + v.postRunCause + " "
+                    + L.s("강도는 몸 상태가 평소로 돌아온 뒤에 넣으세요.", "Add intensity once your body is back to normal.", ja: "強度は体調が普段に戻ってから入れてください。")
             }
             // HRV가 있으면 회복 판정을 한 번 더 거른다 — 부하는 내려왔어도 HRV가 아래·불안정이면 "충분히"라고 하지 않는다.
             // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.

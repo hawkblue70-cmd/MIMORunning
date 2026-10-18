@@ -417,6 +417,13 @@ struct RunSummaryTests {
         return i
     }
 
+    @Test func elevatedWristTempBlocksIntensitySuggestion() {
+        // 아침이 손목 온도 +1.1°C로 이지런을 권한 날 — 부하가 회복돼도 "템포런 넣기 좋은 시점"이라 하지 않는다(2026-10-20)
+        var i = restedInput(); i.hrvTrend = hrv(.above)
+        i.vitalSignal = MRVitalSignal(elevations: [MRVitalElevation(kind: .wristTemp, nights: 1, latest: 35.6, usual: 34.5)])
+        #expect(lines(i)[3].next == "부하는 내려왔지만 어젯밤 손목 온도가 평소보다 1.1°C 높았습니다. 강도는 몸 상태가 평소로 돌아온 뒤에 넣으세요.")
+    }
+
     @Test func lowLastNightHRVShowsInNextAction() {
         // 추세 보통 + 어젯밤 낮음(19 / 평소 30) — 회복 판정 날엔 "충분히 회복" 대신 하루 미룸, 연속 4일 날엔 기본 문장 뒤에 한 문장
         var rested = restedInput(); rested.hrvTrend = hrv(.within); rested.lastNightHRV = 19
