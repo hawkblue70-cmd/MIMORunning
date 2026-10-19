@@ -72,6 +72,13 @@ enum TabDigestPerformance {
                      isProblem: false, shade: .neutral,
                      short: L.s("후반 가속보다 심박 상승 큼 · \(p)%", "HR up more than the faster finish · \(p)%", ja: "後半の加速以上に心拍上昇 · \(p)%"))
         }
+        if wt == .buildUp, pct < 0 {
+            // 디커플링 음수 = 후반 효율이 더 좋았다 — "올린 만큼"보다 정확한 사실(2026-10-20, 5'26" 후반에 −1.4%)
+            return V(text: L.s("후반 페이스를 올렸는데 심박은 그만큼 오르지 않았습니다.",
+                               "Pace picked up late, but HR rose less than that.", ja: "後半にペースを上げましたが、心拍はその分ほど上がりませんでした。"),
+                     isProblem: false, shade: .good,
+                     short: L.s("후반 가속보다 심박 상승 작음 · \(p)%", "HR rose less than the faster finish · \(p)%", ja: "後半の加速ほど心拍は上がらず · \(p)%"))
+        }
         if wt == .buildUp {
             return V(text: L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",
                                "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"),

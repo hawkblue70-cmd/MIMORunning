@@ -68,6 +68,33 @@ struct FormTypeCaptionTests {
         #expect(FormNarrative.samePaceHRRise(splits: flat) == nil)
     }
 
+    @Test("빌드업 디커플링 음수 → '그만큼 오르지 않았습니다'")
+    func buildUpNegativeDecoupling() {
+        ko {
+            let v = TabDigestPerformance.decouplingVerdict(pct: -1.4, workoutType: .buildUp, temperatureC: 15, lateHRRoseFirst: false)
+            #expect(v.text == "후반 페이스를 올렸는데 심박은 그만큼 오르지 않았습니다.")
+            #expect(v.shade == .good)
+        }
+    }
+
+    @Test("아침 포인트 제안 — 숫자 칸 우선, 옛 스냅샷은 판정 줄 세션 이름")
+    func morningPlannedPoint() {
+        let run = Date(timeIntervalSince1970: 1_000_000)
+        func snap(_ level: String, _ line: String, flag: Bool = false, at: Date = Date(timeIntervalSince1970: 900_000)) -> MRReadinessDaySnapshot {
+            let s = MRReadinessDaySnapshot(dateKey: "x", level: level, line: line, computedAt: at)
+            s.sessionIsPoint = flag
+            return s
+        }
+        #expect(InsightMorning.plannedPoint(snapshot: snap("go", "오늘은 강도 OK · 빌드업 10km · 마지막 3.3km 5'30\""), cutoff: run))
+        #expect(InsightMorning.plannedPoint(snapshot: snap("go", "아무 문장", flag: true), cutoff: run))
+        #expect(!InsightMorning.plannedPoint(snapshot: snap("go", "오늘은 강도 OK · 롱런 14km"), cutoff: run))
+        #expect(!InsightMorning.plannedPoint(snapshot: snap("go", "오늘은 강도 OK · 마지막 고강도 3일 전"), cutoff: run))
+        #expect(!InsightMorning.plannedPoint(snapshot: snap("easy", "오늘은 이지런 · 빌드업 10km"), cutoff: run))
+        // 러닝 뒤에 찍힌 스냅샷은 그날 아침 제안이 아니다
+        #expect(!InsightMorning.plannedPoint(snapshot: snap("go", "오늘은 강도 OK · 빌드업 10km", at: Date(timeIntervalSince1970: 1_100_000)), cutoff: run))
+        #expect(!InsightMorning.plannedPoint(snapshot: nil, cutoff: run))
+    }
+
     // MARK: - 심박존 캡션 · 한 줄 요약
 
     @Test func zoneCaptionPlannedTypesSayAsPlanned() {

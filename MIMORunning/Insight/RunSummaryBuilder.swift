@@ -26,6 +26,8 @@ enum RunSummaryBuilder {
         var hrMax: Double? = nil
         /// 대회 계획 이번 주 목표 거리(km) — 계획된 증량 주는 지난 4주 대신 계획과 비교한다(2026-10-19)
         var planWeekKm: Double? = nil
+        /// 그날 아침 제안이 포인트 훈련이었나(InsightMorning.plannedPoint) — 총평 "의도한"은 이때만
+        var plannedPointToday: Bool = false
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만일 때의 한 줄 칩 폴백은 호출부(카드) 몫.
@@ -301,6 +303,7 @@ enum RunSummaryBuilder {
         // 대회 날은 계획의 끝이다 — 그 주가 테이퍼·회복 주여도 "테이퍼 주인데 고강도"·"이지런 위주로"를 말하지 않는다
         input.planPhase = c.workoutType == .race ? nil : postRacePhase(c) ?? c.planPhase
         input.easyPace = c.easyPaceLookup
+        input.plannedPointToday = c.plannedPointToday
         if let r = daysSinceRace(activity: c.activity, history: c.history, workoutTypeFn: c.workoutTypeFn) {
             input.daysSinceRace = r.days
             input.postRaceEasyDays = r.easyDays

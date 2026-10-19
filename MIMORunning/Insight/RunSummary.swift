@@ -76,6 +76,8 @@ struct RunSummaryInput {
     var postRaceEasyDays: Int? = nil
     /// 이번 주 플랜 단계 원문("회복"/"테이퍼"/…) — 대회 플랜이 있을 때만
     var planPhase: String? = nil
+    /// 그날 아침 제안이 포인트 훈련(강도 OK · 빌드업/템포/인터벌/대회 페이스)이었나 — 빌드업·템포·거리주의 "의도한"은 이때만
+    var plannedPointToday: Bool = false
     /// 이지 페이스 조회값 — 있을 때만 다음 이지런 페이스를 숫자로 제안
     var easyPace: MRHRPaceLookup? = nil
     var vo2EightWeeksAgo: Double? = nil
@@ -389,9 +391,9 @@ enum RunSummary {
                         line = RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity", ja: "意図した高強度"), tone: .good)
                     } else if FormNarrative.isPlannedHighIntensity(i.workoutType) {
                         // 빌드업·템포·거리주는 페이스 모양으로 붙인 분류라 의도까지는 모른다 — "천천히 뛰었는데" 빌드업으로
-                        // 분류된 날 "의도한"이 사용자 체감과 정면으로 부딪혔다(2026-10-20). 사실(존·비율)만 쓴다.
+                        // 분류된 날 "의도한"이 사용자 체감과 정면으로 부딪혔다(2026-10-20). 아침에 포인트를 제안받은 날만 "의도한".
                         let z3 = Int((frac(3) * 100).rounded())
-                        line = RunSummaryLine(axis: axis, state: i.workoutType == .race
+                        line = RunSummaryLine(axis: axis, state: (i.workoutType == .race || i.plannedPointToday)
                                               ? L.s("의도한 템포 구간", "Intended tempo zone", ja: "意図したテンポ域")
                                               : L.s("템포 구간 · Zone 3 \(z3)%", "Tempo zone · \(z3)% in Zone 3", ja: "テンポ域 · ゾーン3 \(z3)%"),
                                               tone: .good)
@@ -399,8 +401,9 @@ enum RunSummary {
                         line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone", ja: "テンポ域にとどまった"), tone: .neutral)
                     }
                 default:
-                    // "의도한"은 의도가 분명한 인터벌·대회만 — 빌드업·템포·거리주는 존 사실만(2026-10-20)
-                    line = (i.workoutType == .interval || i.workoutType == .race)
+                    // "의도한"은 의도가 분명한 인터벌·대회, 아침에 포인트를 제안받은 날만 — 그 밖 빌드업·템포·거리주는 존 사실만(2026-10-20)
+                    line = (i.workoutType == .interval || i.workoutType == .race
+                            || (i.plannedPointToday && FormNarrative.isPlannedHighIntensity(i.workoutType)))
                         ? RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity", ja: "意図した高強度"), tone: .good)
                         : FormNarrative.isPlannedHighIntensity(i.workoutType)
                         ? RunSummaryLine(axis: axis,

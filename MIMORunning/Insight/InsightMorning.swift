@@ -24,6 +24,19 @@ struct InsightMorning: Equatable {
         var easyCapHR: Int? = nil
         var easyPaceSec: Double? = nil
     }
+
+    /// 그날 아침 제안이 포인트 훈련이었나 — 강도 OK + 계획 포인트 세션. 총평 "의도한"을 붙일지 판단(2026-10-20).
+    /// 숫자 칸(sessionIsPoint)이 없던 옛 스냅샷은 판정 줄의 세션 이름으로 읽는다("오늘은 강도 OK · 빌드업 10km …").
+    static func plannedPoint(snapshot s: MRReadinessDaySnapshot?, cutoff: Date) -> Bool {
+        guard let s, s.computedAt < cutoff, s.level == "go" else { return false }
+        if s.sessionIsPoint { return true }
+        let heads = ["오늘은 강도 OK · ", "Today: hard is OK · ", "今日は強度OK · "]
+        let points = ["인터벌", "템포런", "빌드업", "대회 페이스", "Intervals", "Tempo run", "Build-up", "Race pace",
+                      "インターバル", "テンポ走", "ビルドアップ", "レースペース"]
+        guard let h = heads.first(where: { s.line.hasPrefix($0) }) else { return false }
+        let rest = s.line.dropFirst(h.count)
+        return points.contains { rest.hasPrefix($0) }
+    }
     /// 그날 아침
     var morningOf: Entry?
     /// "→ 실제: " 뒤 문장(탭 요약 리듬 블록 첫 short)

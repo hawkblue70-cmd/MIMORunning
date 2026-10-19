@@ -148,6 +148,8 @@ struct RunInsightSection: View {
     /// 이 러닝이 속한 주의 대회 플랜 단계(회복/테이퍼/…)
     var planPhase: String? = nil
     var planWeekKm: Double? = nil
+    /// 그날 아침 제안이 포인트 훈련(강도 OK + 계획 포인트)이었나 — 총평 "의도한"은 이때만(2026-10-20)
+    var plannedPointToday: Bool = false
     /// 회복 곡선 한 줄 입력 — 리듬 카드로 그대로 흘려보낸다.
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -195,6 +197,7 @@ struct RunInsightSection: View {
                 easyPaceLookup: easyPaceLookup,
                 planPhase: planPhase,
                 planWeekKm: planWeekKm,
+                plannedPointToday: plannedPointToday,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,

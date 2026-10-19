@@ -22,6 +22,8 @@ final class MRReadinessDaySnapshot {
     /// 이지 기준 숫자 — 0 = 없음(옛 기록·이지 아닌 날). CloudKit 규칙대로 기본값이 있는 새 속성(2026-10-20)
     var easyCapHR: Int = 0
     var easyPaceSec: Double = 0
+    /// 오늘 세션이 계획 포인트(빌드업·템포·인터벌·대회 페이스)였나 — 총평 "의도한" 판단용(2026-10-20). 기기 안 전용이라 CloudKit 배포 무관
+    var sessionIsPoint: Bool = false
 
     init(dateKey: String = "", level: String = "", line: String = "", why: String = "",
          data: String = "", planLine: String = "", computedAt: Date = Date.distantPast,
@@ -84,7 +86,8 @@ enum MRReadinessSnapshotStore {
             if existing.level == levelString(r.level), existing.line == r.line, existing.why == r.why,
                existing.data == newData, existing.planLine == (r.planLine ?? ""),
                existing.hrvPending == r.hrvPending,
-               existing.easyCapHR == (r.easyCapHR ?? 0), existing.easyPaceSec == (r.easyPaceSecPerKm ?? 0) { return }
+               existing.easyCapHR == (r.easyCapHR ?? 0), existing.easyPaceSec == (r.easyPaceSecPerKm ?? 0),
+               existing.sessionIsPoint == r.sessionIsPoint { return }
             snap = existing
         } else {
             snap = MRReadinessDaySnapshot(dateKey: key)
@@ -99,6 +102,7 @@ enum MRReadinessSnapshotStore {
         snap.hrvPending = r.hrvPending
         snap.easyCapHR = r.easyCapHR ?? 0
         snap.easyPaceSec = r.easyPaceSecPerKm ?? 0
+        snap.sessionIsPoint = r.sessionIsPoint
         try? context.save()
     }
 

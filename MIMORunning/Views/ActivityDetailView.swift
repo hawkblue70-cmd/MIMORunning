@@ -167,6 +167,19 @@ struct ActivityDetailView: View {
         return m / 1000
     }
 
+    /// 그날 아침 홈이 포인트 훈련을 제안했나(그날 첫 러닝 전 스냅샷) — 총평 "의도한"은 이때만.
+    /// 스냅샷만 본다(재계산은 무거워 총평마다 돌리지 않는다) — 홈을 안 연 날은 "템포 구간 · Zone 3 N%"처럼 사실만.
+    private var morningPlannedPoint: Bool {
+        guard activity.type == .running else { return false }
+        let cal = Calendar.current
+        let first = manager.activities
+            .filter { $0.type == .running && cal.isDate($0.date, inSameDayAs: activity.date) }
+            .map(\.date).min() ?? activity.date
+        let key = MRReadinessDaySnapshot.key(for: activity.date, calendar: cal)
+        return InsightMorning.plannedPoint(snapshot: MRReadinessSnapshotStore.fetch(dateKey: key, context: modelContext),
+                                           cutoff: min(first, activity.date))
+    }
+
     private func makeInsightMorning() -> InsightMorning? {
         guard activity.type == .running else { return nil }
         let cal = Calendar.current
@@ -335,7 +348,8 @@ struct ActivityDetailView: View {
             hrvNights: engine.hrvNights,
             // 리듬 카드(RunInsightSection hrMax)와 같은 값 — 요약 블록과 카드 심박 캡션이 같은 판정
             hrMax: engine.phys.hrMax?.value,
-            planWeekKm: matchedPlanWeek()?.weeklyKm
+            planWeekKm: matchedPlanWeek()?.weeklyKm,
+            plannedPointToday: morningPlannedPoint
         )
     }
 
@@ -591,6 +605,7 @@ struct ActivityDetailView: View {
                             easyPaceLookup: engine.easyPaceLookup,
                             planPhase: matchedPlanWeek()?.phase,
                             planWeekKm: matchedPlanWeek()?.weeklyKm,
+                            plannedPointToday: morningPlannedPoint,
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
                             recoveryBands: recoveryBands,
