@@ -43,6 +43,31 @@ struct FormTypeCaptionTests {
         }
     }
 
+    @Test("빌드업 — 같은 페이스 km 심박 +8bpm↑이면 '올린 만큼'이 아니다")
+    func buildUpSamePaceRise() {
+        // 실사용 10/19: 7'16 7'02 6'58 6'29 6'25 6'36 6'45 6'25 6'25 6'19, 심박 134 145 143 143 149 153 158 160 162 163
+        let paces = [436.0, 422, 418, 389, 385, 396, 405, 385, 385, 379]
+        let hrs = [134, 145, 143, 143, 149, 153, 158, 160, 162, 163]
+        let s = zip(paces, hrs).enumerated().map { i, v in
+            SplitData(id: i + 1, distanceM: 1000, duration: v.0, avgHeartRate: v.1, avgCadence: nil, avgPower: nil,
+                      avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+        let r = FormNarrative.samePaceHRRise(splits: s)
+        #expect(r == FormNarrative.SamePaceHRRise(paceSec: 385, bpm: 13))
+        ko {
+            #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp, samePaceRise: r) == "후반에 페이스를 올렸고, 같은 6'25\" 구간에서도 심박이 13bpm 높았습니다")
+            #expect(FormNarrative.hrSteadyCaption(type: .buildUp, samePaceRise: r).contains("13bpm"))
+            #expect(TabDigestPerformance.decouplingVerdict(pct: 6, workoutType: .buildUp, temperatureC: 14, lateHRRoseFirst: false,
+                                                            samePaceRise: r).text == "후반 페이스를 올린 것보다 심박이 더 올랐습니다.")
+        }
+        // 페이스만큼 오른 빌드업(같은 페이스 km 심박 차 < 8) → 없음
+        let flat = zip(paces, [134, 140, 141, 145, 147, 146, 144, 150, 152, 158]).enumerated().map { i, v in
+            SplitData(id: i + 1, distanceM: 1000, duration: v.0, avgHeartRate: v.1, avgCadence: nil, avgPower: nil,
+                      avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+        #expect(FormNarrative.samePaceHRRise(splits: flat) == nil)
+    }
+
     // MARK: - 심박존 캡션 · 한 줄 요약
 
     @Test func zoneCaptionPlannedTypesSayAsPlanned() {

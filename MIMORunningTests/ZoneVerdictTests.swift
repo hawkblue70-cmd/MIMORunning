@@ -36,13 +36,13 @@ struct ZoneVerdictTests {
         #expect(v?.isHighCombined == false)
     }
 
-    @Test("총평 심박 줄 — 흩어진 빌드업은 '의도한 고강도', 근거는 Zone 4·5")
+    @Test("총평 심박 줄 — 흩어진 빌드업은 '고강도 구간', 근거는 Zone 4·5")
     func summaryLineUsesCombinedHigh() {
         var i = RunSummaryInput()
         i.zoneFractions = [1: 0.07, 2: 0.24, 3: 0.25, 4: 0.22, 5: 0.22]
         i.workoutType = .buildUp
         let line = RunSummary.lines(i).first { $0.axis == "심박" }
-        #expect(line?.state == "의도한 고강도")
+        #expect(line?.state == "고강도 구간 · Zone 3 이상 69%")
         #expect(line?.evidence?.hasPrefix("Zone 4·5 44%") == true)
     }
 }

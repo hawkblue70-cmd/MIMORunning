@@ -470,10 +470,42 @@ extension FormNarrative {
         isPlannedFastFinish(type) || type == .interval || type == .distanceRun
     }
 
+    /// 빌드업에서 "페이스를 올린 만큼 심박이 올랐다"가 맞는지 — 전반·후반에 페이스가 같은(±5초/km) km가 있으면
+    /// 그 둘의 심박 차이로 확인한다. 후반이 8bpm 이상 높으면 페이스만으로 설명되지 않는 상승이다(2026-10-20,
+    /// 6'25" 5km 149 → 9km 162, "천천히 뛰었는데 심박이 빠르다"는 체감과 맞았다). 첫 km(심박 지연)·짧은 끝 구간 제외.
+    struct SamePaceHRRise: Equatable { let paceSec: Double; let bpm: Int }
+    static let samePacePaceTolSec = 5.0
+    static let samePaceMinRiseBpm = 8
+    static func samePaceHRRise(splits: [SplitData]) -> SamePaceHRRise? {
+        let full = splits.filter { $0.distanceM >= 950 && $0.id > 1 && $0.avgHeartRate != nil }
+        guard full.count >= 4 else { return nil }
+        let half = full.count / 2
+        let first = full.prefix(half), second = full.suffix(full.count - half)
+        var best: (dp: Double, rise: Int, pace: Double)?
+        for a in first {
+            for b in second {
+                let dp = abs(a.paceSecPerKm - b.paceSecPerKm)
+                guard dp <= samePacePaceTolSec, let ha = a.avgHeartRate, let hb = b.avgHeartRate else { continue }
+                let rise = hb - ha
+                // 페이스가 가장 비슷한 쌍 우선, 같으면 차이가 큰 쪽
+                if best == nil || dp < best!.dp - 0.5 || (abs(dp - best!.dp) <= 0.5 && rise > best!.rise) {
+                    best = (dp, rise, b.paceSecPerKm)
+                }
+            }
+        }
+        guard let b = best, b.rise >= samePaceMinRiseBpm else { return nil }
+        return SamePaceHRRise(paceSec: b.pace, bpm: b.rise)
+    }
+
     /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 +8bpm 이상일 때.
     /// 빌드업은 페이스를 올린 결과임을 사실로만 밝힌다("~답게" 같은 해석은 붙이지 않는다).
-    static func hrSecondHalfRiseCaption(type: WorkoutType) -> String {
+    static func hrSecondHalfRiseCaption(type: WorkoutType, samePaceRise: SamePaceHRRise? = nil) -> String {
         let L = AppLanguage.shared
+        if type == .buildUp, let r = samePaceRise {
+            return L.s("후반에 페이스를 올렸고, 같은 \(mrFormatPace(r.paceSec)) 구간에서도 심박이 \(r.bpm)bpm 높았습니다",
+                       "Pace picked up late, and at the same \(mrFormatPace(r.paceSec)) HR was \(r.bpm) bpm higher",
+                       ja: "後半にペースを上げ、同じ\(mrFormatPace(r.paceSec))の区間でも心拍が\(r.bpm)bpm高くなりました")
+        }
         if type == .buildUp {
             return L.s("후반에 페이스를 올려 심박도 올랐습니다", "HR rose as the pace picked up in the 2nd half", ja: "後半にペースを上げて心拍も上がりました")
         }
@@ -482,8 +514,10 @@ extension FormNarrative {
 
     /// 심박 차트 캡션 — 전반 대비 후반 평균 심박 변화가 작을 때(−5 < Δ < 8).
     /// 빌드업은 페이스를 올린 만큼 심박이 따라온 것이라 "안정"보다 그 사실을 말한다. 나머지 유형은 변경 없음.
-    static func hrSteadyCaption(type: WorkoutType) -> String {
+    static func hrSteadyCaption(type: WorkoutType, samePaceRise: SamePaceHRRise? = nil) -> String {
         let L = AppLanguage.shared
+        // 같은 페이스에서 심박이 올랐으면 "올린 만큼만"이 아니다
+        if type == .buildUp, samePaceRise != nil { return hrSecondHalfRiseCaption(type: type, samePaceRise: samePaceRise) }
         if type == .buildUp {
             return L.s("페이스를 올린 만큼만 올랐습니다", "HR rose only as much as the pace", ja: "ペースを上げた分だけ上がりました")
         }

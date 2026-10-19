@@ -56,7 +56,7 @@ enum TabDigestPerformance {
     /// shade: 카드 색 — 초록(.good)·흰색 0.85(.neutral)·주의색(.caution).
     /// isProblem: 5% 넘게 올랐고 덥지 않은 날(설계 P3). 빌드업은 계획이라 문제가 아니다.
     static func decouplingVerdict(pct: Double, workoutType wt: WorkoutType, temperatureC: Double?,
-                                  lateHRRoseFirst: Bool) -> TabDigestRhythm.Verdict {
+                                  lateHRRoseFirst: Bool, samePaceRise: FormNarrative.SamePaceHRRise? = nil) -> TabDigestRhythm.Verdict {
         let L = AppLanguage.shared
         let hot = (temperatureC ?? -.infinity) >= decouplingHotTempC
         typealias V = TabDigestRhythm.Verdict
@@ -65,6 +65,13 @@ enum TabDigestPerformance {
         // 카드 차트 제목("디커플링")과 같은 이름 — 다른 화면의 '심박 드리프트'(전후반 심박 bpm 차)와 다른 지표다
         let drift = L.s("디커플링 \(p)%", "Decoupling \(p)%", ja: "デカップリング\(p)%")
         let heatTail = L.s(" · 더위 영향", " · heat", ja: " · 暑さの影響")
+        if wt == .buildUp, samePaceRise != nil {
+            // 같은 페이스 km끼리 심박이 8bpm↑ — "올린 만큼"이 아니다(FormNarrative.samePaceHRRise)
+            return V(text: L.s("후반 페이스를 올린 것보다 심박이 더 올랐습니다.",
+                               "HR rose more than the faster second half explains.", ja: "後半にペースを上げた分よりも心拍が上がりました。"),
+                     isProblem: false, shade: .neutral,
+                     short: L.s("후반 가속보다 심박 상승 큼 · \(p)%", "HR up more than the faster finish · \(p)%", ja: "後半の加速以上に心拍上昇 · \(p)%"))
+        }
         if wt == .buildUp {
             return V(text: L.s("후반 페이스를 올린 만큼 심박도 올랐습니다.",
                                "HR rose with the faster second half.", ja: "後半にペースを上げた分、心拍も上がりました。"),
@@ -421,7 +428,8 @@ enum TabDigestPerformance {
             let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: c.activity, detail: c.detail,
                                                                          workoutType: c.workoutType, history: c.history)
             let v = decouplingVerdict(pct: pct, workoutType: c.workoutType, temperatureC: c.activity.temperatureC,
-                                      lateHRRoseFirst: lateFirst)
+                                      lateHRRoseFirst: lateFirst,
+                                      samePaceRise: c.workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: c.detail?.splits ?? []) : nil)
             if v.isProblem || v.shade == .caution || lateFirst {
                 problem(3, .lateHR, v.text, nil, short: v.short)
             } else if v.isGood {

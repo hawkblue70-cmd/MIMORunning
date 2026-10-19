@@ -388,13 +388,24 @@ enum RunSummary {
                         // 인터벌은 평균 존이 회복 구간에 깎여 나가므로 Zone 3 우세만으로도 의도한 고강도로 본다
                         line = RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity", ja: "意図した高強度"), tone: .good)
                     } else if FormNarrative.isPlannedHighIntensity(i.workoutType) {
-                        line = RunSummaryLine(axis: axis, state: L.s("의도한 템포 구간", "Intended tempo zone", ja: "意図したテンポ域"), tone: .good)
+                        // 빌드업·템포·거리주는 페이스 모양으로 붙인 분류라 의도까지는 모른다 — "천천히 뛰었는데" 빌드업으로
+                        // 분류된 날 "의도한"이 사용자 체감과 정면으로 부딪혔다(2026-10-20). 사실(존·비율)만 쓴다.
+                        let z3 = Int((frac(3) * 100).rounded())
+                        line = RunSummaryLine(axis: axis, state: i.workoutType == .race
+                                              ? L.s("의도한 템포 구간", "Intended tempo zone", ja: "意図したテンポ域")
+                                              : L.s("템포 구간 · Zone 3 \(z3)%", "Tempo zone · \(z3)% in Zone 3", ja: "テンポ域 · ゾーン3 \(z3)%"),
+                                              tone: .good)
                     } else {
                         line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone", ja: "テンポ域にとどまった"), tone: .neutral)
                     }
                 default:
-                    line = FormNarrative.isPlannedHighIntensity(i.workoutType)
+                    // "의도한"은 의도가 분명한 인터벌·대회만 — 빌드업·템포·거리주는 존 사실만(2026-10-20)
+                    line = (i.workoutType == .interval || i.workoutType == .race)
                         ? RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity", ja: "意図した高強度"), tone: .good)
+                        : FormNarrative.isPlannedHighIntensity(i.workoutType)
+                        ? RunSummaryLine(axis: axis,
+                                         state: L.s("고강도 구간 · Zone 3 이상 \(pct)%", "High intensity · \(pct)% in Zone 3+", ja: "高強度域 · ゾーン3以上\(pct)%"),
+                                         tone: .good)
                         : RunSummaryLine(axis: axis,
                                          state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+", ja: "高強度域が多い · ゾーン3以上\(pct)%"),
                                          tone: .neutral)

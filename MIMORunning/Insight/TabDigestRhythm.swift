@@ -127,17 +127,18 @@ enum TabDigestRhythm {
                                                          workoutType: workoutType, history: history)
         let d = Int(diff.rounded())
         let dStr = TabDigest.signed(d)
+        let samePace = workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? []) : nil
         if diff >= 8 || lateRose {
             let short = diff >= 8
                 ? L.s("후반 심박 상승 · 전후반 \(dStr)bpm", "HR up late · \(dStr) bpm half to half", ja: "後半の心拍上昇 · 前後半\(dStr)bpm")
                 : L.s("마지막 구간 심박 상승", "HR up in the final stretch", ja: "最後の区間で心拍上昇")
-            return HRCaption(kind: .secondHalfRise, text: FormNarrative.hrSecondHalfRiseCaption(type: workoutType), short: short)
+            return HRCaption(kind: .secondHalfRise, text: FormNarrative.hrSecondHalfRiseCaption(type: workoutType, samePaceRise: samePace), short: short)
         }
         if diff <= -5 {
             return HRCaption(kind: .easedOff, text: L.s("후반에 여유가 있었습니다", "Plenty left in the 2nd half", ja: "後半に余裕がありました"),
                              short: L.s("후반 심박 여유 · 전반 대비 \(dStr)bpm", "HR eased late · \(dStr) bpm vs first half", ja: "後半の心拍に余裕 · 前半比\(dStr)bpm"))
         }
-        return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType),
+        return HRCaption(kind: .steady, text: FormNarrative.hrSteadyCaption(type: workoutType, samePaceRise: samePace),
                          short: L.s("심박 끝까지 안정 · 전후반 \(dStr)bpm", "HR steady to the end · \(dStr) bpm half to half", ja: "心拍は最後まで安定 · 前後半\(dStr)bpm"))
     }
 

@@ -3373,7 +3373,8 @@ private struct PerformanceInsightCard: View {
         // 총평 후반 심박 판정은 5% 안일 때만 본다(예전 지연 평가와 같음)
         let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history)
         let v = TabDigestPerformance.decouplingVerdict(pct: pct, workoutType: wt, temperatureC: activity.temperatureC,
-                                                       lateHRRoseFirst: lateFirst)
+                                                       lateHRRoseFirst: lateFirst,
+                                                       samePaceRise: wt == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? []) : nil)
         let color: Color
         switch v.shade {
         case .good:    color = ink.ic.green
