@@ -104,6 +104,8 @@ struct CreateCrewView: View {
                         .padding(.horizontal, 16)
                 }
 
+                CrewPrivacyNote()
+
                 Button {
                     Task { await doCreate() }
                 } label: {

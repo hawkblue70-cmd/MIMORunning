@@ -92,6 +92,8 @@ struct JoinCrewView: View {
                         .padding(.horizontal, 16)
                 }
 
+                CrewPrivacyNote()
+
                 Button {
                     Task { await doJoin() }
                 } label: {
