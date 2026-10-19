@@ -1601,7 +1601,7 @@ struct MeView: View {
                 settingRow {
                     Text(AppLanguage.shared.s("만든 곳", "Made by", ja: "開発")).foregroundStyle(.white)
                     Spacer()
-                    Text("MIMOPlanner").font(.caption).foregroundStyle(.secondary)
+                    Text(AppLanguage.shared.s("플래너소프트", "PlannerSoft", ja: "PlannerSoft")).font(.caption).foregroundStyle(.secondary)   // 국세청 등록 개인사업자명(방침·홈페이지와 같게)
                 }
                 thinDivider
                 // WeatherKit 사용 조건 — Apple 날씨 표장 + 법적 고지 링크(2026-10-19)
