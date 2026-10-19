@@ -2174,8 +2174,12 @@ struct SubscriptionSectionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 8) {
+                        // 언어별 방침의 MIMO Running 조항(11장)으로 바로 — 한국어 페이지는 한·영 병기(2026-10-19)
                         Link(AppLanguage.shared.s("개인정보처리방침", "Privacy Policy", ja: "プライバシーポリシー"),
-                             destination: URL(string: "https://mimoplanner.kr/privacy.html")!)
+                             destination: URL(string: AppLanguage.shared.s(
+                                "https://mimoplanner.kr/privacy.html#running",
+                                "https://mimoplanner.kr/en/privacy.html#running",
+                                ja: "https://mimoplanner.kr/ja/privacy.html#running"))!)
                         Text("·").foregroundStyle(.tertiary)
                         Link(AppLanguage.shared.s("이용약관", "Terms of Use", ja: "利用規約"),
                              destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
