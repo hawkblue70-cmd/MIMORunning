@@ -3089,8 +3089,18 @@ private struct PerformanceInsightCard: View {
                                radius: ScatterStyle.rRecent, color: scatterRecent)
                 }
                 // Today dot (ring + fill) — drawn last. 오늘이 주인공이라 가장 밝은 색.
+                // 인터벌·빌드업은 빈 원 — 평균이 앞뒤 다른 강도가 섞인 값이라 비교 대상이 아니라는 표시
                 for pt in todayPts {
                     let center = CGPoint(x: cx(pt.pace), y: cy(pt.hr))
+                    if scatterTodayExcluded {
+                        let r: CGFloat = 5.4
+                        let c = ScatterStyle.casing
+                        ctx.fill(Path(ellipseIn: CGRect(x: center.x-r-c, y: center.y-r-c, width: (r+c)*2, height: (r+c)*2)),
+                                 with: .color(ink.card))
+                        ctx.stroke(Path(ellipseIn: CGRect(x: center.x-r, y: center.y-r, width: r*2, height: r*2)),
+                                   with: .color(scatterToday), style: StrokeStyle(lineWidth: 1.4))
+                        continue
+                    }
                     let rO: CGFloat = 8.6
                     ctx.stroke(
                         Path(ellipseIn: CGRect(x: center.x-rO, y: center.y-rO, width: rO*2, height: rO*2)),
@@ -3134,7 +3144,8 @@ private struct PerformanceInsightCard: View {
                     + Text("●").foregroundStyle(scatterRecent)
                     + Text(" \(L.s("최근", "Recent", ja: "最近"))   ").foregroundStyle(legendLabel)
                 if scatterTodayExcluded {
-                    t = t + Text(L.s("오늘은 인터벌·빌드업이라 제외", "Today excluded (interval/build-up)", ja: "今日はインターバル・ビルドアップのため除外")).foregroundStyle(legendLabel)
+                    t = t + Text("○").foregroundStyle(scatterToday)
+                        + Text(" \(L.s("오늘 · 빌드업·인터벌이라 비교 제외", "Today · build-up/interval, not compared", ja: "今日 · ビルドアップ・インターバルのため比較対象外"))").foregroundStyle(legendLabel)
                 } else {
                     t = t + Text("●").foregroundStyle(scatterToday)
                         + Text(" \(L.s("오늘", "Today", ja: "今日"))").foregroundStyle(legendLabel)
@@ -3317,7 +3328,7 @@ private struct PerformanceInsightCard: View {
         )
     }
 
-    /// 인터벌·빌드업은 회복 구간이 섞인 평균이라 오늘 점을 그리지 않는다 — 과거 점을 같은 이유로 빼는 것과 같은 규칙
+    /// 인터벌·빌드업은 회복 구간이 섞인 평균이라 오늘 점을 비교에서 뺀다(빈 원으로만 표시) — 과거 점을 빼는 것과 같은 규칙
     private var scatterTodayExcluded: Bool {
         let wt = workoutTypeFn?(activity.id)
         return wt == .interval || wt == .buildUp
@@ -3327,7 +3338,8 @@ private struct PerformanceInsightCard: View {
         let cal = Calendar.current
         let cutoff4w = cal.date(byAdding: .weekOfYear, value: -4, to: activity.date) ?? .distantPast
         var result: [ScatterPt] = []
-        if !scatterTodayExcluded, let tp = activity.paceSecPerKm, tp > 0, let th = refHR(activity) {
+        // 인터벌·빌드업도 오늘 점은 찍는다 — 빈 원으로, 띠·화살표·↓N bpm 비교에는 넣지 않는다(2026-10-20)
+        if let tp = activity.paceSecPerKm, tp > 0, let th = refHR(activity) {
             result.append(ScatterPt(pace: tp, hr: th, group: .today))
         }
         for act in scatterEligible {
@@ -3337,7 +3349,7 @@ private struct PerformanceInsightCard: View {
         return result
     }
 
-    /// 오늘이 인터벌·빌드업이면 화살표도 없다 — 산점도에 오늘 점을 안 찍는 것과 같은 이유(scatterTodayExcluded).
+    /// 오늘이 인터벌·빌드업이면 화살표도 없다 — 산점도 오늘 점을 빈 원으로 비교에서 빼는 것과 같은 이유(scatterTodayExcluded).
     /// 산점도 제목 "심박 효율 ↓N bpm" — 히어로·맨 아래 문장과 **같은 엔진 판정**(RunInsightEngine.efficiencyInsight)의 값.
     /// 예전엔 여기만 8주 중 오래된 7개로 따로 평균해 7, 문장은 전체 기록과 비교해 9로 갈렸다.
     private var hrDelta: Int? {
