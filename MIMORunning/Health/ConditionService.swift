@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import WeatherKit
 
 // MARK: - Sleep score
 
@@ -179,78 +180,39 @@ actor ConditionCache {
     }
 }
 
-// MARK: - Weather fetch (Open-Meteo archive — free, no API key)
+// MARK: - Weather fetch (Apple WeatherKit)
+
+// Open-Meteo 무료 API는 비상업용만 허용 — 구독 앱이라 약관 위반이었고, 출발 좌표가 해외 서버 로그에 90일 남았다.
+// WeatherKit은 Apple 개발자 멤버십에 포함(월 50만 호출)되고, 기록 날씨는 2021-08-01부터 받을 수 있다(2026-10-19 교체).
+// 이미 캐시된 옛 Open-Meteo 값(ConditionCache)은 그대로 둔다 — 같은 시간대 값이라 표시 차이가 거의 없다.
 
 struct ConditionService {
 
-    /// Fetches hourly weather for the run date and location.
-    /// Uses the forecast API for runs within the last 7 days (no archive lag),
-    /// falls back to the historical archive for older runs.
-    /// Returns nil when: no coordinate, network error.
+    /// 러닝 시작 시각이 든 1시간의 날씨. 좌표가 없거나, 조회 실패(네트워크·권한·2021-08 이전 기록)면 nil.
     static func fetchWeather(
         date: Date,
         coordinate: CLLocationCoordinate2D?
     ) async -> WeatherSnapshot? {
         guard let coord = coordinate else { return nil }
-
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-        df.timeZone = TimeZone(identifier: "UTC")
-        let dateStr = df.string(from: date)
-
-        // Forecast API covers today back ~7 days with no processing lag.
-        // Archive API covers older dates but has a ~5-day quality lag.
-        let daysSince = Date().timeIntervalSince(date) / 86400
-        let baseURL = daysSince < 7
-            ? "https://api.open-meteo.com/v1/forecast"
-            : "https://archive-api.open-meteo.com/v1/archive"
-        guard var comps = URLComponents(string: baseURL) else { return nil }
-        comps.queryItems = [
-            URLQueryItem(name: "latitude",        value: String(format: "%.4f", coord.latitude)),
-            URLQueryItem(name: "longitude",       value: String(format: "%.4f", coord.longitude)),
-            URLQueryItem(name: "start_date",      value: dateStr),
-            URLQueryItem(name: "end_date",        value: dateStr),
-            URLQueryItem(name: "hourly",          value: "temperature_2m,precipitation,wind_speed_10m"),
-            URLQueryItem(name: "wind_speed_unit", value: "kmh"),
-            URLQueryItem(name: "timezone",        value: "UTC"),
-        ]
-        guard let url = comps.url else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-
-        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
-        return parseHourlyResponse(data: data, date: date)
-    }
-
-    private static func parseHourlyResponse(data: Data, date: Date) -> WeatherSnapshot? {
-        guard let json    = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hourly  = json["hourly"] as? [String: Any],
-              let times   = hourly["time"]           as? [String],
-              let temps   = hourly["temperature_2m"] as? [Double],
-              let precips = hourly["precipitation"]  as? [Double],
-              let winds   = hourly["wind_speed_10m"] as? [Double],
-              !times.isEmpty else { return nil }
-
-        // Match the hour closest to the run start (UTC)
-        var utcCal = Calendar(identifier: .gregorian)
-        utcCal.timeZone = TimeZone(identifier: "UTC") ?? .current
-        let runHour = utcCal.component(.hour, from: date)
-
-        var bestIdx = 0, bestDiff = 24
-        for (i, t) in times.enumerated() {
-            let parts = t.split(separator: "T")
-            guard parts.count == 2,
-                  let hStr = parts[1].split(separator: ":").first,
-                  let h    = Int(hStr) else { continue }
-            let diff = abs(h - runHour)
-            if diff < bestDiff { bestDiff = diff; bestIdx = i }
+        let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        // 시작 시각 앞뒤 1시간 — 가장 가까운 시간대를 고른다
+        let start = date.addingTimeInterval(-3600)
+        let end = date.addingTimeInterval(3600)
+        do {
+            let hours = try await WeatherService.shared.weather(
+                for: location, including: .hourly(startDate: start, endDate: end))
+            guard let h = hours.forecast.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+            else { return nil }
+            return WeatherSnapshot(
+                tempC: h.temperature.converted(to: .celsius).value,
+                precipitation: h.precipitationAmount.converted(to: .millimeters).value,
+                windKmh: h.wind.speed.converted(to: .kilometersPerHour).value
+            )
+        } catch {
+            #if DEBUG
+            print("[날씨] WeatherKit 실패 \(date): \(error.localizedDescription)")
+            #endif
+            return nil
         }
-
-        guard bestIdx < temps.count, bestIdx < precips.count, bestIdx < winds.count else { return nil }
-        return WeatherSnapshot(
-            tempC: temps[bestIdx],
-            precipitation: precips[bestIdx],
-            windKmh: winds[bestIdx]
-        )
     }
 }

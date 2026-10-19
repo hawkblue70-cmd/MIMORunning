@@ -1603,6 +1603,13 @@ struct MeView: View {
                     Spacer()
                     Text("MIMOPlanner").font(.caption).foregroundStyle(.secondary)
                 }
+                thinDivider
+                // WeatherKit 사용 조건 — Apple 날씨 표장 + 법적 고지 링크(2026-10-19)
+                settingRow {
+                    Text(AppLanguage.shared.s("날씨 데이터", "Weather Data", ja: "天気データ")).foregroundStyle(.white)
+                    Spacer()
+                    WeatherAttributionView()
+                }
             }
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))

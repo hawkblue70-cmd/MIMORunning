@@ -685,7 +685,7 @@ class HealthKitManager {
     }
 
     /// Fetches weather for workouts not yet in ConditionCache.
-    /// Processes in small batches to stay within Open-Meteo free-tier limits.
+    /// Processes in small batches (3 at a time) so a first-launch backfill does not burst WeatherKit calls.
     private func prefetchWeather(for workouts: [HKWorkout]) async {
         for batchStart in stride(from: 0, to: workouts.count, by: 3) {
             let batch = workouts[batchStart..<min(batchStart + 3, workouts.count)]
