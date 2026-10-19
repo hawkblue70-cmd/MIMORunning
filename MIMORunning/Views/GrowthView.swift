@@ -115,6 +115,7 @@ struct GrowthView: View {
     @State private var prEntriesCache: [PREntry] = []
     @State private var journeyMilestonesCache: [MilestoneEvent] = []
     @State private var thisWeekRunCountCache: Int = 0
+    @State private var lastWeekRunCountCache: Int = 0
     @State private var growthInsightBannerText: String? = nil
     @State private var showMileageStreakShareCard = false
     @State private var displayGaps: [(start: Date, end: Date, days: Int, prePace: Double?, postPace: Double?)] = []
@@ -207,6 +208,8 @@ struct GrowthView: View {
 
         let ws = cal.date(from: nowComps) ?? Date()
         thisWeekRunCountCache   = runsCache.filter { $0.date >= ws }.count
+        let prevWs = cal.date(byAdding: .weekOfYear, value: -1, to: ws) ?? ws
+        lastWeekRunCountCache   = runsCache.filter { $0.date >= prevWs && $0.date < ws }.count
         prEntriesCache          = prEntries()
         journeyMilestonesCache  = journeyMilestones()
         refreshEffortTypeRows()
@@ -760,18 +763,24 @@ struct GrowthView: View {
 
     private var weekSummarySection: some View {
         let L = AppLanguage.shared
-        let km   = weeklyKmsCache.last?.km ?? 0
-        let mins = weeklyMinsCache.last?.mins ?? 0
-        let count  = thisWeekRunCount
+        // 이번 주 러닝이 아직 없으면(월요일 아침 등) 같은 타일로 지난주를 보여 준다(2026-10-19 사용자 요청).
+        let thisWeekEmpty = (weeklyKmsCache.last?.km ?? 0) == 0 && (weeklyMinsCache.last?.mins ?? 0) == 0
+            && thisWeekRunCount == 0
+        let showLastWeek = thisWeekEmpty && lastWeekRunCountCache > 0
+        let km   = (showLastWeek ? weeklyKmsCache.dropLast().last?.km : weeklyKmsCache.last?.km) ?? 0
+        let mins = (showLastWeek ? weeklyMinsCache.dropLast().last?.mins : weeklyMinsCache.last?.mins) ?? 0
+        let count  = showLastWeek ? lastWeekRunCountCache : thisWeekRunCount
         let streak = engine.streakWeeks
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L.s("이번 주", "This Week", ja: "今週"))
+                    Text(showLastWeek ? L.s("지난주", "Last Week", ja: "先週") : L.s("이번 주", "This Week", ja: "今週"))
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(L.s("월요일부터 지금까지", "Monday through today", ja: "月曜日から今まで"))
+                    Text(showLastWeek
+                         ? L.s("이번 주 러닝 전 · 월요일부터 일요일까지", "No run yet this week · Monday to Sunday", ja: "今週はまだラン前 · 月曜日から日曜日まで")
+                         : L.s("월요일부터 지금까지", "Monday through today", ja: "月曜日から今まで"))
                         .font(.system(size: 13))
                         .foregroundStyle(Color(hex: "8A8A92"))
                 }
