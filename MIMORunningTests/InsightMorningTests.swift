@@ -20,8 +20,8 @@ struct InsightMorningTests {
     }
 
     private func snap(_ key: String, level: String = "easy", line: String = "오늘은 이지런",
-                      why: String = "연속 4일째입니다. 강도를 빼고 몸을 풀어 주세요.", at: Date) -> MRReadinessSnapshot {
-        MRReadinessSnapshot(dateKey: key, level: level, line: line, why: why, data: "HRV 42ms",
+                      why: String = "연속 4일째입니다. 강도를 빼고 몸을 풀어 주세요.", at: Date) -> MRReadinessDaySnapshot {
+        MRReadinessDaySnapshot(dateKey: key, level: level, line: line, why: why, data: "HRV 42ms",
                             planLine: "이번 주 롱런 아직 · 이지 1/3회", computedAt: at)
     }
 
@@ -32,7 +32,7 @@ struct InsightMorningTests {
     }
 
     @Test func snapshotBeforeRunIsPreferred() {
-        let key = MRReadinessSnapshot.key(for: runStart, calendar: cal)
+        let key = MRReadinessDaySnapshot.key(for: runStart, calendar: cal)
         var recomputed = 0
         let m = InsightMorning.make(
             runStart: runStart, now: at(day: 14, hour: 9),
@@ -49,7 +49,7 @@ struct InsightMorningTests {
     }
 
     @Test func snapshotAfterRunStartIsIgnored() {
-        let key = MRReadinessSnapshot.key(for: runStart, calendar: cal)
+        let key = MRReadinessDaySnapshot.key(for: runStart, calendar: cal)
         var asOfs: [Date] = []
         let m = InsightMorning.make(
             runStart: runStart, now: at(day: 14, hour: 9),
@@ -120,7 +120,7 @@ struct InsightMorningTests {
     }
 
     @Test func nextDaySnapshotIsUsed() {
-        let nextKey = MRReadinessSnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
+        let nextKey = MRReadinessDaySnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
         let m = InsightMorning.make(
             runStart: runStart, now: at(day: 15, hour: 8),
             snapshotFor: { $0 == nextKey ? snap(nextKey, level: "rest", line: "오늘은 휴식이나 짧은 이지", at: at(day: 15, hour: 7)) : nil },
@@ -143,7 +143,7 @@ struct InsightMorningTests {
     }
 
     @Test func pendingNextDaySnapshotFallsBackToRecompute() {
-        let nextKey = MRReadinessSnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
+        let nextKey = MRReadinessDaySnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
         func run(_ nextPending: Bool) -> InsightMorning {
             InsightMorning.make(
                 runStart: runStart, now: at(day: 15, hour: 8),
@@ -186,7 +186,7 @@ struct InsightMorningTests {
     }
 
     @Test func nextDaySnapshotKeepsFullWhyAndPlanLine() {
-        let nextKey = MRReadinessSnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
+        let nextKey = MRReadinessDaySnapshot.key(for: at(day: 15, hour: 7), calendar: cal)
         let m = InsightMorning.make(
             runStart: runStart, now: at(day: 15, hour: 8),
             snapshotFor: { $0 == nextKey ? snap(nextKey, level: "rest", at: at(day: 15, hour: 7)) : nil },

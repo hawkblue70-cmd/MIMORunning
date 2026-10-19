@@ -131,16 +131,28 @@ struct MIMORunningApp: App {
     }
 
     private static let container: ModelContainer = {
-        let schema = Schema([
+        // iCloud(비공개) 동기화 — 메모·강도·신발·대회 기록. 옛 MRReadinessSnapshot은 옮기기 전용으로만 남긴다.
+        let cloudSchema = Schema([
             WorkoutStory.self, StoryPhoto.self, Shoe.self,
             OneLinerEntry.self, PersistedRaceMatchRecord.self, MyPlannedRace.self,
             RacePlanSnapshot.self, RaceArchive.self, UserGoalRecord.self,
             MRReadinessSnapshot.self
         ])
+        // 기기 안 전용 — 아침 제안 기록(HRV 등 건강 수치, App Review 5.1.3(ii) 때문에 iCloud에 올리지 않음, 2026-10-19)
+        let localSchema = Schema([MRReadinessDaySnapshot.self])
+        let schema = Schema([
+            WorkoutStory.self, StoryPhoto.self, Shoe.self,
+            OneLinerEntry.self, PersistedRaceMatchRecord.self, MyPlannedRace.self,
+            RacePlanSnapshot.self, RaceArchive.self, UserGoalRecord.self,
+            MRReadinessSnapshot.self, MRReadinessDaySnapshot.self
+        ])
+        // ⚠ 기본 구성은 이름을 주지 않는다 — 이름을 주면 스토어 파일(default.store)이 바뀌어 기존 기록을 못 읽는다.
+        let localConfig = ModelConfiguration("readiness-local", schema: localSchema, cloudKitDatabase: .none)
         let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MIMORunning", category: "CloudKit")
         do {
             let c = try ModelContainer(for: schema,
-                                       configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic))
+                                       configurations: ModelConfiguration(schema: cloudSchema, cloudKitDatabase: .automatic),
+                                       localConfig)
             UserDefaults.standard.set(true, forKey: "cloudKitSyncAvailable")
             log.info("[CloudKit] main container = 동기화 활성")
             return c
@@ -148,18 +160,23 @@ struct MIMORunningApp: App {
             log.warning("[CloudKit] main container = 폴백(로컬) — 사유: \(error.localizedDescription, privacy: .public)")
             UserDefaults.standard.set(false, forKey: "cloudKitSyncAvailable")
             do {
-                return try ModelContainer(for: schema)
+                return try ModelContainer(for: schema,
+                                          configurations: ModelConfiguration(schema: cloudSchema, cloudKitDatabase: .none),
+                                          localConfig)
             } catch let storeError {
                 // WAL 손상(OOM 킬 등) → 스토어 파일 삭제 후 빈 상태로 재생성
                 log.error("[CoreData] 로컬 스토어 열기 실패 — 스토어 재생성 시도: \(storeError.localizedDescription, privacy: .public)")
                 let fm = FileManager.default
                 if let supportDir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                    for suffix in ["default.store", "default.store-wal", "default.store-shm"] {
+                    for suffix in ["default.store", "default.store-wal", "default.store-shm",
+                                   "readiness-local.store", "readiness-local.store-wal", "readiness-local.store-shm"] {
                         try? fm.removeItem(at: supportDir.appending(path: suffix))
                     }
                 }
                 do {
-                    let fresh = try ModelContainer(for: schema)
+                    let fresh = try ModelContainer(for: schema,
+                                                   configurations: ModelConfiguration(schema: cloudSchema, cloudKitDatabase: .none),
+                                                   localConfig)
                     log.warning("[CoreData] 스토어 재생성 성공 — 사용자 메모/스토리 초기화됨")
                     return fresh
                 } catch let rebuildError {
@@ -184,8 +201,11 @@ struct MIMORunningApp: App {
                     .environment(miniMeStore)
                     .environment(crewNickname)
                     .task { await engine.refresh() }
+                    // 옛 iCloud 아침 제안 기록 → 기기 안으로(지우면 iCloud 사본도 삭제). iCloud에서 늦게 내려온 것은 다음 활성화 때.
+                    .task { MRReadinessSnapshotStore.migrateLegacy(context: Self.container.mainContext) }
                     .onChange(of: scenePhase) { _, phase in
                         if phase == .active {
+                            MRReadinessSnapshotStore.migrateLegacy(context: Self.container.mainContext)
                             Task {
                                 await engine.refreshHRVIfStale()
                                 await engine.refreshRunsIfNeeded()   // 켜둔 채 러닝을 마치고 돌아온 경우 — 오늘 카드 거리 행 갱신

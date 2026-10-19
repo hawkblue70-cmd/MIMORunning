@@ -206,7 +206,7 @@ struct ActivityDetailView: View {
             actual: actual, direction: direction, calendar: cal,
             includeNextDay: false)   // 공유 카드는 오늘의 러닝 → 당일 아침만(2026-10-15 사용자) — 다음 날 재계산 생략
         #if DEBUG
-        let key = MRReadinessSnapshot.key(for: activity.date, calendar: cal)
+        let key = MRReadinessDaySnapshot.key(for: activity.date, calendar: cal)
         let snap = MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx)
         print("[러닝하루카드] 당일 아침 \(result.morningOf == nil ? "없음" : "있음")"
               + " · 엔진 준비 \(engine.readiness(asOf: activity.date.addingTimeInterval(-1), hardRunStarts: []) != nil ? "재계산 가능" : "재계산 nil")"

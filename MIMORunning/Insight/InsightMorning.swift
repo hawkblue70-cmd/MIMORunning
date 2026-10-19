@@ -39,7 +39,7 @@ struct InsightMorning: Equatable {
     /// - snapshotFor: 날짜 키("yyyy-MM-dd") → 홈이 저장한 스냅샷
     /// - recompute: asOf → 그 시각 아침 제안 재계산(엔진 준비 전이면 nil)
     /// - firstRunStart: 어떤 날(그 날 안의 아무 시각) → 그날 첫 러닝 시작. 없으면 nil
-    static func make(runStart: Date, now: Date, snapshotFor: (String) -> MRReadinessSnapshot?,
+    static func make(runStart: Date, now: Date, snapshotFor: (String) -> MRReadinessDaySnapshot?,
                      recompute: (Date) -> MRReadiness?, firstRunStart: (Date) -> Date?,
                      actual: String?, direction: String?, calendar: Calendar,
                      includeNextDay: Bool = true) -> InsightMorning {
@@ -51,7 +51,7 @@ struct InsightMorning: Equatable {
         //    같은 날 두 번째 러닝을 내보내도 '그날 아침'은 첫 러닝 전 제안이다(이미 뛴 날은 엔진이 nil).
         let dayStart = calendar.startOfDay(for: runStart)
         let cutoff = min(firstRunStart(dayStart) ?? runStart, runStart)
-        let ofKey = MRReadinessSnapshot.key(for: runStart, calendar: calendar)
+        let ofKey = MRReadinessDaySnapshot.key(for: runStart, calendar: calendar)
         var morningOf: Entry?
         if let s = snapshotFor(ofKey), s.computedAt < cutoff {
             morningOf = entry(label: ofLabel, snapshot: s)
@@ -63,7 +63,7 @@ struct InsightMorning: Equatable {
         //    아직 그 날이 아니거나(저녁 러닝 당일) 그 밤 HRV가 없으면(hrvPending) 블록 대신 방향 줄.
         var nextMorning: Entry?
         if includeNextDay, let nextStart = calendar.date(byAdding: .day, value: 1, to: dayStart), now >= nextStart {
-            let nextKey = MRReadinessSnapshot.key(for: nextStart, calendar: calendar)
+            let nextKey = MRReadinessDaySnapshot.key(for: nextStart, calendar: calendar)
             // 동기화 전에 찍힌 스냅샷(hrvPending)은 그 밤 값이 없던 문장 → 재계산으로 넘어간다(그것도 pending이면 방향 줄)
             if let s = snapshotFor(nextKey), !s.hrvPending {
                 nextMorning = entry(label: nextLabel, snapshot: s)
@@ -83,7 +83,7 @@ struct InsightMorning: Equatable {
                               nextDirection: nextMorning == nil ? dir : nil)
     }
 
-    private static func entry(label: String, snapshot s: MRReadinessSnapshot) -> Entry {
+    private static func entry(label: String, snapshot s: MRReadinessDaySnapshot) -> Entry {
         Entry(label: label, level: s.level, line: s.line, why: s.why, data: s.data, planLine: s.planLine,
               easyCapHR: s.easyCapHR > 0 ? s.easyCapHR : nil, easyPaceSec: s.easyPaceSec > 0 ? s.easyPaceSec : nil)
     }
