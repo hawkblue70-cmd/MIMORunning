@@ -93,7 +93,13 @@ enum TabDigestRhythm {
         // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
         // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
         // 러닝 중간 튐(hrMidRunSpikeCleaned)도 주변 값으로 바꿔 판정한다 — 존 분포와 같은 규칙
-        let samples = hrMidRunSpikeCleaned(hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples)
+        // 초반 km 오독(km 단위, 더 느린데 더 높던 초반)도 뺀다 — 전후반 −2bpm "끝까지 안정"이 나왔다(2026-10-21)
+        var base = hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples
+        if let end = hrEarlySplitArtifactEndOffset(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []),
+           let t0 = hrSamples.first?.offset {
+            base = base.filter { $0.offset >= t0 + end }
+        }
+        let samples = hrMidRunSpikeCleaned(base)
         guard samples.count >= 10 else { return nil }
         let n = samples.count
         let half = n / 2
@@ -127,7 +133,7 @@ enum TabDigestRhythm {
                                                          workoutType: workoutType, history: history)
         let d = Int(diff.rounded())
         let dStr = TabDigest.signed(d)
-        let samePace = workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? []) : nil
+        let samePace = workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []) : nil
         if diff >= 8 || lateRose {
             let short = diff >= 8
                 ? L.s("후반 심박 상승 · 전후반 \(dStr)bpm", "HR up late · \(dStr) bpm half to half", ja: "後半の心拍上昇 · 前後半\(dStr)bpm")

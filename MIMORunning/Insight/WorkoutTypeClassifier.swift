@@ -136,6 +136,9 @@ struct WorkoutTypeClassifier {
     /// ⚠ 예전 기준(3등분 평균이 1초라도 순차 감소, 또는 R² ≥ 0.40)은 첫 km(몸 풀기·신호 대기)가 느리고
     ///   마지막 km(스퍼트)가 빠른 평범한 러닝을 빌드업으로 잡았다 — 4주 18회 중 11회(2026-09-28).
     ///   이제 구간 6개 이상이면 양 끝 km를 빼고 추세를 보며, 단계마다 1.5% 이상 또는 추세선 4% 이상 빨라져야 한다.
+    /// 추세선 빌드업의 마지막 단계(가운데 1/3 → 마지막 1/3) 최소 상승 — 임의로 정함(6'00" 기준 약 4초)
+    static let buildUpLateStageMinGain = 0.01
+
     static func isBuildUp(splits: [SplitData]) -> Bool {
         buildUpVerdict(splits: splits).isBuildUp
     }
@@ -179,11 +182,14 @@ struct WorkoutTypeClassifier {
         guard sxx > 0, syy > 0 else { return (false, "빌드업탈락: 단계✗ 평탄") }
         let r2 = (sxy * sxy) / (sxx * syy)
         let gain = -(sxy / sxx) * Double(n - 1) / yMean
-        let tag = "R²=\(String(format: "%.2f", r2)) 추세\(String(format: "%.1f", gain * 100))%"
-        if r2 >= 0.40 && gain >= 0.04 {
+        // 마지막 1/3이 가운데보다 1% 이상 빨라야 — 몸 풀기 3km가 추세선을 기울여 '몸 풀기 + 평탄 + 스퍼트'가
+        // 빌드업이 됐다(2026-10-21: 6'45"·6'40"·6'33" → 5'49"~6'00" 평탄 → 5'17", R² 0.68·추세 12%, 마지막 단계 0.6%)
+        let lateGain = (a2 - a3) / a2
+        let tag = "R²=\(String(format: "%.2f", r2)) 추세\(String(format: "%.1f", gain * 100))% 끝단계\(String(format: "%.1f", lateGain * 100))%"
+        if r2 >= 0.40 && gain >= 0.04 && lateGain >= buildUpLateStageMinGain {
             return (true, "빌드업(\(tag)) \(pf(firstPace))→\(pf(lastPace))")
         }
-        return (false, "빌드업탈락: 단계✗ \(tag) (R²≥0.40·추세≥4% 필요)")
+        return (false, "빌드업탈락: 단계✗ \(tag) (R²≥0.40·추세≥4%·끝단계≥1% 필요)")
     }
 
     // MARK: 후반 페이스 롱런 — 편하게 달리다 마지막 구간을 목표 페이스 근처로 (영상: 후반 M 페이스 삽입)

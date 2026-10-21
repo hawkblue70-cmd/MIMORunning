@@ -68,6 +68,31 @@ struct FormTypeCaptionTests {
         #expect(FormNarrative.samePaceHRRise(splits: flat) == nil)
     }
 
+    @Test("초반 km 광학 오독 — 더 느린데 더 높던 초반 3km는 판정에서 뺀다")
+    func earlySplitArtifact() {
+        func mk(_ p: [Double], _ h: [Int]) -> [SplitData] {
+            zip(p, h).enumerated().map { i, v in
+                SplitData(id: i + 1, distanceM: 1000, duration: v.0, avgHeartRate: v.1, avgCadence: nil, avgPower: nil,
+                          avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+            }
+        }
+        // 실사용 10/21(8°C): 6'45 6'40 6'33 6'06 5'54 5'56 5'57 6'00 5'49 5'52 5'17
+        let paces: [Double] = [405, 400, 393, 366, 354, 356, 357, 360, 349, 352, 317]
+        let s = mk(paces, [151, 159, 164, 141, 147, 146, 148, 146, 148, 150, 158])
+        #expect(hrEarlySplitArtifactKm(s) == 3)
+        #expect(splitsExcludingEarlyHRArtifact(s).first?.id == 4)
+        #expect(hrEarlySplitArtifactEndOffset(s) == 405 + 400 + 393)
+        let pct = TabDigestPerformance.decouplingPct(splits: s, workoutType: .general, distKm: 11) ?? 99
+        #expect(abs(pct) < 3)
+        // 경계 km에 오르막(3km 구간 +20m)이면 지형 — 오독 아님
+        let alt: [(distanceKm: Double, altitude: Double)] = [(0, 10), (1, 12), (2, 14), (3, 34), (4, 20), (5, 20)]
+        #expect(hrEarlySplitArtifactKm(s, altitudeProfile: alt) == nil)
+        // 뒤에서 다시 그 높이로 오르면(스퍼트 165) 오독으로 보지 않는다
+        #expect(hrEarlySplitArtifactKm(mk(paces, [151, 159, 164, 141, 147, 146, 148, 146, 148, 150, 165])) == nil)
+        // 평범한 러닝(초반이 낮게 시작) — 없음
+        #expect(hrEarlySplitArtifactKm(mk(paces, [135, 140, 143, 145, 147, 146, 148, 146, 148, 150, 158])) == nil)
+    }
+
     @Test("빌드업 디커플링 음수 → '그만큼 오르지 않았습니다'")
     func buildUpNegativeDecoupling() {
         ko {

@@ -3405,7 +3405,8 @@ private struct PerformanceInsightCard: View {
     private var aerobicDecouplingPct: Double? {
         guard let splits = detail?.splits else { return nil }
         return TabDigestPerformance.decouplingPct(splits: splits, workoutType: decouplingWorkoutType,
-                                                  distKm: activity.distance / 1000)
+                                                  distKm: activity.distance / 1000,
+                                                  altitudeProfile: detail?.altitudeProfile ?? [])
     }
 
     /// 읽기 문장 + 카드 색 — 판정은 `TabDigestPerformance.decouplingVerdict`, 색 매핑만 카드에 남긴다.
@@ -3415,7 +3416,7 @@ private struct PerformanceInsightCard: View {
         let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history)
         let v = TabDigestPerformance.decouplingVerdict(pct: pct, workoutType: wt, temperatureC: activity.temperatureC,
                                                        lateHRRoseFirst: lateFirst,
-                                                       samePaceRise: wt == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? []) : nil)
+                                                       samePaceRise: wt == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []) : nil)
         let color: Color
         switch v.shade {
         case .good:    color = ink.ic.green

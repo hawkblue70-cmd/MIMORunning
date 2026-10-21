@@ -476,8 +476,9 @@ extension FormNarrative {
     struct SamePaceHRRise: Equatable { let paceSec: Double; let bpm: Int }
     static let samePacePaceTolSec = 5.0
     static let samePaceMinRiseBpm = 8
-    static func samePaceHRRise(splits: [SplitData]) -> SamePaceHRRise? {
-        let full = splits.filter { $0.distanceM >= 950 && $0.id > 1 && $0.avgHeartRate != nil }
+    static func samePaceHRRise(splits: [SplitData],
+                               altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> SamePaceHRRise? {
+        let full = splitsExcludingEarlyHRArtifact(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 950 && $0.id > 1 && $0.avgHeartRate != nil }
         guard full.count >= 4 else { return nil }
         let half = full.count / 2
         let first = full.prefix(half), second = full.suffix(full.count - half)

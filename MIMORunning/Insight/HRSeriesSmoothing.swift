@@ -58,6 +58,58 @@ func hrEarlyArtifactCount(_ samples: [(offset: TimeInterval, bpm: Int)]) -> Int?
     return early.count + drop
 }
 
+// MARK: - 초반 km 광학 심박 오독 (km 단위)
+
+/// 초반 몇 km가 **더 느린데 심박은 더 높았다가** 빨라지는 순간 뚝 떨어지고, 그 뒤로 다시 그 높이에 오르지 않으면
+/// 그 km들을 오독으로 본다(앞에서 몇 km인지, nil = 없음). `hrEarlyArtifactCount`(첫 10%가 가장 높은 모양)와
+/// 중간 튐(7분 이하·갑자기)이 놓친 모양 — 8°C 저녁, 6'45"·6'40"·6'33"에 151·159·164였다가 6'06"에 141(2026-10-21).
+/// 몸은 27초/km 빨라지며 심박이 23bpm 떨어지지 않는다.
+/// 규칙(모두): 풀 km 6개↑ · 경계 k는 앞 1/3 이내 · km k → k+1에서 15초/km↑ 빨라지며 심박 15bpm↑ 떨어짐 ·
+/// k+1 이후 최고 심박 < 앞 k km 최고 − 5 · 경계 앞뒤 km에 10m↑ 오르막/내리막이 없을 것(오르막 뒤 내리막은 실제 변화).
+/// 존·차트는 그대로 두고 판정(디커플링·전후반 비교·같은 페이스 비교)에서만 뺀다 — 출발 직후 오독과 같은 원칙.
+let hrEarlySplitDropBpm = 15
+let hrEarlySplitFasterSec = 15.0
+func hrEarlySplitArtifactKm(_ splits: [SplitData],
+                            altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Int? {
+    let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }.sorted { $0.id < $1.id }
+    guard full.count >= 6 else { return nil }
+    func alt(at km: Double) -> Double? {
+        guard !altitudeProfile.isEmpty else { return nil }
+        return altitudeProfile.min { abs($0.distanceKm - km) < abs($1.distanceKm - km) }?.altitude
+    }
+    for k in stride(from: full.count / 3, through: 1, by: -1) {
+        let a = full[k - 1], b = full[k]
+        guard let ha = a.avgHeartRate, let hb = b.avgHeartRate,
+              ha - hb >= hrEarlySplitDropBpm, a.paceSecPerKm - b.paceSecPerKm >= hrEarlySplitFasterSec else { continue }
+        let leadMax = full[..<k].compactMap(\.avgHeartRate).max() ?? 0
+        let restMax = full[k...].compactMap(\.avgHeartRate).max() ?? 0
+        guard restMax < leadMax - 5 else { continue }
+        // 경계 앞 km 오르막·뒤 km 내리막이면 지형 — 오독이 아니다
+        if let a0 = alt(at: Double(k - 1)), let a1 = alt(at: Double(k)), let a2 = alt(at: Double(k + 1)),
+           a1 - a0 >= 10 || a1 - a2 >= 10 { continue }
+        return k
+    }
+    return nil
+}
+
+/// 초반 km 오독을 뺀 구간 목록 — 없으면 그대로.
+func splitsExcludingEarlyHRArtifact(_ splits: [SplitData],
+                                    altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [SplitData] {
+    guard let k = hrEarlySplitArtifactKm(splits, altitudeProfile: altitudeProfile) else { return splits }
+    let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }.sorted { $0.id < $1.id }
+    let lastBad = full[k - 1].id
+    return splits.filter { $0.id > lastBad }
+}
+
+/// 초반 km 오독 구간의 끝 시각(러닝 시작부터 초) — 심박 표본에서 이 앞을 뺀다.
+func hrEarlySplitArtifactEndOffset(_ splits: [SplitData],
+                                   altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> TimeInterval? {
+    guard let k = hrEarlySplitArtifactKm(splits, altitudeProfile: altitudeProfile) else { return nil }
+    let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }.sorted { $0.id < $1.id }
+    let lastBad = full[k - 1].id
+    return splits.filter { $0.id <= lastBad }.reduce(0) { $0 + $1.duration }
+}
+
 // MARK: - 러닝 중간 광학 심박 튐
 
 /// 러닝 중간에 심박만 갑자기 튄 구간을 찾아 그 구간 값을 주변 중앙값으로 바꾼 시계열.

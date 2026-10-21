@@ -35,6 +35,13 @@ struct BuildUpVerdictTests {
         #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("6'54 6'33 6'19 6'09 6'16 5'53 6'01 6'12 6'12 6'08")))
     }
 
+    @Test("몸 풀기 3km + 평탄 7km + 마지막 스퍼트(추세선만 기울어짐) → 빌드업 아님")
+    func warmupFlatKickIsNotBuildUp() {
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("6'45 6'40 6'33 6'06 5'54 5'56 5'57 6'00 5'49 5'52 5'17")))
+        // 몸 풀고 평탄 — 마지막 1/3이 가운데보다 빠르지 않음
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("7'16 7'02 6'58 6'29 6'25 6'36 6'45 6'25 6'25 6'19")))
+    }
+
     @Test("고르게 올린 10km → 빌드업")
     func steadyProgressionIsBuildUp() {
         #expect(WorkoutTypeClassifier.isBuildUp(splits: splits("6'40 6'35 6'30 6'25 6'20 6'15 6'10 6'05 6'00 5'55")))

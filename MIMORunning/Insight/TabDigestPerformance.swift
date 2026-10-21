@@ -24,9 +24,11 @@ enum TabDigestPerformance {
     /// 전반·후반의 효율(속도 ÷ 심박) 차이(%). 양수 = 후반에 페이스 대비 심박이 올랐다(드리프트).
     /// 비율이라 후반에 페이스를 올리고 심박도 그만큼 오르면 상쇄된다 — 페이스 전략은 1차로 걸러진다.
     /// 1km 스플릿 기준, 심박 있는 온전한 스플릿이 6개 이상(반쪽 3km)일 때만.
-    static func decouplingPct(splits: [SplitData], workoutType: WorkoutType, distKm: Double) -> Double? {
+    static func decouplingPct(splits: [SplitData], workoutType: WorkoutType, distKm: Double,
+                              altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Double? {
         guard isDecouplingApplicable(workoutType: workoutType, distKm: distKm) else { return nil }
-        let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        // 초반 km 광학 오독은 뺀다 — 앞 절반 심박이 부풀어 −13%가 나왔다(실제 약 −0.5%, 2026-10-21)
+        let full = splitsExcludingEarlyHRArtifact(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
         guard full.count >= 6 else { return nil }
         let half = full.count / 2
         func efficiency(_ part: ArraySlice<SplitData>) -> Double? {
@@ -430,13 +432,14 @@ enum TabDigestPerformance {
         //   문제: 5% 넘게 오름(덥지 않음) · 주의색(더운 날 10%↑ 포함) · 5% 안이지만 마지막 구간 심박 상승
         //   좋음 g3: 지켰다(초록) / 그 밖 중립(더운 날 5~10%, 빌드업): 덧붙임(extra, 1)·톤 중립
         let distKm = c.activity.distance / 1000
-        if let pct = decouplingPct(splits: c.detail?.splits ?? [], workoutType: c.workoutType, distKm: distKm) {
+        if let pct = decouplingPct(splits: c.detail?.splits ?? [], workoutType: c.workoutType, distKm: distKm,
+                                    altitudeProfile: c.detail?.altitudeProfile ?? []) {
             // 카드처럼 5% 안일 때만 총평 후반 심박 판정을 본다
             let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: c.activity, detail: c.detail,
                                                                          workoutType: c.workoutType, history: c.history)
             let v = decouplingVerdict(pct: pct, workoutType: c.workoutType, temperatureC: c.activity.temperatureC,
                                       lateHRRoseFirst: lateFirst,
-                                      samePaceRise: c.workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: c.detail?.splits ?? []) : nil)
+                                      samePaceRise: c.workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []) : nil)
             if v.isProblem || v.shade == .caution || lateFirst {
                 problem(3, .lateHR, v.text, nil, short: v.short)
             } else if v.isGood {
