@@ -487,6 +487,7 @@ enum FormBaselineEngine {
             }.joined(separator: " / ")
             print("[Baseline] 구간 \(c.bands.count)개: \(_list) | 아주 느림 상한 = \(_pf(c.cutoffs.verySlowMax))")
             memo = .some(c)
+            FormCurveValidation.logOnce(inputs: inputs, cutoffs: c.cutoffs)
             return c
         }
         let reason: String
@@ -506,6 +507,9 @@ enum FormBaselineEngine {
 
         let baseline = compute(from: inputs, excludedRaceInputs: excludedRaceInputs)
         saveToCache(baseline)
+        #if DEBUG
+        FormCurveValidation.logOnce(inputs: inputs, cutoffs: baseline.cutoffs)
+        #endif
         return baseline
     }
 
@@ -773,7 +777,7 @@ enum FormBaselineEngine {
 
     // MARK: Private — Statistics
 
-    private static func formStat(_ rawVals: [Double]) -> FormStat? {
+    static func formStat(_ rawVals: [Double]) -> FormStat? {
         let vals = trimOutliers(rawVals)
         guard vals.count >= 2 else { return nil }
         let sorted = vals.sorted()
@@ -808,7 +812,7 @@ enum FormBaselineEngine {
         return vals.filter { $0 >= lo && $0 <= hi }
     }
 
-    private static func percentile(_ sorted: [Double], _ p: Double) -> Double {
+    static func percentile(_ sorted: [Double], _ p: Double) -> Double {
         guard sorted.count > 1 else { return sorted[0] }
         let idx  = p * Double(sorted.count - 1)
         let lo   = Int(idx)
