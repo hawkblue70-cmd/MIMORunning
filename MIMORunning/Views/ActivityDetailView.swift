@@ -168,7 +168,7 @@ struct ActivityDetailView: View {
     }
 
     /// 그날 아침 홈이 포인트 훈련을 제안했나(그날 첫 러닝 전 스냅샷) — 총평 "의도한"은 이때만.
-    /// 스냅샷만 본다(재계산은 무거워 총평마다 돌리지 않는다) — 홈을 안 연 날은 "템포 구간 · Zone 3 N%"처럼 사실만.
+    /// 스냅샷만 본다(재계산은 무거워 총평마다 돌리지 않는다) — 홈을 안 연 날은 "유산소 구간 · Zone 3 N%"처럼 사실만.
     private var morningPlannedPoint: Bool {
         guard activity.type == .running else { return false }
         let cal = Calendar.current

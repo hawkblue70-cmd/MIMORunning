@@ -394,11 +394,11 @@ enum RunSummary {
                         // 분류된 날 "의도한"이 사용자 체감과 정면으로 부딪혔다(2026-10-20). 아침에 포인트를 제안받은 날만 "의도한".
                         let z3 = Int((frac(3) * 100).rounded())
                         line = RunSummaryLine(axis: axis, state: (i.workoutType == .race || i.plannedPointToday)
-                                              ? L.s("의도한 템포 구간", "Intended tempo zone", ja: "意図したテンポ域")
-                                              : L.s("템포 구간 · Zone 3 \(z3)%", "Tempo zone · \(z3)% in Zone 3", ja: "テンポ域 · ゾーン3 \(z3)%"),
+                                              ? L.s("의도한 강도 · Zone 3 \(z3)%", "Intended effort · \(z3)% in Zone 3", ja: "意図した強度 · ゾーン3 \(z3)%")
+                                              : L.s("유산소 구간 · Zone 3 \(z3)%", "Aerobic zone · \(z3)% in Zone 3", ja: "有酸素域 · ゾーン3 \(z3)%"),
                                               tone: .good)
                     } else {
-                        line = RunSummaryLine(axis: axis, state: L.s("템포 구간에 머묾", "Stayed in tempo zone", ja: "テンポ域にとどまった"), tone: .neutral)
+                        line = RunSummaryLine(axis: axis, state: L.s("유산소 구간에 머묾", "Stayed in aerobic zone", ja: "有酸素域にとどまった"), tone: .neutral)
                     }
                 default:
                     // "의도한"은 의도가 분명한 인터벌·대회, 아침에 포인트를 제안받은 날만 — 그 밖 빌드업·템포·거리주는 존 사실만(2026-10-20)

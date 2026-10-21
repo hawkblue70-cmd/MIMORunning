@@ -192,14 +192,14 @@ struct RunSummaryTests {
     @Test func distanceRunInZoneThreeIsPlanned() {
         // Zone 3 우세여도 거리주는 계획된 고강도 유형 — 톤 좋음, 문구는 존 사실
         var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [2: 0.2, 3: 0.66, 4: 0.14]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "템포 구간 · Zone 3 66%", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "유산소 구간 · Zone 3 66%", tone: .good)])
     }
 
     @Test func buildUpSuggestedThatMorningIsIntended() {
         // 아침에 "빌드업 10km"를 제안받고 그대로 뛴 날 — 의도가 분명하다(2026-10-20)
         var i = RunSummaryInput(); i.workoutType = .buildUp; i.plannedPointToday = true
         i.zoneFractions = [2: 0.2, 3: 0.37, 4: 0.30, 1: 0.13]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 템포 구간", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 강도 · Zone 3 37%", tone: .good)])
         i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
         #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "의도한 고강도", tone: .good)])
     }
@@ -207,7 +207,7 @@ struct RunSummaryTests {
     @Test func buildUpInZoneThreeDoesNotClaimIntent() {
         // "천천히 뛰었는데" 빌드업으로 분류된 날 — 의도는 모른다(2026-10-20)
         var i = RunSummaryInput(); i.workoutType = .buildUp; i.zoneFractions = [2: 0.2, 3: 0.46, 4: 0.34]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "템포 구간 · Zone 3 46%", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "유산소 구간 · Zone 3 46%", tone: .good)])
     }
 
     @Test func intervalInZoneThreeIsPlannedHighIntensity() {
@@ -223,7 +223,7 @@ struct RunSummaryTests {
 
     @Test func zoneThreeDominantOnGeneralIsTempo() {
         var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [2: 0.3, 3: 0.5, 4: 0.2]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "템포 구간에 머묾", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "유산소 구간에 머묾", tone: .neutral)])
     }
 
     @Test func raceInHighZonesIsPlanned() {
