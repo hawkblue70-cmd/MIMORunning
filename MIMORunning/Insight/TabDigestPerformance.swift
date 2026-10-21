@@ -27,8 +27,8 @@ enum TabDigestPerformance {
     static func decouplingPct(splits: [SplitData], workoutType: WorkoutType, distKm: Double,
                               altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Double? {
         guard isDecouplingApplicable(workoutType: workoutType, distKm: distKm) else { return nil }
-        // 초반 km 광학 오독은 뺀다 — 앞 절반 심박이 부풀어 −13%가 나왔다(실제 약 −0.5%, 2026-10-21)
-        let full = splitsExcludingEarlyHRArtifact(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        // 몸 풀리기 전 구간(웜업 반응 또는 광학 오독)은 뺀다 — Friel도 몸 풀기 뒤로 잰다. 앞 절반 심박이 부풀어 −13%가 나왔다(실제 약 −0.5%, 2026-10-21)
+        let full = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
         guard full.count >= 6 else { return nil }
         let half = full.count / 2
         func efficiency(_ part: ArraySlice<SplitData>) -> Double? {

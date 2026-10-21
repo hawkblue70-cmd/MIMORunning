@@ -93,9 +93,9 @@ enum TabDigestRhythm {
         // 출발 직후 광학 심박이 튄 구간(HRSeriesSmoothing.hrEarlyArtifactCount)은 전후반 비교·최고치에서 뺀다.
         // 차트는 그대로 그리고 판정만 뺀다 — 그 구간이 "후반에 여유"·"최고 강도"를 만들어내던 것.
         // 러닝 중간 튐(hrMidRunSpikeCleaned)도 주변 값으로 바꿔 판정한다 — 존 분포와 같은 규칙
-        // 초반 km 오독(km 단위, 더 느린데 더 높던 초반)도 뺀다 — 전후반 −2bpm "끝까지 안정"이 나왔다(2026-10-21)
+        // 몸 풀리기 전 구간(km 단위, 더 느린데 더 높던 초반)도 뺀다 — 전후반 −2bpm "끝까지 안정"이 나왔다(2026-10-21)
         var base = hrEarlyArtifactCount(hrSamples).map { Array(hrSamples.dropFirst($0)) } ?? hrSamples
-        if let end = hrEarlySplitArtifactEndOffset(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []),
+        if let end = hrWarmupPhaseEndOffset(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []),
            let t0 = hrSamples.first?.offset {
             base = base.filter { $0.offset >= t0 + end }
         }
@@ -534,6 +534,18 @@ enum TabDigestRhythm {
             case .varied:          problem(6, .unique, pace.text, nil, short: pace.short)
             case .slowedLate, nil: break
             }
+        }
+
+        // 덧붙임 — 몸 풀리기 전 구간을 판정에서 뺐으면 그 사실(디커플링·전후반 값이 왜 바뀌었는지 보이게, 2026-10-22)
+        if let w = hrWarmupPhase(c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []) {
+            let L = AppLanguage.shared
+            out.append(TabDigest.Signal(tab: .rhythm, kind: .extra, priority: 1, family: .unique,
+                text: L.s("처음 \(w.km)km는 심박이 \(w.peakBpm)까지 올랐다가 \(w.km + 1)km부터 \(w.settledBpm)로 내려왔습니다. 몸 풀기 전 구간이라 전후반 비교에서 뺐습니다.",
+                          "HR reached \(w.peakBpm) in the first \(w.km) km and came down to \(w.settledBpm) from km \(w.km + 1). That warm-up stretch is left out of the half-to-half comparison.",
+                          ja: "最初の\(w.km)kmは心拍が\(w.peakBpm)まで上がり、\(w.km + 1)kmから\(w.settledBpm)に下がりました。体がほぐれる前の区間なので前後半の比較から外しました。"),
+                tone: .neutral,
+                short: L.s("몸 풀기 전 \(w.km)km 심박 \(w.peakBpm) → \(w.settledBpm) · 비교에서 제외",
+                           "Warm-up \(w.km) km HR \(w.peakBpm) → \(w.settledBpm) · excluded", ja: "ほぐれる前の\(w.km)km 心拍\(w.peakBpm) → \(w.settledBpm) · 比較から除外")))
         }
 
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
