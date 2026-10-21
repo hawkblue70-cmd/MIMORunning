@@ -128,4 +128,59 @@ final class FormCurveValidationTests: XCTestCase {
         XCTAssertFalse(FormCurveValidation.logLines(
             FormCurveValidation.run(samples: s, cutoffs: cutoffs, asOf: asOf)).isEmpty)
     }
+    // H4 — 같은 값이 반복되면 잡음 0, 7일 밖·페이스 5초 밖 쌍은 세지 않음
+    func testNoiseCountsOnlyNearPairs() {
+        let same = (0..<20).map { sample(daysAgo: $0, pace: 390, cadence: 170, gct: 270) }
+        let (pairs, sd) = FormCurveValidation.noise(samples: same, metric: .gct)
+        XCTAssertGreaterThanOrEqual(pairs, 10)
+        XCTAssertEqual(try XCTUnwrap(sd), 0, accuracy: 1e-9)
+
+        // 10일 간격이거나 페이스가 10초씩 다르면 쌍이 없다
+        let far = (0..<20).map { sample(daysAgo: $0 * 10, pace: 390, cadence: 170, gct: 270) }
+        XCTAssertEqual(FormCurveValidation.noise(samples: far, metric: .gct).pairs, 0)
+        let diffPace = (0..<20).map { sample(daysAgo: $0, pace: 360 + Double($0) * 10, cadence: 170, gct: 270) }
+        XCTAssertNil(FormCurveValidation.noise(samples: diffPace, metric: .gct).sd)
+    }
+
+    // H4 — 쌍 차이 ±4ms가 번갈아 나오면 잡음 SD ≈ 차이 SD / √2
+    func testNoiseFromAlternatingValues() {
+        let s = (0..<30).map { sample(daysAgo: $0, pace: 390, cadence: 170, gct: $0 % 2 == 0 ? 268 : 272) }
+        let sd = try! XCTUnwrap(FormCurveValidation.noise(samples: s, metric: .gct).sd)
+        XCTAssertGreaterThan(sd, 1.5)
+        XCTAssertLessThan(sd, 3.5)
+    }
+
+    // H4 — 반폭 = max(1.2 SD, 1.2 잡음), 중앙값 그대로
+    func testFlooredRange() {
+        let st = FormStat(median: 260, sd: 1, count: 30, p10: nil, p90: nil)
+        let wide = FormCurveValidation.flooredRange(st, noiseSD: 5)
+        XCTAssertEqual(wide.lowerBound, 254, accuracy: 1e-9)
+        XCTAssertEqual(wide.upperBound, 266, accuracy: 1e-9)
+        let keep = FormCurveValidation.flooredRange(st, noiseSD: 0.5)
+        XCTAssertEqual(keep.lowerBound, st.lower, accuracy: 1e-9)
+    }
+
+    // H5 — 직전 7일 20km ÷ (직전 28일 40km / 4) = 2.0, 그날 러닝은 빠짐
+    func testLoadRatio() {
+        func run(_ d: Int) -> FormCurveSample {
+            var s = sample(daysAgo: d, pace: 390, cadence: 170)
+            s.distanceM = 10_000
+            return s
+        }
+        let s = [run(0), run(1), run(3), run(10), run(20), run(40)]
+        XCTAssertEqual(try XCTUnwrap(FormCurveValidation.loadRatio(at: day(0), samples: s)), 2.0, accuracy: 1e-9)
+        XCTAssertNil(FormCurveValidation.loadRatio(at: day(-60), samples: s))
+    }
+
+    func testH5PassesNeedsSameSignHalves() {
+        let ok = FormCurveH5(n: 100, r: 0.4, rFirstHalf: 0.35, rSecondHalf: 0.45,
+                             highLoadN: 10, highLoadMeanResid: 6, normalLoadMeanResid: -1)
+        let flip = FormCurveH5(n: 100, r: 0.4, rFirstHalf: 0.6, rSecondHalf: -0.1,
+                               highLoadN: 10, highLoadMeanResid: 6, normalLoadMeanResid: -1)
+        let weak = FormCurveH5(n: 100, r: 0.2, rFirstHalf: 0.2, rSecondHalf: 0.2,
+                               highLoadN: 10, highLoadMeanResid: 2, normalLoadMeanResid: 0)
+        XCTAssertTrue(ok.passes)
+        XCTAssertFalse(flip.passes)
+        XCTAssertFalse(weak.passes)
+    }
 }

@@ -26,6 +26,8 @@ struct FormCurveSample {
     let stride: Double?
     let gct: Double?
     let vo: Double?
+    /// H5 부하 비율용 (0 = 모름 — 테스트용 기본값)
+    var distanceM: Double = 0
 
     var speedMPerMin: Double { 60000.0 / paceSecPerKm }
     var effectiveSpeedMPerMin: Double { 60000.0 / effectivePaceSecPerKm }
@@ -49,7 +51,8 @@ extension FormCurveSample {
                   cadence: input.avgCadence.map(Double.init),
                   stride: input.avgStrideLength,
                   gct: input.avgGroundContactTime,
-                  vo: input.avgVerticalOscillation)
+                  vo: input.avgVerticalOscillation,
+                  distanceM: input.distanceM)
     }
 }
 
@@ -177,6 +180,50 @@ struct FormCurveValidationReport {
     let disagreements: [FormCurveDisagreement]
     let h2: FormCurveH2?
     let h3: FormCurveH3
+    let h4: [FormCurveH4Metric]
+    let h4Changed: [FormCurveFloorChange]
+    let h5: FormCurveH5?
+}
+
+/// H4 — 같은 조건(7일 안·페이스 ±5초) 러닝 쌍으로 잰 반복 측정 잡음과, 그것을 최소 폭으로 둔 구간 범위.
+struct FormCurveH4Metric {
+    let metric: FormCurveMetric
+    let pairN: Int
+    let noiseSD: Double?          // 쌍 차이 SD / √2
+    let n: Int                    // walk-forward 판정 수
+    let outRateBefore: Double
+    let outRateAfter: Double
+    /// 설계 기준 — 범위 밖 비율 15~25% (사용자 체감 확인은 별도). nil = 잡음 표본 부족.
+    var passesNumeric: Bool? {
+        guard noiseSD != nil else { return nil }
+        return outRateAfter >= 0.15 && outRateAfter <= 0.25
+    }
+}
+
+/// 최소 폭 때문에 '범위 밖' → '범위'로 바뀐 러닝.
+struct FormCurveFloorChange {
+    let date: Date
+    let pace: Double
+    let metric: FormCurveMetric
+    let value: Double
+    let before: ClosedRange<Double>
+    let after: ClosedRange<Double>
+}
+
+/// H5 — 지면접촉 잔차(구간 중앙값 대비, walk-forward)와 부하 비율(직전 7일 거리 ÷ 4주 주평균).
+struct FormCurveH5 {
+    let n: Int
+    let r: Double
+    let rFirstHalf: Double?
+    let rSecondHalf: Double?
+    let highLoadN: Int
+    let highLoadMeanResid: Double?
+    let normalLoadMeanResid: Double?
+
+    var passes: Bool {
+        guard abs(r) >= 0.3, let a = rFirstHalf, let b = rSecondHalf else { return false }
+        return a.sign == r.sign && b.sign == r.sign
+    }
 }
 
 // MARK: - Engine
@@ -207,6 +254,7 @@ enum FormCurveValidation {
         let clean = inWindow.filter { !$0.isCadenceStrideOutlier }
         let paces = clean.map(\.paceSecPerKm).sorted()
         let (h1, dis) = walkForward(samples: clean, cutoffs: cutoffs, asOf: asOf)
+        let floorMetrics = floorTest(samples: clean, cutoffs: cutoffs, asOf: asOf)
         return FormCurveValidationReport(
             totalRuns: inWindow.count,
             outlierRuns: inWindow.count - clean.count,
@@ -215,7 +263,106 @@ enum FormCurveValidation {
             h1: h1,
             disagreements: dis,
             h2: tradeOff(samples: clean, asOf: asOf),
-            h3: gearShare(samples: clean))
+            h3: gearShare(samples: clean),
+            h4: floorMetrics.metrics,
+            h4Changed: floorMetrics.changed,
+            h5: loadVsGCT(samples: clean, cutoffs: cutoffs))
+    }
+
+    // MARK: H4 — 측정 잡음 · 최소 폭
+
+    static let floorMetrics: [FormCurveMetric] = [.cadence, .gct, .vo]
+    static let noisePairDays = 7.0
+    static let noisePairPaceSec = 5.0
+    static let minNoisePairs = 10
+
+    /// 7일 안·GAP 페이스 ±5초 러닝 쌍의 차이 SD / √2. 쌍은 모든 조합(겹침 허용) — 잡음 크기 추정용.
+    static func noise(samples: [FormCurveSample], metric: FormCurveMetric) -> (pairs: Int, sd: Double?) {
+        let s = samples.filter { metric.value($0) != nil }.sorted { $0.date < $1.date }
+        var diffs: [Double] = []
+        for i in s.indices {
+            for j in (i + 1)..<s.count {
+                if s[j].date.timeIntervalSince(s[i].date) > noisePairDays * 86400 { break }
+                guard abs(s[j].effectivePaceSecPerKm - s[i].effectivePaceSecPerKm) <= noisePairPaceSec else { continue }
+                diffs.append(metric.value(s[j])! - metric.value(s[i])!)
+            }
+        }
+        guard diffs.count >= minNoisePairs else { return (diffs.count, nil) }
+        let m = diffs.reduce(0, +) / Double(diffs.count)
+        let sd = (diffs.map { ($0 - m) * ($0 - m) }.reduce(0, +) / Double(diffs.count - 1)).squareRoot()
+        return (diffs.count, sd / 2.0.squareRoot())
+    }
+
+    /// 구간 범위 반폭 = max(1.2 × SD, 1.2 × 잡음). 중앙값은 그대로라 H1의 MAE는 바뀌지 않는다.
+    static func flooredRange(_ st: FormStat, noiseSD: Double) -> ClosedRange<Double> {
+        let half = max(bandK * st.sd, bandK * noiseSD)
+        return (st.median - half)...(st.median + half)
+    }
+
+    static func floorTest(samples: [FormCurveSample], cutoffs: PaceBandCutoffs,
+                          asOf: Date) -> (metrics: [FormCurveH4Metric], changed: [FormCurveFloorChange]) {
+        let recentFrom = asOf.addingTimeInterval(-90 * 86400)
+        let targets = samples.filter { $0.date >= recentFrom }
+        var metrics: [FormCurveH4Metric] = []
+        var changed: [FormCurveFloorChange] = []
+        for m in floorMetrics {
+            let (pairs, noiseSD) = noise(samples: samples, metric: m)
+            var n = 0, before = 0, after = 0
+            for t in targets {
+                guard let v = m.value(t),
+                      let (st, _) = bandStat(for: t, metric: m, samples: samples, cutoffs: cutoffs) else { continue }
+                n += 1
+                let br = st.lower...st.upper
+                let bOut = FormCurveVerdict(v, br) != .inside
+                if bOut { before += 1 }
+                guard let ns = noiseSD else { if bOut { after += 1 }; continue }
+                let ar = flooredRange(st, noiseSD: ns)
+                let aOut = FormCurveVerdict(v, ar) != .inside
+                if aOut { after += 1 }
+                if bOut && !aOut {
+                    changed.append(FormCurveFloorChange(date: t.date, pace: t.effectivePaceSecPerKm, metric: m,
+                                                        value: v, before: br, after: ar))
+                }
+            }
+            guard n > 0 else { continue }
+            metrics.append(FormCurveH4Metric(metric: m, pairN: pairs, noiseSD: noiseSD, n: n,
+                                             outRateBefore: Double(before) / Double(n),
+                                             outRateAfter: Double(after) / Double(n)))
+        }
+        return (metrics, changed.sorted { $0.date > $1.date })
+    }
+
+    // MARK: H5 — 부하 비율 ↔ 지면접촉
+
+    static let highLoadRatio = 1.3
+
+    /// 직전 7일 거리 ÷ (직전 28일 거리 / 4). 입력이 3km+·폼 있는 러닝뿐이라 실제 부하의 근사값.
+    static func loadRatio(at date: Date, samples: [FormCurveSample]) -> Double? {
+        let d7 = date.addingTimeInterval(-7 * 86400), d28 = date.addingTimeInterval(-28 * 86400)
+        let prior = samples.filter { $0.date < date && $0.date >= d28 }
+        let km28 = prior.map(\.distanceM).reduce(0, +)
+        guard km28 > 0 else { return nil }
+        let km7 = prior.filter { $0.date >= d7 }.map(\.distanceM).reduce(0, +)
+        return km7 / (km28 / 4)
+    }
+
+    static func loadVsGCT(samples: [FormCurveSample], cutoffs: PaceBandCutoffs) -> FormCurveH5? {
+        var pts: [(load: Double, resid: Double)] = []
+        for t in samples.sorted(by: { $0.date < $1.date }) {
+            guard let g = t.gct, let load = loadRatio(at: t.date, samples: samples),
+                  let (st, _) = bandStat(for: t, metric: .gct, samples: samples, cutoffs: cutoffs) else { continue }
+            pts.append((load, g - st.median))
+        }
+        guard pts.count >= minCurvePoints, let r = pearson(pts.map(\.load), pts.map(\.resid)) else { return nil }
+        let half = pts.count / 2
+        let first = Array(pts[..<half]), second = Array(pts[half...])
+        let high = pts.filter { $0.load >= highLoadRatio }.map(\.resid)
+        let normal = pts.filter { $0.load < highLoadRatio }.map(\.resid)
+        func mean(_ a: [Double]) -> Double? { a.isEmpty ? nil : a.reduce(0, +) / Double(a.count) }
+        return FormCurveH5(n: pts.count, r: r,
+                           rFirstHalf: pearson(first.map(\.load), first.map(\.resid)),
+                           rSecondHalf: pearson(second.map(\.load), second.map(\.resid)),
+                           highLoadN: high.count, highLoadMeanResid: mean(high), normalLoadMeanResid: mean(normal))
     }
 
     // MARK: Curve
@@ -431,6 +578,29 @@ enum FormCurveValidation {
                        + " · 앞 절반 \(f(g.shareFirstHalf, "%.2f")) · 뒤 절반 \(f(g.shareSecondHalf, "%.2f")) → \(g.passes ? "채택" : "기각")")
         } else {
             out.append("\(P) H3 기어 비율 — 판정 불가 (n=\(g.n) · 페이스 폭 \(Int(g.paceSpreadSec.rounded()))초 < \(Int(minPaceSpreadSec))초 또는 표본 부족) → 2차: km 구간 단위로 시도")
+        }
+        out.append("\(P) H4 측정 잡음 · 최소 폭 — 쌍 = 7일 안·페이스 ±\(Int(noisePairPaceSec))초 (범위 밖 비율 지금 → 최소 폭)")
+        for m in r.h4 {
+            let fmt = m.metric.format
+            out.append("\(P)   \(m.metric.name) 쌍 \(m.pairN) · 잡음 SD \(f(m.noiseSD, fmt)) · n=\(m.n)"
+                       + String(format: " · 범위 밖 %.0f%% → %.0f%%", m.outRateBefore * 100, m.outRateAfter * 100)
+                       + " → 숫자 기준 \(yn(m.passesNumeric))")
+        }
+        out.append("\(P) H4 최소 폭으로 '범위'가 된 러닝 \(r.h4Changed.count)건 — 그날 평소와 같았는지 체감 확인 필요")
+        for c in r.h4Changed.prefix(20) {
+            let fmt = c.metric.format
+            out.append("\(P)   \(df.string(from: c.date)) \(pf(c.pace)) \(c.metric.name) \(f(c.value, fmt))"
+                       + " · 지금 \(f(c.before.lowerBound, fmt))~\(f(c.before.upperBound, fmt))"
+                       + " → 최소 폭 \(f(c.after.lowerBound, fmt))~\(f(c.after.upperBound, fmt))")
+        }
+
+        if let h = r.h5 {
+            out.append("\(P) H5 부하 비율 ↔ 지면접촉 잔차 — n=\(h.n) · r=\(f(h.r, "%+.2f"))"
+                       + " · 앞 절반 r=\(f(h.rFirstHalf, "%+.2f")) · 뒤 절반 r=\(f(h.rSecondHalf, "%+.2f"))"
+                       + " · 부하 ≥\(f(highLoadRatio, "%.1f")) \(h.highLoadN)회 평균 \(f(h.highLoadMeanResid, "%+.1f"))ms"
+                       + " / 그 외 \(f(h.normalLoadMeanResid, "%+.1f"))ms → \(h.passes ? "채택(피로 관련)" : "기각")")
+        } else {
+            out.append("\(P) H5 부하 비율 ↔ 지면접촉 — 표본 부족 (\(minCurvePoints)회 미만)")
         }
         return out
     }
