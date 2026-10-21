@@ -340,7 +340,7 @@ struct RunFormCardView: View {
         // Stride
         let slPairs: [(Int, Double)] = bs.compactMap { s in s.avgStrideLength.map { (s.id, $0) } }
         if !slPairs.isEmpty {
-            let stat = dispBb?.strideLength
+            let stat = x.displayStrideStat
             let sb = splitBounds(stat, dir: .stride)
             result.append(FormSeries(
                 label: L.s("보폭", "Stride", ja: "ストライド"), unit: "m",
@@ -733,7 +733,7 @@ struct RunFormCardView: View {
         if let sl = avgStrideLength {
             items.append(ChainChild(id: n, label: L.s("보폭", "Stride", ja: "ストライド"),
                 rawValue: sl, formatted: String(format: "%.2f", sl), unit: "m",
-                stat: displayBb?.strideLength, dir: .stride, isRef: false)); n += 1
+                stat: inputs.displayStrideStat, dir: .stride, isRef: false)); n += 1
         }
         if let gct = avgGroundContactTime {
             items.append(ChainChild(id: n, label: L.s("지면접촉", "GCT", ja: "接地時間"),
@@ -1622,6 +1622,13 @@ struct RunFormCardView: View {
         let line1 = L.s(
             "▬ 회색 막대 = 내 평소 범위 (페이스 \(pr) 러닝 \(n)회\(todayNoteKo))",
             "▬ Gray bar = your usual range (\(n) runs at \(pr)\(todayNoteEn))", ja: "▬ 灰色の棒 = いつもの範囲 (ペース\(pr)のラン\(n)回\(todayNoteJa))")
+        // 보폭 막대만 기준이 다르다 — 구간이 아니라 오늘 페이스에서의 개인 곡선 기대값(2026-10-21, 안 A)
+        let strideLine: String = {
+            guard inputs.strideUsesCurve, actPaceBS > 0, let cn = baseline?.strideCurve?.n else { return "" }
+            return L.s("\n▬ 보폭 막대 = 오늘 페이스 \(pf(actPaceBS)) 기준 (러닝 \(cn)회)",
+                       "\n▬ Stride bar = based on today's pace \(pf(actPaceBS)) (\(cn) runs)",
+                       ja: "\n▬ ストライドの棒 = 今日のペース\(pf(actPaceBS))基準 (ラン\(cn)回)")
+        }()
         // [93] 0건일 때 "비교할 만한 거리의 러닝이 없어요", 2건 이상만 흰 점 표기
         let dotLine: String
         if recentCount == 0 {
@@ -1646,7 +1653,7 @@ struct RunFormCardView: View {
         let caveat: String = n < 3
             ? L.s("\n비교 대상이 적어 참고용입니다.", "\nLimited samples — treat as reference only.", ja: "\n比較対象が少ないため参考用です。")
             : ""
-        return line1 + dotLine + colorLine + caveat
+        return line1 + strideLine + dotLine + colorLine + caveat
     }
 
     // MARK: - Narrative
@@ -1690,7 +1697,7 @@ struct RunFormCardView: View {
         let gctAdj = adjustedGctStat
         let gctWasAdjusted = gctAdj?.median != bb?.groundContact?.median
         let gctBandStr = gctWasAdjusted ? "\(rng(gctAdj, "%.0f")) [보정]" : rng(bb?.groundContact, "%.0f")
-        let chainLog = "[폼:사슬] C=\(cStr)(\(rng(bb?.cadence, "%.0f"))) 보폭=\(slStr)(\(rng(bb?.strideLength, "%.2f")))"
+        let chainLog = "[폼:사슬] C=\(cStr)(\(rng(bb?.cadence, "%.0f"))) 보폭=\(slStr)(\(rng(inputs.strideStat, "%.2f"))\(inputs.strideUsesCurve ? " [곡선]" : ""))"
             + "\n         GCT=\(gctStr)(\(gctBandStr)) VO=\(voStr) 페이스=\(pace)"
             + "\n         → \"\(narrativeStr)\""
         print(chainLog)

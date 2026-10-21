@@ -358,7 +358,9 @@ enum FormPhase {
         let gct = FormNarrative.driftAdjustedGCT(b.groundContact,
                                                  baselineResidualMean: baseline.gctBaselineResidualMean,
                                                  gctShift: gctShift)
-        return BandStats(cadence: b.cadence, stride: b.strideLength, groundContact: gct)
+        // 보폭은 단계 페이스에서의 곡선 기대값 (있으면) — 초반·후반 페이스 차이가 보폭 판정에 섞이지 않게
+        return BandStats(cadence: b.cadence, stride: baseline.strideStat(b, paceSecPerKm: paceSecPerKm),
+                         groundContact: gct)
     }
 
     // MARK: - 뷰 진입점

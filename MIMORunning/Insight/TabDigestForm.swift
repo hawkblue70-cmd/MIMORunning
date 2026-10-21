@@ -123,6 +123,19 @@ enum TabDigestForm {
                                            gctShift: formShifts.first(where: { $0.metric.key == "gct" }))
         }
 
+        /// 보폭 평소 범위 (판정용) — 구간이 판정 가능하고 곡선이 오늘 페이스를 덮으면 곡선 기대값, 아니면 구간 값.
+        var strideStat: FormStat? {
+            baseline?.strideStat(bb, paceSecPerKm: runGAP ?? activity.paceSecPerKm) ?? bb?.strideLength
+        }
+
+        /// 표시용 보폭 밴드 (참고 모드면 빌린 구간 값 그대로).
+        var displayStrideStat: FormStat? { bb != nil ? strideStat : referenceBb?.strideLength }
+
+        /// true = 보폭 막대가 오늘 페이스 기준 곡선 (범례 한 줄).
+        var strideUsesCurve: Bool {
+            baseline?.usesStrideCurve(bb, paceSecPerKm: runGAP ?? activity.paceSecPerKm) ?? false
+        }
+
         /// GCT 밴드를 열람 시점 기준으로 보정한 FormStat (판정용).
         var adjustedGctStat: FormStat? {
             FormNarrative.driftAdjustedGCT(bb?.groundContact,
@@ -174,7 +187,7 @@ enum TabDigestForm {
                 FormNarrative.status(rawValue: $0, stat: x.adjustedGctStat, metric: .groundContact)
             } ?? .unknown
             let slSt: Status = x.avgStrideLength.map {
-                FormNarrative.status(rawValue: $0, stat: bb?.strideLength, metric: .stride)
+                FormNarrative.status(rawValue: $0, stat: x.strideStat, metric: .stride)
             } ?? .unknown
             // 전반/후반 평균 — 실제 변화 서술용
             let fullSplits = x.fullSplits
@@ -214,7 +227,7 @@ enum TabDigestForm {
             FormNarrative.status(rawValue: $0, stat: x.adjustedGctStat, metric: .groundContact)
         } ?? .unknown
         let slStatus: Status = x.avgStrideLength.map {
-            FormNarrative.status(rawValue: $0, stat: bb?.strideLength, metric: .stride)
+            FormNarrative.status(rawValue: $0, stat: x.strideStat, metric: .stride)
         } ?? .unknown
         let voStatus: Status = x.avgVerticalOscillation.map {
             FormNarrative.status(rawValue: $0, stat: bb?.verticalOsc, metric: .verticalOsc)

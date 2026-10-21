@@ -82,21 +82,10 @@ enum FormCurveMetric: CaseIterable {
     }
 }
 
-/// 지표 ~ 1 + x + x², x = 속도 − 중심 속도 (중심화로 정규방정식 조건수 완화).
-struct FormCurveFit {
-    let centerSpeed: Double
-    let coef: [Double]
-    let residualSD: Double
-    let speedMin: Double
-    let speedMax: Double
-    let n: Int
+/// 출시 코드의 곡선을 그대로 쓴다 — 검증한 것과 출시하는 것이 같아야 한다.
+typealias FormCurveFit = FormSpeedCurve
 
-    /// 관측 속도 범위 밖은 끝값으로 고정 — 2차식 외삽 금지.
-    func predict(speed: Double) -> Double {
-        let s = min(max(speed, speedMin), speedMax)
-        let x = s - centerSpeed
-        return coef[0] + coef[1] * x + coef[2] * x * x
-    }
+extension FormSpeedCurve {
     func range(speed: Double) -> ClosedRange<Double> {
         let p = predict(speed: speed)
         return (p - FormCurveValidation.bandK * residualSD)...(p + FormCurveValidation.bandK * residualSD)
@@ -196,11 +185,10 @@ struct FormCurveValidationReport {
 enum FormCurveValidation {
     static let cadenceStrideTolerance = 0.05
     static let bandK = 1.2                  // 구간 기준선 FormStat과 같은 ±1.2SD
-    static let minCurvePoints = 25          // mrFormResiduals와 같은 최소 관측 수
+    static let minCurvePoints = FormSpeedCurve.minPoints
     static let minPaceSpreadSec = 60.0
     static let edgeSec = 10.0
     static let smallBandN = 15
-    static let recentWeightDays = 182
     static let bootstrapRuns = 1000
 
     private static var didLog = false
@@ -232,27 +220,8 @@ enum FormCurveValidation {
 
     // MARK: Curve
 
-    /// 최근 6개월 가중치 2배 최소제곱. 점이 minCurvePoints 미만이면 nil.
     static func fitCurve(_ pts: [(date: Date, speed: Double, value: Double)], asOf: Date) -> FormCurveFit? {
-        guard pts.count >= minCurvePoints else { return nil }
-        let center = pts.map(\.speed).reduce(0, +) / Double(pts.count)
-        let recentCut = asOf.addingTimeInterval(-Double(recentWeightDays) * 86400)
-        var X: [[Double]] = [], y: [Double] = []
-        for p in pts {
-            let w = (p.date >= recentCut ? 2.0 : 1.0).squareRoot()
-            let x = p.speed - center
-            X.append([w, w * x, w * x * x])
-            y.append(w * p.value)
-        }
-        guard let c = MRLinAlg.lstsq(X: X, y: y) else { return nil }
-        let res = pts.map { p -> Double in
-            let x = p.speed - center
-            return p.value - (c[0] + c[1] * x + c[2] * x * x)
-        }
-        let sd = (res.map { $0 * $0 }.reduce(0, +) / Double(max(res.count - 3, 1))).squareRoot()
-        let speeds = pts.map(\.speed)
-        return FormCurveFit(centerSpeed: center, coef: c, residualSD: sd,
-                            speedMin: speeds.min()!, speedMax: speeds.max()!, n: pts.count)
+        FormSpeedCurve.fit(pts, asOf: asOf)
     }
 
     /// target 날짜 이전 1년 기록만으로 곡선을 만든다 — 미래 러닝 누설 없음.

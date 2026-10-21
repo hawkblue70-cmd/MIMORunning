@@ -106,7 +106,7 @@ struct CadenceHRCurveDiag: Codable {
 }
 
 struct RunningFormBaseline: Codable {
-    static let currentVersion = 17  // 페이스 구간 분류를 GAP(경사 조정 페이스) 기준으로 전환
+    static let currentVersion = 18  // 보폭 평소 범위를 개인 속도 곡선(strideCurve)으로
     let version: Int
     let computedAt: Date
     let cutoffs: PaceBandCutoffs
@@ -117,6 +117,8 @@ struct RunningFormBaseline: Codable {
     let gctBaselineResidualMean: Double?
     // 범위 바 후보 풀 — 전체 폼 히스토리 (날짜·페이스·거리 필터링은 뷰에서)
     let allFormSamples: [BandDotSample]
+    // 보폭 ~ GAP 속도 개인 곡선 — 보폭 평소 범위는 `strideStat(_:paceSecPerKm:)`로만 읽는다 (FormSpeedCurve.swift)
+    var strideCurve: FormSpeedCurve? = nil
 }
 
 // MARK: - Persistent Form Cache
@@ -437,11 +439,24 @@ enum FormBaselineEngine {
         print("[Baseline:계산] allFormSamples \(allFormSamples.count)건 (전체 입력 \(inputs.count)건 중)")
         #endif
 
+        // 보폭 곡선 — 구간과 같은 입력(12개월·대회 제외)·GAP 속도
+        let strideCurve = FormSpeedCurve.fit(all12.compactMap { inp in
+            inp.avgStrideLength.map { (date: inp.date, speed: 60000.0 / inp.effectivePaceSecPerKm, value: $0) }
+        }, asOf: now)
+        #if DEBUG
+        if let c = strideCurve {
+            print(String(format: "[Baseline:보폭곡선] n=%d · 잔차 SD %.3f · 속도 %.0f~%.0fm/min", c.n, c.residualSD, c.speedMin, c.speedMax))
+        } else {
+            print("[Baseline:보폭곡선] 없음 — 보폭 있는 러닝 \(FormSpeedCurve.minPoints)회 미만 → 구간 기준")
+        }
+        #endif
+
         let result = RunningFormBaseline(version: RunningFormBaseline.currentVersion,
                                          computedAt: now, cutoffs: cutoffs, bands: bands,
                                          cadenceHRDiag: curveDiag,
                                          gctBaselineResidualMean: gctBaselineResidualMean,
-                                         allFormSamples: allFormSamples)
+                                         allFormSamples: allFormSamples,
+                                         strideCurve: strideCurve)
         #if DEBUG
         let _pf: (Double) -> String = { s in
             guard s < Double.greatestFiniteMagnitude / 2 else { return "∞" }

@@ -2088,7 +2088,8 @@ private struct RhythmInsightCard: View {
                     hasDistanceInsight: false,
                     cad: FormNarrative.status(rawValue: det.avgCadence.map(Double.init), stat: bb.cadence, metric: .cadence),
                     gct: FormNarrative.status(rawValue: det.avgGroundContactTime, stat: adjustedGct(bb), metric: .groundContact),
-                    sl: FormNarrative.status(rawValue: det.avgStrideLength, stat: bb.strideLength, metric: .stride),
+                    sl: FormNarrative.status(rawValue: det.avgStrideLength,
+                                             stat: bl.strideStat(bb, paceSecPerKm: runGAP ?? activity.paceSecPerKm), metric: .stride),
                     firstHalfCadence: cadAvg(fHalf), secondHalfCadence: cadAvg(sHalf),
                     firstHalfStride: slAvg(fHalf), secondHalfStride: slAvg(sHalf),
                     cadStr: det.avgCadence.map { "\($0)" } ?? "--",
@@ -2119,8 +2120,8 @@ private struct RhythmInsightCard: View {
             }
         }
 
-        // 보폭
-        if let stat = bb.strideLength, let sl = det.avgStrideLength {
+        // 보폭 — 곡선 기준(있으면). 폼 카드와 같은 헬퍼
+        if let stat = bl.strideStat(bb, paceSecPerKm: runGAP ?? activity.paceSecPerKm), let sl = det.avgStrideLength {
             if FormNarrative.status(rawValue: sl, stat: stat, metric: .stride) != .inRange {
                 let delta = sl - stat.median
                 let sign = delta >= 0 ? "+" : "−"
@@ -2194,8 +2195,9 @@ private struct RhythmInsightCard: View {
             if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), ink.fg(0.75)) }
         }
 
-        // 4. 보폭
-        if let stat = bb.strideLength, let sl = det.avgStrideLength {
+        // 4. 보폭 — 곡선 기준(있으면). 폼 카드와 같은 헬퍼
+        if let stat = formBaseline?.strideStat(bb, paceSecPerKm: runGAP ?? activity.paceSecPerKm) ?? bb.strideLength,
+           let sl = det.avgStrideLength {
             let delta = sl - stat.median
             if delta >= 0.03  { return (L.s("보폭이 평소보다 넓었습니다", "Longer stride than usual", ja: "ストライドが普段より広かったです"), ink.positive) }
             if delta <= -0.03 { return (L.s("보폭이 짧았습니다", "Shorter stride", ja: "ストライドが短かったです"), ink.fg(0.75)) }
