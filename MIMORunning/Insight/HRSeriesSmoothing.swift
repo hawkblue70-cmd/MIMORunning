@@ -123,6 +123,17 @@ func hrWarmupPhase(_ splits: [SplitData],
     return HRWarmupPhase(km: k, peakBpm: peak, settledBpm: next)
 }
 
+/// 몸 풀리기 전 구간을 뺀 평균 심박(남은 km의 시간 가중) — 구간이 없으면 nil(호출부는 원래 평균을 쓴다).
+func avgHRExcludingWarmupPhase(_ splits: [SplitData],
+                               altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> (bpm: Int, excludedKm: Int)? {
+    guard let k = hrWarmupPhaseKm(splits, altitudeProfile: altitudeProfile) else { return nil }
+    let rest = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.avgHeartRate != nil }
+    let dur = rest.reduce(0.0) { $0 + $1.duration }
+    guard dur > 0 else { return nil }
+    let hr = rest.reduce(0.0) { $0 + Double($1.avgHeartRate ?? 0) * $1.duration } / dur
+    return (Int(hr.rounded()), k)
+}
+
 // MARK: - 러닝 중간 광학 심박 튐
 
 /// 러닝 중간에 심박만 갑자기 튄 구간을 찾아 그 구간 값을 주변 중앙값으로 바꾼 시계열.

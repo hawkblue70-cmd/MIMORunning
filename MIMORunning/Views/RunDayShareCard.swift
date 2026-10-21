@@ -450,6 +450,8 @@ struct RunDayShareCard: View {
     var shoeName: String? = nil
     /// 라이트 테마(흰 배경). 기본 다크.
     var isLight: Bool = false
+    /// 몸 풀리기 전 구간을 뺀 평균 심박 — 있으면 '→ 실제' 비교가 이 값을 쓴다(avgHRExcludingWarmupPhase)
+    var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
 
     private var divider: some View {
         Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
@@ -478,14 +480,20 @@ struct RunDayShareCard: View {
         // 휴식 날은 "제안대로"가 맞지 않아 뺀다(2026-10-20: 10/15 강도 OK + 이지 세션 날 줄이 빠졌다)
         guard let e = morning?.morningOf else { return nil }
         let L = AppLanguage.shared
+        // 평균 심박 — 몸 풀리기 전 구간을 뺐으면 그 값과 "(처음 3km 제외)"(리듬 탭 판정과 같은 구간, 2026-10-22)
+        let hrValue = comparisonHR?.bpm ?? activity.avgHeartRate
+        let hrStr: String? = hrValue.map { v in
+            guard let k = comparisonHR?.excludedKm else { return "\(v)" }
+            return "\(v)" + L.s("(처음 \(k)km 제외)", " (first \(k) km excluded)", ja: "(最初の\(k)km除く)")
+        }
         // 휴식 제안 날 달렸으면 그 사실만(2026-10-20) — "제안대로"·"높았다"를 따지지 않는다
         if e.level == "rest" {
             let d = activity.distance / 1000
             let km = abs(d - d.rounded()) < 0.05 ? String(format: "%.0f", d) : String(format: "%.1f", d)
-            let hrPart = activity.avgHeartRate.map { L.s(" · 평균 심박 \($0)", " · avg HR \($0)", ja: " · 平均心拍\($0)") } ?? ""
+            let hrPart = hrStr.map { L.s(" · 평균 심박 \($0)", " · avg HR \($0)", ja: " · 平均心拍\($0)") } ?? ""
             return L.s("→ 실제: 쉬라는 날 \(km)km를 달렸습니다", "→ Actual: ran \(km) km on a suggested rest day", ja: "→ 実際: 休養の提案の日に\(km)km走りました") + hrPart
         }
-        guard let hr = activity.avgHeartRate else { return nil }
+        guard let hr = hrValue, let hrS = hrStr else { return nil }
         let text = e.why + " " + e.data
         func firstMatch(_ patterns: [String]) -> String? {
             for p in patterns { if let r = text.range(of: p, options: .regularExpression) { return String(text[r]) } }
@@ -504,8 +512,8 @@ struct RunDayShareCard: View {
         let hrHigh = hr > cap
         guard let tp = targetPace, let ap = activity.paceSecPerKm, let apStr = activity.formattedPace else {
             return hrHigh
-                ? L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(cap) 아래)보다 높았습니다", "→ Actual: avg HR \(hr) · above the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(cap)未満)より高めでした")
-                : L.s("→ 실제: 평균 심박 \(hr) · 아침 제안(\(cap) 아래)대로 달렸습니다", "→ Actual: avg HR \(hr) · within the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hr) · 朝の提案(\(cap)未満)どおりでした")
+                ? L.s("→ 실제: 평균 심박 \(hrS) · 아침 제안(\(cap) 아래)보다 높았습니다", "→ Actual: avg HR \(hrS) · above the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hrS) · 朝の提案(\(cap)未満)より高めでした")
+                : L.s("→ 실제: 평균 심박 \(hrS) · 아침 제안(\(cap) 아래)대로 달렸습니다", "→ Actual: avg HR \(hrS) · within the morning's guide (under \(cap))", ja: "→ 実際: 平均心拍\(hrS) · 朝の提案(\(cap)未満)どおりでした")
         }
         // 제안보다 10초/km 이내로 빠르거나 더 느리면 페이스는 지킨 것(폼 3단계 페이스 차이와 같은 문턱)
         let faster = Int((tp - ap).rounded())
@@ -513,21 +521,21 @@ struct RunDayShareCard: View {
         let tpStr = mrFormatPace(tp)
         switch (paceHeld, hrHigh) {
         case (true, true):
-            return L.s("→ 실제: \(apStr)로 페이스는 지켰고, 평균 심박 \(hr)로 제안(\(cap) 아래)보다 높았습니다",
-                       "→ Actual: pace held at \(apStr), but avg HR \(hr) was above the guide (under \(cap))",
-                       ja: "→ 実際: \(apStr)でペースは守り、平均心拍\(hr)で提案(\(cap)未満)より高めでした")
+            return L.s("→ 실제: \(apStr)로 페이스는 지켰고, 평균 심박 \(hrS)로 제안(\(cap) 아래)보다 높았습니다",
+                       "→ Actual: pace held at \(apStr), but avg HR \(hrS) was above the guide (under \(cap))",
+                       ja: "→ 実際: \(apStr)でペースは守り、平均心拍\(hrS)で提案(\(cap)未満)より高めでした")
         case (true, false):
-            return L.s("→ 실제: \(apStr) · 평균 심박 \(hr)로 아침 제안(\(tpStr) 근처 · \(cap) 아래)대로 달렸습니다",
-                       "→ Actual: \(apStr) · avg HR \(hr) — as the morning suggested (around \(tpStr) · under \(cap))",
-                       ja: "→ 実際: \(apStr) · 平均心拍\(hr)で朝の提案(\(tpStr)前後 · \(cap)未満)どおりでした")
+            return L.s("→ 실제: \(apStr) · 평균 심박 \(hrS)로 아침 제안(\(tpStr) 근처 · \(cap) 아래)대로 달렸습니다",
+                       "→ Actual: \(apStr) · avg HR \(hrS) — as the morning suggested (around \(tpStr) · under \(cap))",
+                       ja: "→ 実際: \(apStr) · 平均心拍\(hrS)で朝の提案(\(tpStr)前後 · \(cap)未満)どおりでした")
         case (false, true):
-            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐고, 평균 심박 \(hr)로 제안(\(cap) 아래)보다 높았습니다",
-                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), and avg HR \(hr) was above it (under \(cap))",
-                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速く、平均心拍\(hr)で提案(\(cap)未満)より高めでした")
+            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐고, 평균 심박 \(hrS)로 제안(\(cap) 아래)보다 높았습니다",
+                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), and avg HR \(hrS) was above it (under \(cap))",
+                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速く、平均心拍\(hrS)で提案(\(cap)未満)より高めでした")
         case (false, false):
-            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐지만, 평균 심박 \(hr)로 \(cap) 아래였습니다",
-                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hr) stayed under \(cap)",
-                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hr)で\(cap)未満でした")
+            return L.s("→ 실제: \(apStr)로 제안(\(tpStr))보다 \(faster)초/km 빨랐지만, 평균 심박 \(hrS)로 \(cap) 아래였습니다",
+                       "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hrS) stayed under \(cap)",
+                       ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hrS)で\(cap)未満でした")
         }
     }
 
@@ -623,6 +631,7 @@ struct RunDayShareSheet: View {
     var morning: InsightMorning? = nil
     var weekKm: Double? = nil
     var monthKm: Double? = nil
+    var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -643,7 +652,8 @@ struct RunDayShareSheet: View {
     private var card: RunDayShareCard {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
-                        weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight)
+                        weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight,
+                        comparisonHR: comparisonHR)
     }
 
     var body: some View {

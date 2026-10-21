@@ -83,6 +83,7 @@ struct FormTypeCaptionTests {
         #expect(splitsExcludingWarmupPhase(s).first?.id == 4)
         #expect(hrWarmupPhaseEndOffset(s) == 405 + 400 + 393)
         #expect(hrWarmupPhase(s) == HRWarmupPhase(km: 3, peakBpm: 164, settledBpm: 141))
+        #expect(avgHRExcludingWarmupPhase(s)?.bpm == 148 && avgHRExcludingWarmupPhase(s)?.excludedKm == 3)
         let pct = TabDigestPerformance.decouplingPct(splits: s, workoutType: .general, distKm: 11) ?? 99
         #expect(abs(pct) < 3)
         // 경계 km에 오르막(3km 구간 +20m)이면 지형 — 몸 풀리기 전 구간 아님
