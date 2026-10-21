@@ -609,7 +609,7 @@ struct ActivityDetailView: View {
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
                             recoveryBands: recoveryBands,
-                            selectedTab: $selectedInsightTab
+                            selectedTab: $selectedInsightTab, shoeName: panelShoeText
                         )
                     }
                     .id("insightTabs")

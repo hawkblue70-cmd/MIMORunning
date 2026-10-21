@@ -159,6 +159,9 @@ struct RunInsightSection: View {
     /// 탭 카드의 선택 탭 — 상세 화면이 소유(맨 위 요약 블록을 누르면 그 탭으로). nil이면 카드 자체 상태.
     var selectedTab: Binding<InsightTabKind>? = nil
 
+    /// 이 러닝에 고른 러닝화 — 카드 한 장만 내보낼 때도 보이게 세 카드 모두 표시(2026-10-21). 없으면 줄 없음.
+    var shoeName: String? = nil
+
     var body: some View {
         if !insights.isEmpty, let act = activity {
             RunInsightTabCard(
@@ -201,7 +204,7 @@ struct RunInsightSection: View {
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,
-                selection: selectedTab
+                selection: selectedTab, shoeName: shoeName
             )
         }
     }

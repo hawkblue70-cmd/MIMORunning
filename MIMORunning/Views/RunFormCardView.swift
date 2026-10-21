@@ -769,6 +769,9 @@ struct RunFormCardView: View {
 
     // MARK: - Body
 
+    /// 이 러닝에 고른 러닝화 — 카드 한 장만 내보낼 때도 보이게 세 카드 모두 표시(2026-10-21). 없으면 줄 없음.
+    var shoeName: String? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 10) {
             topSummary
@@ -837,15 +840,27 @@ struct RunFormCardView: View {
         let km = activity.distance / 1000
         let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
         return VStack(alignment: .leading, spacing: compact ? 5 : 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(kmStr)
-                    .font(cardNumFont(40))
-                    .tracking(-1.6)
-                Text("km")
-                    .font(.system(size: 16))
-                    .foregroundStyle(ink.pick(Color(hex: "8A8F99"), Color(hex: "757575")))
+            HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(kmStr)
+                        .font(cardNumFont(40))
+                        .tracking(-1.6)
+                    Text("km")
+                        .font(.system(size: 16))
+                        .foregroundStyle(ink.pick(Color(hex: "8A8F99"), Color(hex: "757575")))
+                }
+                .foregroundStyle(ink.primary)
+                // 러닝화 — 오른쪽 맨 위, 리듬·퍼포먼스와 같은 연두(카드 한 장만 내보내도 보이게)
+                if let shoe = shoeName, !shoe.isEmpty {
+                    Spacer(minLength: 4)
+                    Text(shoe)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(ink.pick(Theme.power, Color(hex: "5A8F00")))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .padding(.top, 4)
+                }
             }
-            .foregroundStyle(ink.primary)
             HStack(spacing: 0) {
                 KPICell(label: AppLanguage.shared.s("시간", "Time", ja: "時間"),
                         value: activity.formattedDuration)

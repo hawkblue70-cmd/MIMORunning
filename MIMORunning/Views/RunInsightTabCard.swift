@@ -776,6 +776,9 @@ private struct HeroSideBlockView: View {
     let routeColor: Color
     var routeSize: CGSize = CGSize(width: 44, height: 46)
 
+    /// 이번 달 줄 밑 연두색 러닝화 이름(리듬·퍼포먼스 공용)
+    var shoeName: String? = nil
+
     var body: some View {
         let L = AppLanguage.shared
         let wkKm = RunInsightEngine.baseline(for: activity, history: history).weeklyLoadKm
@@ -787,6 +790,14 @@ private struct HeroSideBlockView: View {
                 loadLine(L.s("이번 주", "This wk", ja: "今週"), km: wkKm)
                 // 2줄: 이번 달
                 loadLine(L.s("이번 달", "This mo", ja: "今月"), km: moKm)
+                // 러닝화 — 이번 달 밑 연두(2026-10-21 사용자, 폼 카드와 같은 색)
+                if let shoe = shoeName, !shoe.isEmpty {
+                    Text(shoe)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(ink.pick(Theme.power, Color(hex: "5A8F00")))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
                 // 3줄: 배지 — 없으면 자리만 유지해 높이가 흔들리지 않게
                 if let badge {
                     AchievementBadgeView(badge: badge)
@@ -923,6 +934,9 @@ struct RunInsightTabCard: View {
         guard !recent.isEmpty else { return nil }
         return recent.reduce(0.0) { $0 + $1.distance } / Double(recent.count) / 1000.0
     }
+
+    /// 이 러닝에 고른 러닝화 — 카드 한 장만 내보낼 때도 보이게 세 카드 모두 표시(2026-10-21). 없으면 줄 없음.
+    var shoeName: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1086,7 +1100,7 @@ struct RunInsightTabCard: View {
                 plannedPointToday: plannedPointToday,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
-                recoveryBands: recoveryBands
+                recoveryBands: recoveryBands, shoeName: shoeName
             )
         case .form:
             let formCadence: Int? = {
@@ -1118,7 +1132,7 @@ struct RunInsightTabCard: View {
                 weatherSnapshot: weatherSnapshot,
                 fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
                 easyZoneFraction: TabDigestRhythm.easyLowZoneFraction(zones: hrZones),
-                historicalTemperatures: history.compactMap { $0.temperatureC }
+                historicalTemperatures: history.compactMap { $0.temperatureC }, shoeName: shoeName
             )
         case .performance:
             PerformanceInsightCard(
@@ -1133,7 +1147,7 @@ struct RunInsightTabCard: View {
                 effortIndex: effortIndex,
                 heatHRModel: heatHRModel,
                 hasIntensityDist: $performanceHasIntensity,
-                vo2Points: vo2Points
+                vo2Points: vo2Points, shoeName: shoeName
             )
         case .race:
             RaceInsightCard(
@@ -1662,6 +1676,9 @@ private struct RhythmInsightCard: View {
                                         recentAvgDistanceKm: typicalRunDistanceKm)
     }
 
+    /// 이 러닝에 고른 러닝화 — 카드 한 장만 내보낼 때도 보이게 세 카드 모두 표시(2026-10-21). 없으면 줄 없음.
+    var shoeName: String? = nil
+
     var body: some View {
         let hasRhythmRow = !hrZones.filter({ $0.fraction > 0.01 }).isEmpty
             || detail?.avgCadence != nil
@@ -1781,7 +1798,7 @@ private struct RhythmInsightCard: View {
                 coords: hasRoute ? coords : [],
                 badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
                 routeColor: ink.positive,
-                routeSize: CGSize(width: 52, height: 62)
+                routeSize: CGSize(width: 52, height: 62), shoeName: shoeName
             )
         }
     }
@@ -2746,6 +2763,9 @@ private struct PerformanceInsightCard: View {
         return HRBand(intercept: a, slope: b, sd: max(1, (rss / max(1, n - 2)).squareRoot()))
     }
 
+    /// 이 러닝에 고른 러닝화 — 카드 한 장만 내보낼 때도 보이게 세 카드 모두 표시(2026-10-21). 없으면 줄 없음.
+    var shoeName: String? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 8) {
             heroSection
@@ -2886,7 +2906,7 @@ private struct PerformanceInsightCard: View {
                 history: history,
                 coords: hasRoute ? coords : [],
                 badge: heroBadge ?? computeAchievementBadge(activity: activity, history: history),
-                routeColor: ink.pick(Color(hex: "8B7FF0"), Color(hex: "5B3FD9"))
+                routeColor: ink.pick(Color(hex: "8B7FF0"), Color(hex: "5B3FD9")), shoeName: shoeName
             )
         }
     }
@@ -5663,16 +5683,7 @@ struct InsightExportSheet: View {
                     .background(isLight ? Color(hex: "FBEFDD") : Color(hex: "2C1F0E"))
                     .clipShape(Capsule())
                 }
-                if let sn = shoeName {
-                    HStack(spacing: 3) {
-                        Image(systemName: "shoe")
-                            .font(.system(size: 8))
-                        Text(sn)
-                            .font(.system(size: 8))
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(isLight ? RunCardLight.textSoft : .white.opacity(0.6))
-                }
+                // 러닝화는 카드 안(이번 달 밑·폼 카드 오른쪽 위) 연두 한 줄로 옮김(2026-10-21) — 머리에서 겹치지 않게 뺌
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
@@ -5714,7 +5725,7 @@ struct InsightExportSheet: View {
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,
-                summaryAllowsExpansion: false
+                summaryAllowsExpansion: false, shoeName: shoeName
             )
         case .form:
             let exportFormCadence: Int? = {
@@ -5756,7 +5767,7 @@ struct InsightExportSheet: View {
                 weatherSnapshot: weatherSnapshot,
                 fatigueContext: RunSummaryBuilder.fatigueContext(activity: activity, history: history, effortIndex: effortIndex),
                 easyZoneFraction: TabDigestRhythm.easyLowZoneFraction(zones: hrZones),
-                historicalTemperatures: history.compactMap { $0.temperatureC }
+                historicalTemperatures: history.compactMap { $0.temperatureC }, shoeName: shoeName
             )
         case .performance:
             PerformanceInsightCard(
@@ -5768,7 +5779,7 @@ struct InsightExportSheet: View {
                 hrZonesFn: hrZonesFn,
                 effortIndex: effortIndex,
                 heatHRModel: heatHRModel,
-                vo2Points: vo2Points
+                vo2Points: vo2Points, shoeName: shoeName
             )
         case .race:
             RaceInsightCard(
