@@ -2062,6 +2062,11 @@ private struct RhythmInsightCard: View {
                     if let p = typeParts   { formSummaryLine(parts: p) }
                 }
             }
+            // 몸 풀리기 전 구간을 판정에서 뺐으면 그 사실 — 요약 블록과 같은 문장(TabDigestRhythm.warmupPhaseText, 2026-10-22)
+            if let w = hrWarmupPhase(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []) {
+                Rectangle().fill(sep).frame(height: 0.5)
+                formSummaryLine(parts: [(TabDigestRhythm.warmupPhaseText(w).text, ink.fg(0.6))])
+            }
         }
     }
 

@@ -538,14 +538,9 @@ enum TabDigestRhythm {
 
         // 덧붙임 — 몸 풀리기 전 구간을 판정에서 뺐으면 그 사실(디커플링·전후반 값이 왜 바뀌었는지 보이게, 2026-10-22)
         if let w = hrWarmupPhase(c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []) {
-            let L = AppLanguage.shared
+            let t = warmupPhaseText(w)
             out.append(TabDigest.Signal(tab: .rhythm, kind: .extra, priority: 1, family: .unique,
-                text: L.s("처음 \(w.km)km는 심박이 \(w.peakBpm)까지 올랐다가 \(w.km + 1)km부터 \(w.settledBpm)로 내려왔습니다. 몸 풀기 전 구간이라 전후반 비교에서 뺐습니다.",
-                          "HR reached \(w.peakBpm) in the first \(w.km) km and came down to \(w.settledBpm) from km \(w.km + 1). That warm-up stretch is left out of the half-to-half comparison.",
-                          ja: "最初の\(w.km)kmは心拍が\(w.peakBpm)まで上がり、\(w.km + 1)kmから\(w.settledBpm)に下がりました。体がほぐれる前の区間なので前後半の比較から外しました。"),
-                tone: .neutral,
-                short: L.s("몸 풀기 전 \(w.km)km 심박 \(w.peakBpm) → \(w.settledBpm) · 비교에서 제외",
-                           "Warm-up \(w.km) km HR \(w.peakBpm) → \(w.settledBpm) · excluded", ja: "ほぐれる前の\(w.km)km 心拍\(w.peakBpm) → \(w.settledBpm) · 比較から除外")))
+                                        text: t.text, tone: .neutral, short: t.short))
         }
 
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
@@ -564,6 +559,16 @@ enum TabDigestRhythm {
                  short: AppLanguage.shared.s("최근 \(n)회 중 최장 거리", "Longest of last \(n) runs", ja: "直近\(n)回で最長距離"))
         }
         return out
+    }
+
+    /// 몸 풀리기 전 구간 사실 문장 — 요약 블록(text·short)과 리듬 카드 본문이 같은 문장을 쓴다.
+    static func warmupPhaseText(_ w: HRWarmupPhase) -> (text: String, short: String) {
+        let L = AppLanguage.shared
+        return (L.s("처음 \(w.km)km는 심박이 \(w.peakBpm)까지 올랐다가 \(w.km + 1)km부터 \(w.settledBpm)로 내려왔습니다. 몸 풀기 전 구간이라 전후반 비교에서 뺐습니다.",
+                    "HR reached \(w.peakBpm) in the first \(w.km) km and came down to \(w.settledBpm) from km \(w.km + 1). That warm-up stretch is left out of the half-to-half comparison.",
+                    ja: "最初の\(w.km)kmは心拍が\(w.peakBpm)まで上がり、\(w.km + 1)kmから\(w.settledBpm)に下がりました。体がほぐれる前の区間なので前後半の比較から外しました。"),
+                L.s("몸 풀기 전 \(w.km)km 심박 \(w.peakBpm) → \(w.settledBpm) · 비교에서 제외",
+                    "Warm-up \(w.km) km HR \(w.peakBpm) → \(w.settledBpm) · excluded", ja: "ほぐれる前の\(w.km)km 心拍\(w.peakBpm) → \(w.settledBpm) · 比較から除外"))
     }
 
     /// 리듬 블록 기본 방향 — 거리 적응 줄의 next
