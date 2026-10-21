@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - 러닝 하루 공유 카드(그날 아침 제안 + 러닝 요약 + 다음 날 아침)
 //
@@ -36,6 +37,7 @@ enum RunCardLight {
     static let time       = Color(hex: "D4A700")              // 시간·요일 노랑의 짙은 짝
     static let caution    = Color(hex: "E07800")
     static let positive   = Color(hex: "2FA84F")
+    static let lime       = Color(hex: "5A8F00")              // 연두(러닝화 이름)의 짙은 짝
 }
 
 extension MRReadiness.Level {
@@ -444,6 +446,8 @@ struct RunDayShareCard: View {
     /// 이 러닝까지의 이번 주(월요일 시작)·이번 달 러닝 거리(km) — 날짜 밑 한 줄
     var weekKm: Double? = nil
     var monthKm: Double? = nil
+    /// 이 러닝에 고른 러닝화 이름 — 거리 줄 밑 연두색 한 줄(2026-10-21 사용자). 없으면 줄 없음.
+    var shoeName: String? = nil
     /// 라이트 테마(흰 배경). 기본 다크.
     var isLight: Bool = false
 
@@ -548,6 +552,13 @@ struct RunDayShareCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                     }
+                    if let shoe = shoeName, !shoe.isEmpty {
+                        Text(shoe)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isLight ? RunCardLight.lime : Theme.power)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
             }
 
@@ -613,6 +624,15 @@ struct RunDayShareSheet: View {
     var weekKm: Double? = nil
     var monthKm: Double? = nil
 
+    @Query private var allStories: [WorkoutStory]
+    @Query private var allShoes: [Shoe]
+    /// 상세 화면 러닝화 피커에서 고른 신발(스토리의 shoeID)
+    private var shoeName: String? {
+        let wid = activity.id.uuidString
+        guard let sid = allStories.first(where: { $0.workoutID == wid })?.shoeID else { return nil }
+        return allShoes.first { $0.id.uuidString == sid }?.displayName
+    }
+
     /// 테마 칩 — 켜짐 = 라이트, 꺼짐 = 다크(기본). 저장 안 함.
     @State private var isLight = false
     @State private var exportImage: UIImage? = nil
@@ -623,7 +643,7 @@ struct RunDayShareSheet: View {
     private var card: RunDayShareCard {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
-                        weekKm: weekKm, monthKm: monthKm, isLight: isLight)
+                        weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight)
     }
 
     var body: some View {
