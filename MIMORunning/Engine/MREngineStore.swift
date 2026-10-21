@@ -423,6 +423,50 @@ final class MREngineStore: ObservableObject {
         }
     }
 
+    // MARK: - 러닝별 최고 심박 보정
+
+    /// 러닝 시작(초) → 시계열로 다시 잰 최고 심박. −1 = 잴 수 없음(표본 부족 — 원래 값 유지). 한 번 잰 러닝은 다시 묻지 않는다.
+    private static let robustHRMaxKey = "mimo.robustRunHRMax.v1"
+
+    /// HRmax(상위 5개 중앙값)를 정하는 상위 러닝들만 심박 시계열로 다시 잰다(`mrRobustRunHRMax`).
+    /// HealthKit 통계의 최고치는 한두 표본짜리 광학 튐도 그대로라 HRmax를 끌어올렸고, 이지 상한(0.80×HRmax)이
+    /// 존 경계(Zone 4 시작)에 걸렸다(2026-10-22, 관측 198 vs 공식 186). 다시 잰 값은 원래 값보다 커지지 않는다.
+    /// 영향 최소화: 진짜 최고를 낸 러닝은 1~3bpm만 내려가고, 바뀌는 건 튐이 상위를 차지하던 사람뿐.
+    private func applyRobustHRMax(_ runs: [MRWorkout]) async -> [MRWorkout] {
+        var cache = (UserDefaults.standard.dictionary(forKey: Self.robustHRMaxKey) as? [String: Double]) ?? [:]
+        func key(_ w: MRWorkout) -> String { String(Int(w.start.timeIntervalSince1970)) }
+        func effective(_ w: MRWorkout) -> Double? {
+            guard let raw = w.hrMax else { return nil }
+            if let v = cache[key(w)], v > 0 { return min(raw, v) }
+            return raw
+        }
+        let cutoff = Date().addingTimeInterval(-730 * 86400)
+        let eligible = runs.filter { $0.hrMax != nil && $0.durationMin >= 10 && $0.start >= cutoff }
+        var queried = 0
+        // 다시 잰 값이 내려가면 다음 러닝이 상위로 올라온다 — 상위 8개가 모두 확인될 때까지(최대 24건)
+        for _ in 0..<3 {
+            let top = eligible.sorted { (effective($0) ?? 0) > (effective($1) ?? 0) }.prefix(8)
+            let todo = top.filter { cache[key($0)] == nil }
+            guard !todo.isEmpty, queried < 24 else { break }
+            for w in todo where queried < 24 {
+                queried += 1
+                let samples = await hk.fetchHRSamples(start: w.start, end: w.start.addingTimeInterval(w.durationMin * 60))
+                cache[key(w)] = mrRobustRunHRMax(samples, durationMin: w.durationMin) ?? -1
+            }
+        }
+        if queried > 0 { UserDefaults.standard.set(cache, forKey: Self.robustHRMaxKey) }
+        #if DEBUG
+        let changed = eligible.filter { w in (cache[key(w)] ?? -1) > 0 && (cache[key(w)] ?? 0) < (w.hrMax ?? 0) - 0.5 }
+        print("[HRmax 보정] 새로 잰 러닝 \(queried)건 · 원래보다 낮아진 러닝 \(changed.count)건"
+              + changed.prefix(5).map { " \(Int($0.hrMax ?? 0))→\(Int(cache[key($0)] ?? 0))" }.joined())
+        #endif
+        return runs.map { w in
+            guard let raw = w.hrMax, let v = cache[key(w)], v > 0, v < raw else { return w }
+            return MRWorkout(start: w.start, durationMin: w.durationMin, distanceKm: w.distanceKm, hrAvg: w.hrAvg,
+                             hrMax: v, tempC: w.tempC, humidity: w.humidity, indoor: w.indoor, isInterval: w.isInterval)
+        }
+    }
+
     // MARK: - 1단계: 화면에 즉시 필요한 것 (목표 ~2초)
 
     private func refreshCore() async throws {
@@ -444,6 +488,9 @@ final class MREngineStore: ObservableObject {
             }
             print("⚠ 인터벌 판정 \(flagged)/\(fetched.count) — 기준이 잘못됨. 무시함")
         }
+
+        // 러닝별 최고 심박을 심박 시계열로 다시 잰 값으로(광학 튐·출발 직후 오독 제거) — HRmax·이지 상한이 쓰는 값
+        fetched = await applyRobustHRMax(fetched)
 
         // 앱 재시작 후에도 유효한 캐시가 있으면 복원
         if rhrSamples.isEmpty, let persisted = loadPersistedRHR() {
@@ -1644,7 +1691,7 @@ final class MREngineStore: ObservableObject {
         print("[오늘카드] 러닝 증분 재읽기 — \(runs.count)→\(fetched.count)건 · \(changed ? "갱신" : "변화 없음")")
         #endif
         guard changed else { return }
-        runs = fetched
+        runs = await applyRobustHRMax(fetched)   // 1단계와 같은 보정 — 목록마다 HRmax 근거가 달라지지 않게
         thresholdChangeMemo.removeAll()
         let now = Date()
         advice = mrBuildAdvice(runs: runs, phys: phys, plans: plans,

@@ -316,6 +316,22 @@ struct MRHealthKit {
         return samples.map { ($0.endDate, $0.quantity.doubleValue(for: .degreeCelsius())) }
     }
 
+    /// 한 러닝 구간의 심박 표본(시작부터 초). 묶음 저장(시리즈) 러닝은 표본이 적게 나온다 — 호출부가 개수로 거른다.
+    func fetchHRSamples(start: Date, end: Date) async -> [(offset: TimeInterval, bpm: Int)] {
+        let type = HKQuantityType.quantityType(forIdentifier: .heartRate)!
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let samples: [HKQuantitySample] = await withCheckedContinuation { cont in
+            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: [sort]) { _, s, _ in
+                cont.resume(returning: (s as? [HKQuantitySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        return samples.map { (offset: $0.startDate.timeIntervalSince(start), bpm: Int($0.quantity.doubleValue(for: unit).rounded())) }
+    }
+
     private func fetchQuantitySamples(_ type: HKQuantityType, days: Int) async throws -> [HKQuantitySample] {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let from = Calendar.current.date(byAdding: .day, value: -days, to: Date())!

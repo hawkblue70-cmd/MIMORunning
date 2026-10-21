@@ -134,6 +134,17 @@ func avgHRExcludingWarmupPhase(_ splits: [SplitData],
     return (Int(hr.rounded()), k)
 }
 
+/// 한 러닝의 "버틴" 최고 심박 — 출발 직후 오독을 빼고 이동 중앙값(표본 9개 ≈ 45초)의 최고.
+/// 한두 표본짜리 광학 스파이크는 사라지고 30초 넘게 버틴 실제 최고는 남는다. 표본이 러닝 분당 2개 미만이면 nil(묶음 저장 등).
+/// ⚠ 중간 튐 정리(`hrMidRunSpikeCleaned`)는 쓰지 않는다 — 마지막 1~2분 스퍼트(실제 최고가 나오는 자리)도 "갑자기 오른 7분 이하 구간"으로
+///   지워 HRmax가 크게 내려간다. 영향 최소화(2026-10-22): 짧은 스파이크만 걸러 대부분 1~3bpm 차이에 그치게.
+func mrRobustRunHRMax(_ samples: [(offset: TimeInterval, bpm: Int)], durationMin: Double) -> Double? {
+    guard samples.count >= 30, Double(samples.count) >= durationMin * 2 else { return nil }
+    let sorted = samples.sorted { $0.offset < $1.offset }
+    let trimmed = hrEarlyArtifactCount(sorted).map { Array(sorted.dropFirst($0)) } ?? sorted
+    return hrMovingMedian(trimmed.map(\.bpm), window: 9).max()
+}
+
 // MARK: - 러닝 중간 광학 심박 튐
 
 /// 러닝 중간에 심박만 갑자기 튄 구간을 찾아 그 구간 값을 주변 중앙값으로 바꾼 시계열.

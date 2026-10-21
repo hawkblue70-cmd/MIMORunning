@@ -66,8 +66,9 @@ enum TabDigestRhythm {
             }
             // Zone 3(여유 심박 70~80%)은 "유산소 구간" — "템포"라 부르면 이지 상한(LT1, 관측 최대심박의 80%)과 같은 심박대를
             // 두고 엇갈렸다("158 아래였습니다" vs "템포 구간", 2026-10-22). 코드 존 이름도 원래 "Z3 유산소".
+            // 유산소 구간은 주의가 아니다(2026-10-22) — 이지가 목적인 러닝의 Zone 3 이상은 R1 "이지런 기준 높음"이 따로 말한다
             return Verdict(text: L.s("심박은 유산소 구간에 머물렀습니다", "Heart rate stayed in the aerobic zone", ja: "心拍は有酸素域にとどまりました") + heatSuffix,
-                           isProblem: !planned,
+                           isProblem: false,
                            short: L.s("유산소 구간에 머묾 · Zone 3 \(pct(v.frac))%", "Stayed in aerobic zone · \(pct(v.frac))% in Zone 3", ja: "有酸素域にとどまる · ゾーン3 \(pct(v.frac))%") + heatSuffix)
         default:
             let high = pct(((visible[4] ?? 0) + (visible[5] ?? 0)) / total)

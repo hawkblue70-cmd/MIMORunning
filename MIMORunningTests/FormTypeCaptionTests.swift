@@ -95,6 +95,17 @@ struct FormTypeCaptionTests {
         #expect(hrWarmupPhaseKm(mk(paces, [135, 140, 143, 145, 147, 146, 148, 146, 148, 150, 158])) == nil)
     }
 
+    @Test("러닝 최고 심박 다시 재기 — 한두 표본 튐은 빼고 버틴 최고는 남긴다")
+    func robustRunHRMax() {
+        // 30분, 5초 간격 360표본: 150 근처, 20분에 2표본 198 튐, 마지막 2분 172 유지
+        var s: [(offset: TimeInterval, bpm: Int)] = (0..<360).map { (offset: Double($0) * 5, bpm: 150 + ($0 % 3)) }
+        s[240].bpm = 198; s[241].bpm = 197
+        for i in 336..<360 { s[i].bpm = 172 }
+        #expect(mrRobustRunHRMax(s, durationMin: 30) == 172)
+        // 표본이 분당 2개 미만(묶음 저장) → 잴 수 없음
+        #expect(mrRobustRunHRMax(Array(s.prefix(40)), durationMin: 30) == nil)
+    }
+
     @Test("빌드업 디커플링 음수 → '그만큼 오르지 않았습니다'")
     func buildUpNegativeDecoupling() {
         ko {

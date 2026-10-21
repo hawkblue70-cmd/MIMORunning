@@ -65,7 +65,7 @@ struct TabDigestRhythmTests {
     @Test func zoneVerdictTempoZoneWithHeatSuffix() {
         let v = TabDigestRhythm.zoneVerdict(fractions: [3: 0.6, 2: 0.4], workoutType: .general, heatSuffix: " · 더위로 +6bpm")
         #expect(v?.text == "심박은 유산소 구간에 머물렀습니다 · 더위로 +6bpm")
-        #expect(v?.isProblem == true)
+        #expect(v?.isProblem == false)   // 유산소 구간은 주의 아님(2026-10-22)
         let interval = TabDigestRhythm.zoneVerdict(fractions: [3: 0.6, 2: 0.4], workoutType: .interval, heatSuffix: nil)
         #expect(interval?.text == "운동·회복이 섞인 평균이 Zone 3입니다")
         #expect(interval?.isProblem == false)
