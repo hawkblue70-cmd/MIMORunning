@@ -18,6 +18,9 @@ struct MileageStreakShareCard: View {
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
+    /// 플롯 높이 130 → 150(2026-10-21 사용자 "조금 늘리기") — 늘린 20pt는 카드 폭 336 → 352(4:5 유지, 높이 +20)로 받는다.
+    static let chartPlotHeight: CGFloat = 150
+
     private static let cellSize: CGFloat = 10
     private static let cellGap:  CGFloat = 2
     private static let labelW:   CGFloat = 10
@@ -149,7 +152,8 @@ struct MileageStreakShareCard: View {
             showsTotals: !isMonthSummary,
             cardBackground: p.boxFill,
             flowComment: isMonthSummary ? flowComment?.withoutTotals() : flowComment,
-            showsTrendStrips: true   // 성장 탭과 같은 심박·유산소 선·범례
+            showsTrendStrips: true,   // 성장 탭과 같은 심박·유산소 선·범례
+            exportPlotHeight: Self.chartPlotHeight
         )
     }
 
@@ -174,7 +178,9 @@ struct MileageStreakShareCardScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     /// 4:5 고정(2026-10-10). 월 결산(일 보기)의 내용 높이 ≈414pt가 들어가도록 폭을 336으로 — 주 보기는 아래가 조금 남는다.
-    private let cardW: CGFloat = 336
+    /// 2026-10-21: 플롯 +20pt(130 → 150)를 받으려고 352×440 — 출력은 그대로 1080×1350(인스타 피드 4:5, 잘림 없음),
+    /// 대신 출력 글자가 336/352 ≈ 4.5% 작아진다. 내용 높이 ≈434pt.
+    private let cardW: CGFloat = 352
     private var cardH: CGFloat { cardW * 5 / 4 }
 
     var body: some View {
@@ -298,7 +304,7 @@ struct MileageStreakShareCardScreen: View {
         )
         renderer.scale = 3
         guard let raw = renderer.uiImage else { isRendering = false; return }
-        // 카드 자체가 4:5(336×420)라 캔버스를 꽉 채운다. 캔버스 맞춤은 안전망으로 둔다 —
+        // 카드 자체가 4:5(352×440)라 캔버스를 꽉 채운다. 캔버스 맞춤은 안전망으로 둔다 —
         // 비율이 어긋나도 인스타그램 피드에서 잘리지 않고, 둥근 모서리가 여백을 카드 테두리로 읽히게 한다.
         previewImage = ShareCanvas.fit(raw,
                                        background: UIColor(canvasBackdrop),

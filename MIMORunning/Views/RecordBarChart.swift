@@ -42,6 +42,9 @@ struct RecordBarChart: View {
     /// 차트 아래 평균 심박 · 유산소(VO2max) 줄 — 같은 날짜축에 각자 실제 축으로 얇게 붙인다.
     /// 성장 탭 · 러닝 흐름 내보내기 · 퍼포먼스 카드 강도 부하(compact)에서 켠다. (§5.8 — 파라미터로만)
     var showsTrendStrips: Bool = false
+    /// 내보내기 모드 플롯 높이 오버라이드 — 러닝 흐름 공유 카드만 키운다(2026-10-21). nil이면 `Metrics.exportPlotHeight`.
+    /// 퍼포먼스 카드·대회 준비 카드 등 다른 내보내기는 그대로. (§5.8 — 파라미터로만)
+    var exportPlotHeight: CGFloat? = nil
 
     /// 막대와 점이 함께 보는 단 하나의 선택 상태
     @State private var selected: Date? = nil
@@ -230,7 +233,7 @@ struct RecordBarChart: View {
 
     private var plotHeight: CGFloat {
         compact ? Metrics.compactPlotHeight
-                : (exportMode ? Metrics.exportPlotHeight : Metrics.plotHeight)
+                : (exportMode ? (exportPlotHeight ?? Metrics.exportPlotHeight) : Metrics.plotHeight)
     }
 
     private var cardPadding: CGFloat {
