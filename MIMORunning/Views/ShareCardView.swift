@@ -2427,7 +2427,7 @@ struct ShareCardScreen: View {
             .onChange(of: stampVM.baseConfig)   { _, _ in
                 guard isStamp else { return }
                 saveStampConfig()
-                if template == .video || template == .routeVideo { exportedVideoFile = nil }
+                if template == .video || template == .routeVideo || template == .slide { exportedVideoFile = nil }
                 if template == .photo {
                     storyShareImages = []
                     previewImage = nil
@@ -2449,11 +2449,18 @@ struct ShareCardScreen: View {
             .onChange(of: stampVM.photoConfigs) { _, _ in
                 guard isStamp else { return }
                 saveStampConfig()
-                if template == .video || template == .routeVideo { exportedVideoFile = nil }
+                if template == .video || template == .routeVideo || template == .slide { exportedVideoFile = nil }
                 if template == .photo {
                     storyShareImages = []
                     previewImage = nil
                 }
+            }
+            // 슬라이드 사진 크롭 위치도 출력에 들어간다 — 바뀌면 만들어 둔 슬라이드를 버린다
+            .onChange(of: stampSlideCropOffsets)  { _, _ in
+                if isStamp, template == .slide { exportedVideoFile = nil }
+            }
+            .onChange(of: stampSlideCropOffsetsY) { _, _ in
+                if isStamp, template == .slide { exportedVideoFile = nil }
             }
             .onChange(of: storyPhotos.count) { _, _ in
                 guard isStamp else { return }
