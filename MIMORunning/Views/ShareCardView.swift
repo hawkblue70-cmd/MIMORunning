@@ -4120,8 +4120,11 @@ struct ShareCardScreen: View {
         // ── Stamp 슬라이드 합성 (storyPhotos 사용 — story 모드와 동일 사진) ─────────
         if isStamp, template == .slide {
             // [필수] exportStampSlide sz(1080×1920)와 반드시 일치.
-            // makeStampOverlayImage는 renderSize로 스탬프 pt 높이를 역산(height/width*300).
+            // makeStampOverlayImage는 renderSize로 스탬프 pt 높이를 역산(height/width*logicalWidth).
             let renderSz = CGSize(width: 1080, height: 1920)
+            // logicalWidth: 슬라이드 미리보기 컨테이너(375*9/16≈211pt)와 동일하게 → 미리보기·출력 크기 일치
+            // (300pt로 그리면 스탬프가 미리보기의 약 70%로 작아져 대·중이 소처럼 보임)
+            let slideLogicalW: CGFloat = 375.0 * 9.0 / 16.0
             // Warmup: 첫 번째 ImageRenderer 호출은 SwiftUI 파이프라인 미초기화로 잘못된 이미지를 반환함.
             // 1회 워밍업 후 50ms 대기로 파이프라인 초기화 (story 모드 renderCard 동일 패턴).
             if let firstPhoto = storyPhotos.first {
@@ -4129,7 +4132,8 @@ struct ShareCardScreen: View {
                 let wuBright = stampBackgroundIsBright(photo: firstPhoto, position: firstCfg.position)
                 _ = makeStampOverlayImage(data: stampPreviewData, vm: stampVM,
                                           isBright: wuBright, renderSize: renderSz,
-                                          configOverride: firstCfg, renderOnlyStamp: true)
+                                          configOverride: firstCfg, renderOnlyStamp: true,
+                                          logicalWidth: slideLogicalW)
                 try? await Task.sleep(nanoseconds: 50_000_000)  // 50 ms — 파이프라인 안정화
                 guard isStamp, template == .slide else { isExportingVideo = false; return }
             }
@@ -4150,7 +4154,8 @@ struct ShareCardScreen: View {
                     data: stampPreviewData, vm: stampVM,
                     isBright: isBright, renderSize: renderSz,
                     configOverride: cfg,
-                    renderOnlyStamp: true)
+                    renderOnlyStamp: true,
+                    logicalWidth: slideLogicalW)
                 else { continue }
                 photos.append(photo)
                 cropOffsets.append(stampSlideCropOffsets[i] ?? 0.5)
@@ -4170,8 +4175,8 @@ struct ShareCardScreen: View {
                 textFlyDirs.append(cfg.textFlyDirection)
             }
             guard !photos.isEmpty else { isExportingVideo = false; return }
-            let logoOverlay = makeStampLogoDateOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
-                                                       raceName: stampPreviewData.raceName)
+            let logoOverlay = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
+                                                   raceName: stampPreviewData.raceName)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,

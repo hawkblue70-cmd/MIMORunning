@@ -100,36 +100,6 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
     return renderer.uiImage
 }
 
-// MARK: - 워드마크 오버레이 이미지 (슬라이드 출력용 정적 레이어)
-
-/// 슬라이드 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
-/// 9:16 캔버스(renderSize) 기준으로 렌더 → scale 적용으로 px 출력.
-@MainActor
-func makeStampLogoDateOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil) -> UIImage? {
-    let ptH = renderSize.height / renderSize.width * 300
-    let vPad = ptH * 0.06
-
-    // date != nil → 워드마크 줄 오른쪽에 날짜·시간 (미리보기 StampDateLabel과 동일)
-    let overlay = ZStack(alignment: .topLeading) {
-        StampHeaderMark(raceName: raceName)
-            .padding(.leading, 14)
-            .padding(.top, vPad)
-        if let d = date {
-            StampDateLabel(date: d)
-                .padding(.trailing, 14)
-                .padding(.top, vPad + 8)
-                .frame(width: 300, alignment: .topTrailing)
-        }
-    }
-    .frame(width: 300, height: ptH, alignment: .topLeading)
-
-    let renderer = ImageRenderer(content: overlay)
-    renderer.proposedSize = .init(width: 300, height: ptH)
-    renderer.scale = renderSize.width / 300
-    renderer.isOpaque = false
-    return renderer.uiImage
-}
-
 /// 영상 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 영상 미리보기(previewW=375*9/16≈211pt)와 동일한 논리 크기로 렌더.
 @MainActor
