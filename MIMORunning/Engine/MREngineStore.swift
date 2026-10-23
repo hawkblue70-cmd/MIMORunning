@@ -457,8 +457,14 @@ final class MREngineStore: ObservableObject {
         if queried > 0 { UserDefaults.standard.set(cache, forKey: Self.robustHRMaxKey) }
         #if DEBUG
         let changed = eligible.filter { w in (cache[key(w)] ?? -1) > 0 && (cache[key(w)] ?? 0) < (w.hrMax ?? 0) - 0.5 }
-        print("[HRmax 보정] 새로 잰 러닝 \(queried)건 · 원래보다 낮아진 러닝 \(changed.count)건"
-              + changed.prefix(5).map { " \(Int($0.hrMax ?? 0))→\(Int(cache[key($0)] ?? 0))" }.joined())
+        // 저장값만 쓴 호출도 구분되게 — 같은 줄이 앱 시작·목록 재읽기마다 찍혀 "0건"이 미적용으로 읽혔다(2026-10-23)
+        let top8 = eligible.sorted { (effective($0) ?? 0) > (effective($1) ?? 0) }.prefix(8)
+        let fromCache = top8.filter { cache[key($0)] != nil }.count
+        print("[HRmax 보정 \(Self.robustHRMaxKey.split(separator: ".").last ?? "")] 새로 잰 러닝 \(queried)건"
+              + (queried == 0 ? " (저장값 사용 · 상위 8개 중 \(fromCache)건 저장됨)" : "")
+              + " · 원래보다 낮아진 러닝 \(changed.count)건"
+              + changed.prefix(5).map { " \(Int($0.hrMax ?? 0))→\(Int(cache[key($0)] ?? 0))" }.joined()
+              + " · 상위 8개 " + top8.map { "\(Int(effective($0) ?? 0))" }.joined(separator: "·"))
         #endif
         return runs.map { w in
             guard let raw = w.hrMax, let v = cache[key(w)], v > 0, v < raw else { return w }
