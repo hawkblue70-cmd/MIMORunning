@@ -102,7 +102,7 @@ struct FormTypeCaptionTests {
         s[240].bpm = 198; s[241].bpm = 197
         for i in 336..<360 { s[i].bpm = 172 }
         #expect(mrRobustRunHRMax(s, durationMin: 30) == 172)
-        // 출발 직후 2분 동안 175로 튀며 시작 — 첫 5분은 보지 않는다
+        // 출발 직후 2분 동안 175로 튀며 시작 — 첫 3분은 보지 않는다
         var startSpike = s
         for i in 0..<24 { startSpike[i].bpm = 175 }
         #expect(mrRobustRunHRMax(startSpike, durationMin: 30) == 172)

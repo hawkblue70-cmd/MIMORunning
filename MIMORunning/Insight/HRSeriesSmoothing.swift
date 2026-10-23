@@ -138,9 +138,9 @@ func avgHRExcludingWarmupPhase(_ splits: [SplitData],
 /// 한두 표본짜리 광학 스파이크는 사라지고 30초 넘게 버틴 실제 최고는 남는다. 표본이 러닝 분당 2개 미만이면 nil(묶음 저장 등).
 /// ⚠ 중간 튐 정리(`hrMidRunSpikeCleaned`)는 쓰지 않는다 — 마지막 1~2분 스퍼트(실제 최고가 나오는 자리)도 "갑자기 오른 7분 이하 구간"으로
 ///   지워 HRmax가 크게 내려간다. 영향 최소화(2026-10-22): 짧은 스파이크만 걸러 대부분 1~3bpm 차이에 그치게.
-/// 첫 5분은 아예 보지 않는다(15분 이상 러닝) — 쉬다가 출발해 몇 분 만에 최대심박에 닿지는 않는다. 출발 때 170을 넘기며
+/// 첫 3분은 아예 보지 않는다(15분 이상 러닝, 2026-10-23 사용자 결정 — 5분에서 3분으로) — 쉬다가 출발해 몇 분 만에 최대심박에 닿지는 않는다. 출발 때 170을 넘기며
 /// 시작하는 광학 튐이 1~3분 이어지면 이동 중앙값(45초)도, 출발 직후 오독 규칙(첫 10% 평균 15bpm↑)도 못 걸렀다(2026-10-23 사용자 경험).
-let hrMaxSkipStartSec: TimeInterval = 300
+let hrMaxSkipStartSec: TimeInterval = 180
 func mrRobustRunHRMax(_ samples: [(offset: TimeInterval, bpm: Int)], durationMin: Double) -> Double? {
     guard samples.count >= 30, Double(samples.count) >= durationMin * 2 else { return nil }
     let sorted = samples.sorted { $0.offset < $1.offset }
