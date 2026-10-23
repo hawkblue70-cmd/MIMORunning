@@ -426,7 +426,7 @@ final class MREngineStore: ObservableObject {
     // MARK: - 러닝별 최고 심박 보정
 
     /// 러닝 시작(초) → 시계열로 다시 잰 최고 심박. −1 = 잴 수 없음(표본 부족 — 원래 값 유지). 한 번 잰 러닝은 다시 묻지 않는다.
-    private static let robustHRMaxKey = "mimo.robustRunHRMax.v1"
+    private static let robustHRMaxKey = "mimo.robustRunHRMax.v2"   // v2: 첫 5분 제외 → 다시 잼
 
     /// HRmax(상위 5개 중앙값)를 정하는 상위 러닝들만 심박 시계열로 다시 잰다(`mrRobustRunHRMax`).
     /// HealthKit 통계의 최고치는 한두 표본짜리 광학 튐도 그대로라 HRmax를 끌어올렸고, 이지 상한(0.80×HRmax)이

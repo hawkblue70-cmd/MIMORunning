@@ -102,6 +102,10 @@ struct FormTypeCaptionTests {
         s[240].bpm = 198; s[241].bpm = 197
         for i in 336..<360 { s[i].bpm = 172 }
         #expect(mrRobustRunHRMax(s, durationMin: 30) == 172)
+        // 출발 직후 2분 동안 175로 튀며 시작 — 첫 5분은 보지 않는다
+        var startSpike = s
+        for i in 0..<24 { startSpike[i].bpm = 175 }
+        #expect(mrRobustRunHRMax(startSpike, durationMin: 30) == 172)
         // 표본이 분당 2개 미만(묶음 저장) → 잴 수 없음
         #expect(mrRobustRunHRMax(Array(s.prefix(40)), durationMin: 30) == nil)
     }
