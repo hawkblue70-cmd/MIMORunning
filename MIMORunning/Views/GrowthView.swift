@@ -314,6 +314,10 @@ struct GrowthView: View {
             // raceDetector 로드 완료 후 대회 목록을 갱신 — 캐시 키가 바뀌면 백테스트 자동 재계산
             engine.updateConfirmedMatches(Array(raceDetector.matches.values), raceDetectorReady: true)
         }
+        .onChange(of: raceDetector.matches) { _, _ in
+            // 대회 확정·해제 시 여정의 '첫 대회' 항목 갱신
+            journeyMilestonesCache = journeyMilestones()
+        }
         .onChange(of: manager.activities.count) { _, _ in
             Task { refreshChartCache(); await refreshMetricAnalyses() }
         }
@@ -1536,6 +1540,16 @@ struct GrowthView: View {
                                     title: title, detail: a.formattedDistance))
                 coveredRunIDs.insert(a.id)
             }
+        }
+
+        // 첫 대회 — 확정된 대회 매칭 중 가장 이른 러닝 하나만(대회 목록은 '나' 탭 참가 대회에 있음)
+        let confirmedRaceIDs = Dictionary(raceDetector.matches.values.filter(\.isConfirmed).map { ($0.activityID, $0.raceName) },
+                                          uniquingKeysWith: { a, _ in a })
+        if let firstRace = allRuns.first(where: { confirmedRaceIDs[$0.id] != nil }),
+           let raceName = confirmedRaceIDs[firstRace.id] {
+            events.append(.init(id: "first_race", date: firstRace.date, kind: .first,
+                                title: L.s("첫 대회", "First Race", ja: "初めてのレース"),
+                                detail: "\(raceName) · \(firstRace.formattedDistance)"))
         }
 
         // 누적 러닝 거리 돌파 (러닝만) — 100·300·500 뒤로는 1000km마다(넘은 것만, 다음까지 남은 km는 표시 안 함)
