@@ -1538,8 +1538,10 @@ struct GrowthView: View {
             }
         }
 
-        // 누적 러닝 거리 돌파 (러닝만)
-        let thresholds: [Double] = [100, 300, 500, 1000]
+        // 누적 러닝 거리 돌파 (러닝만) — 100·300·500 뒤로는 1000km마다(넘은 것만, 다음까지 남은 km는 표시 안 함)
+        let allRunKm = allRuns.reduce(0) { $0 + $1.distance } / 1000
+        let thousands = max(1, Int(allRunKm / 1000))
+        let thresholds: [Double] = [100, 300, 500] + (1...thousands).map { Double($0 * 1000) }
         var totalKm = 0.0
         var nextThresh = 0
         for a in allRuns {
