@@ -97,9 +97,13 @@ enum MRRecovery {
     // MARK: 종료 심박
 
     /// 워크아웃 내부 시계열(시작 기준 오프셋)에서 마지막 30초 평균. 샘플 없으면 nil.
-    static func endHR(series: [(offset: TimeInterval, bpm: Int)], duration: TimeInterval) -> Double? {
-        let lo = duration - endWindowSec
-        let v = series.filter { $0.offset >= lo && $0.offset <= duration }.map { Double($0.bpm) }
+    /// ⚠ 끝 = 마지막 표본 시각. 오프셋은 시작부터 흐른 시간(일시정지 포함)인데 `Activity.duration`은 일시정지를 뺀 시간이라,
+    ///   횡단보도 자동 일시정지가 11분 쌓인 러닝은 끝나기 11분 전 심박을 종료 심박으로 잡아 1분 회복이 −7로 나왔다(2026-10-22, 애플은 약 −25).
+    ///   기록 이력(`queryEndHR`)은 워크아웃 endDate 기준이라 원래 맞았다.
+    static func endHR(series: [(offset: TimeInterval, bpm: Int)]) -> Double? {
+        guard let end = series.map(\.offset).max() else { return nil }
+        let lo = end - endWindowSec
+        let v = series.filter { $0.offset >= lo && $0.offset <= end }.map { Double($0.bpm) }
         guard !v.isEmpty else { return nil }
         return v.reduce(0, +) / Double(v.count)
     }

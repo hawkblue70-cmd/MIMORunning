@@ -236,7 +236,7 @@ struct ActivityDetailView: View {
     /// 과거 분포(recoveryDropHistory·recoveryTauHistory)는 매니저 쪽에서 같은 80% 규칙으로 걸러져 있다.
     private func loadRecovery() async {
         guard recoveryResult == nil, !isLoadingRecovery,
-              let endHR = MRRecovery.endHR(series: hrSamples, duration: activity.duration) else { return }
+              let endHR = MRRecovery.endHR(series: hrSamples) else { return }
         let interpretable = MRRecovery.isEligible(endHR: endHR, maxHR: manager.estimatedMaxHR.map(Double.init))
         isLoadingRecovery = true
         defer { isLoadingRecovery = false }

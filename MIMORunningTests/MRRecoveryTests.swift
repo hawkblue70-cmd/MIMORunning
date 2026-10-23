@@ -11,9 +11,12 @@ struct MRRecoveryTests {
 
     @Test func endHRIsMeanOfLastThirtySeconds() {
         let series: [(offset: TimeInterval, bpm: Int)] = [(0, 100), (3560, 150), (3580, 154), (3600, 152)]
-        // duration 3600 → [3570, 3600] 안의 154·152 평균
-        #expect(MRRecovery.endHR(series: series, duration: 3600) == 153)
-        #expect(MRRecovery.endHR(series: [(0, 100)], duration: 3600) == nil)
+        // 마지막 표본 3600 → [3570, 3600] 안의 154·152 평균
+        #expect(MRRecovery.endHR(series: series) == 153)
+        #expect(MRRecovery.endHR(series: []) == nil)
+        // 일시정지 11분이 낀 러닝 — 이동 시간(4740초)이 아니라 마지막 표본(5400초) 기준이어야 한다
+        let paused: [(offset: TimeInterval, bpm: Int)] = [(4730, 137), (4740, 138), (5380, 156), (5400, 158)]
+        #expect(MRRecovery.endHR(series: paused) == 157)
     }
 
     @Test func hrAtUsesMedianWithinTolerance() {
