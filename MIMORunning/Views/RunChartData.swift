@@ -327,11 +327,23 @@ enum RunChartBuilder {
 
         var allSeries: [RunChartLayer: RunChartSeries] = [:]
 
+        // 표본 오프셋은 시작부터 흐른 시간(일시정지 포함)인데 거리 지도는 구간 시간(일시정지 제외)이다 —
+        // 횡단보도 자동 일시정지가 쌓인 러닝은 선이 앞으로 밀렸다(2026-10-26). 심박 표본의 멈춤 간격으로 이동 시간으로 바꾼다.
+        let toActive = elapsedToActiveMapper(hrOffsets: hrSamples.map(\.offset), activeTotal: activity.duration)
+
         func rawPoints(_ samples: [(offset: TimeInterval, value: Double)]) -> [(km: Double, value: Double)] {
-            useLongDist
-                ? buildKmAveragedPoints(samples: samples, timeDistanceMap: tdMap, totalKm: totalKm)
-                : buildTimeSeriesPoints(samples: samples, timeDistanceMap: tdMap)
+            let moved = samples.map { (offset: toActive($0.offset), value: $0.value) }
+            return useLongDist
+                ? buildKmAveragedPoints(samples: moved, timeDistanceMap: tdMap, totalKm: totalKm)
+                : buildTimeSeriesPoints(samples: moved, timeDistanceMap: tdMap)
         }
+
+        // 20km 초과는 1km 평균 점(1km에 1점)이다 — 약 10초 간격 점에 맞춘 창(13~25점)을 그대로 쓰면 13~25km 폭으로 다듬어져
+        // 21km 거리주의 마지막 상승(160~168)이 지워지고 끝값이 149로 나왔다(2026-10-26). 1km 평균이 이미 튐을 지우므로
+        // 중앙값 없이 평균 3점만, 위아래 비율 자르기도 하지 않는다(정점이 잘렸다). 범위 자르기(.hard)는 그대로.
+        func win(_ w: Int) -> Int { useLongDist ? 1 : w }
+        func meanWin(_ w: Int) -> Int { useLongDist ? 3 : w }
+        func pct(_ lo: Double, _ hi: Double) -> ClampMode { useLongDist ? .percentile(lo: 0, hi: 1) : .percentile(lo: lo, hi: hi) }
 
         // 저장된 평균값 — 앱 시작 시 HealthKit에서 가져와 CachedActivity에 저장된 값 우선 사용
         let storedHRAvg    = activity.avgHeartRate.map { Double($0) }
@@ -350,9 +362,9 @@ enum RunChartBuilder {
         let hrFloor = hrAxisFloorBPM
         let hrRaw = rawPoints(hrSamples.map { (offset: $0.offset, value: Double($0.bpm)) })
         if let s = makeSmoothedSeries(layer: .heartRate, rawPoints: hrRaw,
-                                      smoothWindow: 15,
-                                      clamp: .percentile(lo: 0.02, hi: 0.98),
-                                      meanWindow: 13,
+                                      smoothWindow: win(15),
+                                      clamp: pct(0.02, 0.98),
+                                      meanWindow: meanWin(13),
                                       normFloor: hrFloor,
                                       // 타일 범위는 애플 피트니스와 같게 — 자르지 않은 실제 최저~최고
                                       rawRange: true) {
@@ -369,19 +381,19 @@ enum RunChartBuilder {
         //   있었지만 코드는 1%/8%였다.
         let cadRaw = rawPoints(cadenceSamples)
         if let s = makeSmoothedSeries(layer: .cadence, rawPoints: cadRaw,
-                                      smoothWindow: 13,
+                                      smoothWindow: win(13),
                                       clamp: .hard(min: 140, max: 220),
-                                      secondaryClamp: .percentile(lo: 0.03, hi: 0.97),
-                                      meanWindow: 13) {
+                                      secondaryClamp: pct(0.03, 0.97),
+                                      meanWindow: meanWin(13)) {
             allSeries[.cadence] = storedCadAvg.map { s.withAvg($0) } ?? s
         }
 
         // Power — 5–95 percentile clamp, median 13 → mean 13 (케이던스와 같은 창, 2026-10-07)
         let powRaw = rawPoints(powerSamples)
         if let s = makeSmoothedSeries(layer: .power, rawPoints: powRaw,
-                                      smoothWindow: 13,
-                                      clamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 13) {
+                                      smoothWindow: win(13),
+                                      clamp: pct(0.05, 0.95),
+                                      meanWindow: meanWin(13)) {
             allSeries[.power] = storedPowAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -389,30 +401,30 @@ enum RunChartBuilder {
         //   (러닝 지면접촉은 대개 200~300ms. 150 미만·400 초과는 걷기·정지·센서 튐)
         let gctRaw = rawPoints(gctSamples)
         if let s = makeSmoothedSeries(layer: .groundContact, rawPoints: gctRaw,
-                                      smoothWindow: 13,
+                                      smoothWindow: win(13),
                                       clamp: .hard(min: 150, max: 400),
-                                      secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 13) {
+                                      secondaryClamp: pct(0.05, 0.95),
+                                      meanWindow: meanWin(13)) {
             allSeries[.groundContact] = storedGctAvg.map { s.withAvg($0) } ?? s
         }
 
         // Stride — hard clamp 0.4–1.6 m → 5–95 percentile → median 25 → mean 25
         let strRaw = rawPoints(strideSamples)
         if let s = makeSmoothedSeries(layer: .strideLength, rawPoints: strRaw,
-                                      smoothWindow: 25,
+                                      smoothWindow: win(25),
                                       clamp: .hard(min: 0.4, max: 1.6),
-                                      secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 25) {
+                                      secondaryClamp: pct(0.05, 0.95),
+                                      meanWindow: meanWin(25)) {
             allSeries[.strideLength] = storedStrAvg.map { s.withAvg($0) } ?? s
         }
 
         // Vert osc — hard clamp 4–16 cm → 5–95 percentile → median 25 → mean 25
         let vocRaw = rawPoints(vertOscSamples)
         if let s = makeSmoothedSeries(layer: .verticalOsc, rawPoints: vocRaw,
-                                      smoothWindow: 25,
+                                      smoothWindow: win(25),
                                       clamp: .hard(min: 4, max: 16),
-                                      secondaryClamp: .percentile(lo: 0.05, hi: 0.95),
-                                      meanWindow: 25) {
+                                      secondaryClamp: pct(0.05, 0.95),
+                                      meanWindow: meanWin(25)) {
             allSeries[.verticalOsc] = storedVocAvg.map { s.withAvg($0) } ?? s
         }
 
@@ -686,6 +698,26 @@ enum RunChartBuilder {
     }
 
     // MARK: - Time → distance mapping
+
+    /// 경과 시간 → 이동 시간. 심박 표본 사이가 20초 넘게 빈 곳을 멈춤으로 보고 그 길이(평소 간격 5초 제외)를 뺀다.
+    /// 경과와 이동 시간 차이가 1분 미만이면(멈춤 거의 없음) 그대로 둔다 — 영향 최소화. 마지막에 이동 시간 합계로 비례를 맞춘다.
+    static func elapsedToActiveMapper(hrOffsets: [TimeInterval], activeTotal: TimeInterval) -> (TimeInterval) -> TimeInterval {
+        let t = hrOffsets.sorted()
+        guard let last = t.last, activeTotal > 0, last - activeTotal >= 60 else { return { $0 } }
+        var pauses: [(start: TimeInterval, length: TimeInterval)] = []
+        for k in 1..<t.count where t[k] - t[k - 1] > 20 {
+            pauses.append((t[k - 1], t[k] - t[k - 1] - 5))
+        }
+        guard !pauses.isEmpty else { return { $0 } }
+        func raw(_ x: TimeInterval) -> TimeInterval {
+            var paused: TimeInterval = 0
+            for p in pauses where p.start < x { paused += min(p.length, x - p.start) }
+            return x - paused
+        }
+        let endActive = raw(last)
+        let scale = endActive > 0 ? min(1.1, max(0.9, activeTotal / endActive)) : 1
+        return { raw($0) * scale }
+    }
 
     private static func buildTimeDistanceMap(
         splits: [SplitData],
