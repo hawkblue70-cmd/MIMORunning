@@ -4542,7 +4542,7 @@ private struct PerformanceInsightCard: View {
                 .lineLimit(1).minimumScaleFactor(0.8)
             // 한 줄: "4주 평균 대비 낮음, 회복 방향으로 진행 중" — 라벨 + 짧은 방향 문구
             let ratioLabel = load.acuteChronic.map(TabDigestPerformance.loadRatioText)
-            let sentence = load.sentence.flatMap(TabDigestPerformance.loadSentence)
+            let sentence = TabDigestPerformance.loadSentence(load.sentence, ratio: load.acuteChronic)
             if load.thisRunAU == nil {
                 // 이 러닝의 강도가 없으면 7일 합에 오늘이 빠져 있다 — 그 합으로 낮다/회복 방향을 말하지 않는다
                 Text(L.s("오늘 강도 입력 전 — 입력하면 강도 부하에 반영됩니다", "Today's effort not rated — rate it to count toward your training load", ja: "今日の強度は未入力 — 入力すると強度負荷に反映されます"))

@@ -594,12 +594,23 @@ enum RunSummary {
         }
         // 대회 계획의 증량 주 — 지난 4주 대신 계획과 비교한다. 의도한 증량을 "쉬세요"로 막지 않게(2026-10-19).
         // (회복·테이퍼·대회 뒤 주는 위에서 이미 계획 문장으로 끝났다)
-        if jumped, let target = i.planWeekKm, target > 0, let wk = i.weekKmSoFar, let phase = i.planPhase {
+        if jumped, let target = i.planWeekKm, target > 0, let wk = i.weekKmSoFar, i.planPhase != nil {
             let wkStr = String(format: "%.1f", wk), tStr = String(format: "%.0f", target)
             if wk <= target * 1.1 {
-                return L.s("대회 계획의 \(phase) 주입니다. 이번 주 \(wkStr)km · 계획 \(tStr)km로 계획 안이라, 부하가 늘어난 건 예정된 증량입니다.",
-                           "It's a \(phase) week in your race plan — \(wkStr) km this week vs \(tStr) km planned, so the rise is the planned build.",
-                           ja: "レース計画の\(phase)週です。今週\(wkStr)km · 計画\(tStr)kmで計画内なので、負荷の増加は予定どおりの増量です。")
+                // 계획 안이라는 설명만으로 끝나면 21km 거리주 다음 날 할 일이 빠졌다(2026-10-26) — 오늘이 고강도면 내일, HRV가 낮았으면 그 사실
+                var s = L.s("계획 안의 증량입니다(이번 주 \(wkStr)km · 계획 \(tStr)km).",
+                            "This is the planned build (\(wkStr) km this week · \(tStr) km planned).",
+                            ja: "計画内の増量です(今週\(wkStr)km · 計画\(tStr)km)。")
+                if i.todayIsHard {
+                    s += L.s(" 오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋습니다.", " You went hard today — make tomorrow an easy run or a rest day.",
+                             ja: " 今日は強度を出したので、明日はイージーランか休養がよいです。")
+                    if i.hrvTrend?.isSuppressed == true {
+                        s += L.s(" HRV도 기준선 아래로 흔들리고 있습니다.", " Your HRV is also wobbling below baseline.", ja: " HRVも基準線の下で揺れています。")
+                    } else if lastNightLow(i) {
+                        s += L.s(" 어젯밤 HRV도 평소보다 낮았습니다.", " Last night's HRV was also below usual.", ja: " 昨夜のHRVも普段より低かったです。")
+                    }
+                }
+                return s
             }
             return L.s("이번 주 \(wkStr)km로 계획 \(tStr)km보다 많습니다. 남은 날은 이지런으로 가세요.",
                        "\(wkStr) km this week is above the \(tStr) km planned — keep the rest of the week easy.",

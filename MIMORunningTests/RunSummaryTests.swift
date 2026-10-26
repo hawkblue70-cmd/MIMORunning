@@ -741,4 +741,16 @@ struct RunSummaryTests {
         #expect(line.evidence == "페이스 5'55\"→6'30\" · 보폭 0.97→0.91 · 케이던스 175→171 · 지면접촉 +24ms")
         #expect(line.next == "다음엔 중반을 10초/km 늦게 시작해 보세요.")
     }
+
+    @Test func plannedBuildWeekHardDayAddsTomorrow() {
+        // 대회 계획 증량 주 · 계획 안 · 오늘 고강도(거리주) → 내일 이지/휴식까지(2026-10-26, 21km 거리주)
+        var i = RunSummaryInput()
+        i.workoutType = .distanceRun; i.todayIsHard = true
+        i.planPhase = "대회 페이스"; i.planWeekKm = 54; i.weekKmSoFar = 54.6
+        i.acuteChronic = .high; i.zoneFractions = [2: 0.3, 3: 0.58, 4: 0.12]
+        let load = RunSummary.lines(i).first { $0.axis == "훈련부하" }
+        #expect(load?.next == "계획 안의 증량입니다(이번 주 54.6km · 계획 54km). 오늘 강도를 냈으니 내일은 이지런이나 휴식이 좋습니다.")
+        i.todayIsHard = false
+        #expect(RunSummary.lines(i).first { $0.axis == "훈련부하" }?.next == "계획 안의 증량입니다(이번 주 54.6km · 계획 54km).")
+    }
 }

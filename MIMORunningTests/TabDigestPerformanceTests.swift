@@ -60,6 +60,9 @@ struct TabDigestPerformanceTests {
         #expect(TabDigestPerformance.loadSentence(.monotony) == "부하 편차 적음 — 강약 나누기")
         #expect(TabDigestPerformance.loadSentence(.low) == "회복 방향으로 진행 중")
         #expect(TabDigestPerformance.loadLine(ratio: "지난 4주 대비 높음", sentence: "부하 조금 높은 편") == "지난 4주 대비 높음, 부하 조금 높은 편")
+        // 라벨이 이미 높음이면 "부하 조금 높은 편"은 빠진다(2026-10-26)
+        #expect(TabDigestPerformance.loadSentence(.high, ratio: .high) == nil)
+        #expect(TabDigestPerformance.loadSentence(.high, ratio: .steady) == "부하 조금 높은 편")
         #expect(TabDigestPerformance.loadLine(ratio: nil, sentence: nil) == nil)
     }
 

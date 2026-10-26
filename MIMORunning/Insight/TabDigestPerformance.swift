@@ -169,6 +169,13 @@ enum TabDigestPerformance {
         return L.s("강도 부하 ", "Training load ", ja: "強度負荷 ") + parts.joined(separator: " · ")  // 카드 차트 제목("강도 부하")과 같은 이름
     }
 
+    /// 라벨 뒤에 붙일 방향 문구 — 라벨이 이미 높음·크게 높음이면 "부하 조금 높은 편"은 같은 말이라 뺀다(카드·요약 공통, 2026-10-26).
+    static func loadSentence(_ kind: EffortLoad.SentenceKind?, ratio: EffortLoad.RatioLabel?) -> String? {
+        guard let kind else { return nil }
+        if kind == .high, ratio == .high || ratio == .veryHigh { return nil }
+        return loadSentence(kind)
+    }
+
     /// 라벨과 문장을 카드와 같은 구분자로 잇는다 — 둘 다 없으면 nil.
     static func loadLine(ratio: String?, sentence: String?) -> String? {
         let parts = [ratio, sentence].compactMap { $0 }
@@ -417,7 +424,7 @@ enum TabDigestPerformance {
         // P2 — 7일 부하 크게 증가 / 단조. 카드처럼 오늘 강도 입력 전이면 말하지 않는다(7일 합에 오늘이 빠짐).
         let jumped = i.acuteChronic == .high || i.acuteChronic == .veryHigh
         if !i.todayEffortMissing, jumped || i.loadSentence == .monotony,
-           let line = loadLine(ratio: i.acuteChronic.map(loadRatioText), sentence: i.loadSentence.flatMap(loadSentence)) {
+           let line = loadLine(ratio: i.acuteChronic.map(loadRatioText), sentence: loadSentence(i.loadSentence, ratio: i.acuteChronic)) {
             // 요약(short)이 이미 "4주 평균 대비 높음"을 말한다 — 아랫줄은 같은 말 대신 근거 숫자(2026-10-18)
             let L = AppLanguage.shared
             let numbers: String? = {
