@@ -273,12 +273,18 @@ struct SummaryCardPalette {
     )
 }
 
-// MARK: - Athletic share card (300 × 375, rendered via ImageRenderer)
+// MARK: - Common chrome (결산 카드 · 결산 묶음 슬라이드 공용)
 
-struct SummaryShareCardView: View {
-    let stats: SummaryPeriodStats
+/// 결산 카드 틀 — 300×480, 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
+/// 결산 카드와 묶음 슬라이드가 모두 이 틀 하나를 쓴다(데이터 표시 통일성 — 장마다 머리를 따로 그리지 않는다).
+struct SummaryCardChrome<Content: View>: View {
+    let title: String
+    let subtitle: String
     var miniMeImage: UIImage? = nil
+    /// 미니미를 본문에서 크게 쓰는 장(제목 장)은 머리 미니미를 뺀다
+    var showsMiniMe: Bool = true
     var theme: ShareTheme = .dark
+    @ViewBuilder let content: () -> Content
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
@@ -295,23 +301,21 @@ struct SummaryShareCardView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Wordmark + MiniMe
                     HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 0) {
-                                MIMOWordmark(size: 14, strokeMIMO: theme == .light)
-                            }
-                        }
+                        MIMOWordmark(size: 14, strokeMIMO: theme == .light)
                         Spacer()
-                        miniMeContent
-                            .frame(width: 43, height: 43)
+                        if showsMiniMe {
+                            SummaryMiniMe(image: miniMeImage, size: 43, theme: theme)
+                        }
                     }
+                    .frame(height: 43, alignment: .top)
                     .padding(.top, 12)
                     .padding(.bottom, 7)
 
                     // Period
-                    Text(stats.kind.title)
+                    Text(title)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(p.textPrimary)
-                    Text(stats.kind.subtitle)
+                    Text(subtitle)
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(p.brand)
@@ -324,21 +328,62 @@ struct SummaryShareCardView: View {
                         .padding(.top, 10)
                         .padding(.bottom, 10)
 
-                    // Hero distance
-                    HStack(alignment: .lastTextBaseline, spacing: 5) {
-                        Text(stats.distanceStr)
-                            .font(.system(size: 55, weight: .black, design: .default).width(.compressed))
-                            .foregroundStyle(p.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.55)
-                        Text(stats.distanceUnit)
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(p.brand)
+                    content()
+
+                    // Footer
+                    HStack {
+                        Spacer()
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 7))
+                            .foregroundStyle(p.brand.opacity(0.45))
                     }
-                    Text(AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .tracking(1)
-                        .foregroundStyle(p.textSecondary)
+                    .padding(.bottom, 2)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 13)
+            }
+        }
+        .frame(width: 300, height: 480)
+        .environment(\.colorScheme, theme == .dark ? .dark : .light)
+    }
+}
+
+/// 결산 카드 미니미 — 사용자 이미지가 있으면 원형, 없으면 마스코트(축하)
+struct SummaryMiniMe: View {
+    let image: UIImage?
+    let size: CGFloat
+    var theme: ShareTheme = .dark
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
+        if let img = image {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(p.brand.opacity(0.4), lineWidth: 1.2 * size / 43))
+        } else {
+            MiniMeView(variant: .celebrating, size: size)
+        }
+    }
+}
+
+// MARK: - Athletic share card (300 × 375, rendered via ImageRenderer)
+
+struct SummaryShareCardView: View {
+    let stats: SummaryPeriodStats
+    var miniMeImage: UIImage? = nil
+    var theme: ShareTheme = .dark
+
+    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
+
+    var body: some View {
+        SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
+                          miniMeImage: miniMeImage, theme: theme) {
+                    // Hero distance
+                    SummaryHero(value: stats.distanceStr, unit: stats.distanceUnit,
+                                label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"), theme: theme)
 
                     if let delta = stats.distanceDeltaStr {
                         HStack(spacing: 3) {
@@ -437,39 +482,57 @@ struct SummaryShareCardView: View {
                             .foregroundStyle(p.brand.opacity(0.6))
                             .padding(.bottom, 3)
                     }
-
-                    // Footer
-                    HStack {
-                        Spacer()
-                        Image(systemName: "figure.run")
-                            .font(.system(size: 7))
-                            .foregroundStyle(p.brand.opacity(0.45))
-                    }
-                    .padding(.bottom, 2)
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 13)
-            }
-        }
-        .frame(width: 300, height: 480)
-        .environment(\.colorScheme, theme == .dark ? .dark : .light)
-    }
-
-    @ViewBuilder
-    private var miniMeContent: some View {
-        if let img = miniMeImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 43, height: 43)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(p.brand.opacity(0.4), lineWidth: 1.2))
-        } else {
-            MiniMeView(variant: .celebrating, size: 43)
         }
     }
 
     private func secondaryCell(value: String, label: String, labelColor: Color) -> some View {
+        SummarySecondaryCell(value: value, label: label, labelColor: labelColor, theme: theme)
+    }
+
+    private var cellDivider: some View { SummaryCellDivider(theme: theme) }
+}
+
+// MARK: - 결산 카드 · 묶음 슬라이드 공용 조각 (값을 한 곳에서만 정한다)
+
+/// 큰 숫자(55 콘덴스드) + 단위(18 보라) + 라벨(11)
+struct SummaryHero: View {
+    let value: String
+    var unit: String? = nil
+    let label: String
+    var theme: ShareTheme = .dark
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 5) {
+                Text(value)
+                    .font(.system(size: 55, weight: .black, design: .default).width(.compressed))
+                    .foregroundStyle(p.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                if let unit {
+                    Text(unit)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(p.brand)
+                }
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(p.textSecondary)
+        }
+    }
+}
+
+/// 보조 지표 칸(값 16 · 라벨 11)
+struct SummarySecondaryCell: View {
+    let value: String
+    let label: String
+    let labelColor: Color
+    var theme: ShareTheme = .dark
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
         VStack(alignment: .leading, spacing: 3) {
             Text(value)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -480,11 +543,18 @@ struct SummaryShareCardView: View {
                 .font(.system(size: 11, weight: .medium))
                 .tracking(0.3)
                 .foregroundStyle(labelColor.opacity(0.75))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private var cellDivider: some View {
+struct SummaryCellDivider: View {
+    var theme: ShareTheme = .dark
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
         Rectangle()
             .fill(p.divider)
             .frame(width: 0.5, height: 27)
@@ -497,17 +567,24 @@ struct SummaryShareCardView: View {
 struct SummaryShareCardScreen: View {
     let statsList: [SummaryPeriodStats]
     var miniMeImage: UIImage? = nil
+    /// 묶음 슬라이드 내용 — 있으면 '한 장 / 묶음'을 고를 수 있다(첫 장 = 결산 카드)
+    var recap: PeriodRecap? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var summaryTheme: ShareTheme = .dark
     @State private var previewImages: [UIImage] = []
+    /// 묶음 2번째 장부터(리듬·기록·추세·제목) — 첫 장은 previewImages[0]
+    @State private var slideImages: [UIImage] = []
+    @State private var bundleMode = false
     @State private var isRendering = false
     @State private var activeShare: SingleShareConfig? = nil
 
     private struct SingleShareConfig: Identifiable {
         let id: Int
-        let image: UIImage
+        let images: [UIImage]
     }
+
+    private var bundleImages: [UIImage] { Array(previewImages.prefix(1)) + slideImages }
 
     private var isMonthly: Bool {
         if let first = statsList.first, case .monthly = first.kind { return true }
@@ -521,6 +598,21 @@ struct SummaryShareCardScreen: View {
                 topBar
                 ScrollView {
                     VStack(spacing: 0) {
+                        if recap != nil {
+                            bundleToggle
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 12)
+                        }
+                        if bundleMode, recap != nil {
+                            VStack(spacing: 12) {
+                                bundlePreview
+                                themeToggle
+                                    .padding(.horizontal, 24)
+                                bundleShareButton
+                                    .padding(.horizontal, 24)
+                            }
+                            .padding(.bottom, 32)
+                        } else {
                         ForEach(statsList.indices, id: \.self) { i in
                             VStack(spacing: 12) {
                                 cardPreview(index: i)
@@ -531,6 +623,7 @@ struct SummaryShareCardScreen: View {
                             }
                             .padding(.bottom, 32)
                         }
+                        }
                         Spacer(minLength: 16)
                     }
                     .padding(.top, 20)
@@ -540,7 +633,7 @@ struct SummaryShareCardScreen: View {
         .task { await renderCards() }
         .onChange(of: summaryTheme) { Task { await renderCards() } }
         .sheet(item: $activeShare) { config in
-            ShareSheet(images: [config.image])
+            ShareSheet(images: config.images)
         }
     }
 
@@ -614,7 +707,7 @@ struct SummaryShareCardScreen: View {
         } else if index < previewImages.count {
             let title = statsList[index].kind.title
             Button {
-                activeShare = SingleShareConfig(id: index, image: previewImages[index])
+                activeShare = SingleShareConfig(id: index, images: [previewImages[index]])
             } label: {
                 Label(title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export", ja: "走行距離を書き出す"),
                       systemImage: "square.and.arrow.up")
@@ -642,7 +735,75 @@ struct SummaryShareCardScreen: View {
             if let img = renderer.uiImage { images.append(img) }
         }
         previewImages = images
+        var slides: [UIImage] = []
+        if let recap, let stats = statsList.first {
+            for slide in recap.slides {
+                let view = PeriodRecapSlideView(slide: slide, recap: recap, stats: stats,
+                                                miniMeImage: miniMeImage, theme: summaryTheme)
+                    .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
+                let renderer = ImageRenderer(content: view)
+                renderer.scale = 3
+                if let img = renderer.uiImage { slides.append(img) }
+            }
+        }
+        slideImages = slides
         isRendering = false
+    }
+
+    /// 한 장 | 묶음 N장
+    private var bundleToggle: some View {
+        let L = AppLanguage.shared
+        let n = 1 + (recap?.slides.count ?? 0)
+        return HStack(spacing: 0) {
+            themeSegment(label: L.s("한 장", "Single", ja: "1枚"), selected: !bundleMode) { bundleMode = false }
+            themeSegment(label: L.s("묶음 \(n)장", "Set of \(n)", ja: "まとめ\(n)枚"), selected: bundleMode) { bundleMode = true }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    /// 묶음 미리보기 — 내보낼 이미지 그대로 좌우로 넘긴다(미리보기 = 출력)
+    @ViewBuilder
+    private var bundlePreview: some View {
+        let images = bundleImages
+        if isRendering || images.isEmpty {
+            ProgressView()
+                .tint(Theme.violet)
+                .frame(width: 300, height: 480)
+        } else {
+            TabView {
+                ForEach(images.indices, id: \.self) { i in
+                    Image(uiImage: images[i])
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 300)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .padding(.bottom, 28)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .frame(height: 508)
+        }
+    }
+
+    @ViewBuilder
+    private var bundleShareButton: some View {
+        if !isRendering, !bundleImages.isEmpty {
+            let images = bundleImages
+            Button {
+                activeShare = SingleShareConfig(id: -1, images: images)
+            } label: {
+                Label(AppLanguage.shared.s("\(images.count)장 한꺼번에 내보내기", "Export \(images.count) images",
+                                           ja: "\(images.count)枚まとめて書き出す"),
+                      systemImage: "square.and.arrow.up.on.square")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
     }
 }
 

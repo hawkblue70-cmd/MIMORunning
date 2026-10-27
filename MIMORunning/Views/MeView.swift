@@ -1297,8 +1297,20 @@ struct MeView: View {
             }
         }
         .sheet(item: $selectedSummaryStats) { sel in
-            SummaryShareCardScreen(statsList: [sel.stats], miniMeImage: miniMeStore.image)
+            SummaryShareCardScreen(statsList: [sel.stats], miniMeImage: miniMeStore.image,
+                                   recap: periodRecap(for: sel.stats))
         }
+    }
+
+    /// 공유 묶음 내용 — 대회는 확정 매칭만, VO2는 엔진이 받아 둔 워치 이력
+    private func periodRecap(for stats: SummaryPeriodStats) -> PeriodRecap? {
+        let span: PeriodRecap.Span
+        switch stats.kind {
+        case .monthly(let y, let m): span = .month(year: y, month: m)
+        case .yearly(let y):         span = .year(y)
+        }
+        return PeriodRecap.make(span: span, runs: runActivities, races: Array(raceDetector.matches.values),
+                                vo2Samples: engine.vo2Samples, useMiles: useMiles)
     }
 
     /// 월 | 연 — 바꾸면 보던 기간이 속한 해(월→연)나 그 해의 마지막 달(연→월)로 간다
