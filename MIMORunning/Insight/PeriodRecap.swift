@@ -1,7 +1,7 @@
 import Foundation
 
-/// 기간별 결산 공유 묶음(월·연)의 내용 — 리듬·PR·대회·VO2 추세·기간 제목. 판정은 전부 여기서(규칙, 결정적).
-/// 있는 것만: 장마다 비면 화면 쪽이 그 장을 뺀다. 목표 진행률·달성률·VO2 절댓값 예측은 넣지 않는다.
+/// 기간별 결산 공유 카드(월·연)의 내용 — 리듬·PR·대회·VO2 추세. 판정은 전부 여기서(규칙, 결정적).
+/// 있는 것만: 비면 카드가 그 칸을 뺀다. 목표 진행률·달성률·VO2 절댓값 예측·기간 제목(인사이트)은 넣지 않는다(2026-10-28).
 struct PeriodRecap {
     enum Span: Equatable {
         case month(year: Int, month: Int)
@@ -44,8 +44,6 @@ struct PeriodRecap {
     let prs: [PR]
     let races: [Race]
     let vo2: VO2Trend?
-    let title: String
-    let detail: String
 
     var isYear: Bool { if case .year = span { return true }; return false }
     var runDays: Int { dayKm.count }
@@ -65,21 +63,19 @@ struct PeriodRecap {
         }
     }
 
-    /// runs = 러닝 전체(기간 밖 포함, PR·최장·지난 기간 비교에 씀). 기간에 러닝이 없으면 nil.
+    /// runs = 러닝 전체(기간 밖 포함, PR 판정에 씀). 기간에 러닝이 없으면 nil.
     static func make(span: Span, runs allRuns: [Activity], races: [PersistedRaceMatch],
-                     vo2Samples: [(date: Date, value: Double)], useMiles: Bool, now: Date = Date(),
+                     vo2Samples: [(date: Date, value: Double)], now: Date = Date(),
                      cal: Calendar = InsightEngine.weekCalendar) -> PeriodRecap? {
         let runs = allRuns.filter { $0.type == .running }
-        let (start, end, prevStart): (Date, Date, Date) = {
+        let (start, end): (Date, Date) = {
             switch span {
             case .month(let y, let m):
                 let s = cal.date(from: DateComponents(year: y, month: m, day: 1)) ?? now
-                return (s, cal.date(byAdding: .month, value: 1, to: s) ?? now,
-                        cal.date(byAdding: .month, value: -1, to: s) ?? now)
+                return (s, cal.date(byAdding: .month, value: 1, to: s) ?? now)
             case .year(let y):
                 let s = cal.date(from: DateComponents(year: y, month: 1, day: 1)) ?? now
-                return (s, cal.date(byAdding: .year, value: 1, to: s) ?? now,
-                        cal.date(byAdding: .year, value: -1, to: s) ?? now)
+                return (s, cal.date(byAdding: .year, value: 1, to: s) ?? now)
             }
         }()
         let inPeriod = runs.filter { $0.date >= start && $0.date < end }
@@ -151,62 +147,9 @@ struct PeriodRecap {
             return VO2Trend(points: vo2Pts)
         }()
 
-        // 기간 제목 — 우선순위: 첫 성취 > 기록 향상 > 거리 확장 > 꾸준함 > 거리 증가 > 거리 감소 > 기본
-        let L = AppLanguage.shared
-        let isYear = isYearSpan(span)
-        let prevName = isYear ? L.s("작년", "last year", ja: "昨年") : L.s("지난달", "last month", ja: "先月")
-        var prevKm = 0.0
-        for r in runs where r.date >= prevStart && r.date < start { prevKm += r.distance / 1000 }
-        func fmt(_ km: Double) -> String {
-            useMiles ? String(format: "%.1fmi", km * 0.621371) : String(format: "%.1fkm", km)
-        }
-        let biggestFirst = prs.last { $0.isFirst }
-        let biggestPR = prs.last { !$0.isFirst }
-        let longestEver = runs.filter { $0.date < end }.max { $0.distance < $1.distance }
-        let hadEarlier = runs.contains { $0.date < start }
-
-        let title: String
-        let detail: String
-        if let f = biggestFirst, hadEarlier {
-            title = L.s("문을 연 러닝", "Breaking Through", ja: "扉を開いたラン")
-            detail = L.s("처음으로 \(f.label) 거리를 달렸습니다(\(fmtDuration(f.duration))).",
-                         "Ran \(f.label) distance for the first time (\(fmtDuration(f.duration))).",
-                         ja: "初めて\(f.label)の距離を走りました（\(fmtDuration(f.duration))）。")
-        } else if let p = biggestPR {
-            title = L.s("한계를 미는 러닝", "Pushing the Edge", ja: "限界を押し広げるラン")
-            detail = L.s("\(p.label) 최고 기록 \(fmtDuration(p.duration))을 세웠습니다.",
-                         "Set a \(p.label) best of \(fmtDuration(p.duration)).",
-                         ja: "\(p.label)の自己ベスト\(fmtDuration(p.duration))を出しました。")
-        } else if let lg = longestEver, lg.date >= start, hadEarlier, lg.distance >= 5000 {
-            title = L.s("경계를 넓힌 러닝", "Expanding Boundaries", ja: "境界を広げたラン")
-            detail = L.s("가장 긴 러닝 \(fmt(lg.distance / 1000))를 달렸습니다.",
-                         "Ran your longest ever: \(fmt(lg.distance / 1000)).",
-                         ja: "最長のラン\(fmt(lg.distance / 1000))を走りました。")
-        } else if bestWeeks >= 4 {
-            title = L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン")
-            detail = L.s("\(bestWeeks)주 연속 달렸습니다.", "Ran \(bestWeeks) weeks in a row.",
-                         ja: "\(bestWeeks)週連続で走りました。")
-        } else if prevKm > 0, totalKm >= prevKm * 1.1 {
-            title = L.s("자산 축적 러닝", "Banking Miles", ja: "財産を積み上げるラン")
-            detail = L.s("\(prevName)보다 \(fmt(totalKm - prevKm)) 더 달렸습니다.",
-                         "Ran \(fmt(totalKm - prevKm)) more than \(prevName).",
-                         ja: "\(prevName)より\(fmt(totalKm - prevKm))多く走りました。")
-        } else if prevKm > 0, totalKm <= prevKm * 0.7 {
-            title = L.s("숨 고르는 러닝", "Catching Your Breath", ja: "息を整えるラン")
-            detail = L.s("총 \(fmt(totalKm))로 \(prevName)보다 \(fmt(prevKm - totalKm)) 적습니다.",
-                         "\(fmt(totalKm)) in total, \(fmt(prevKm - totalKm)) less than \(prevName).",
-                         ja: "合計\(fmt(totalKm))で、\(prevName)より\(fmt(prevKm - totalKm))少ないです。")
-        } else {
-            title = L.s("쌓이는 러닝", "Stacking Up", ja: "積み重なるラン")
-            detail = L.s("\(inPeriod.count)회 달려 총 \(fmt(totalKm))입니다.",
-                         "\(inPeriod.count) runs, \(fmt(totalKm)) in total.",
-                         ja: "\(inPeriod.count)回走って合計\(fmt(totalKm))です。")
-        }
-
         return PeriodRecap(span: span, start: start, end: end, dayKm: dayKm, runCount: inPeriod.count,
                            totalKm: totalKm, longestDayStreak: bestDays, weekKm: weeks,
-                           longestWeekStreak: bestWeeks, prs: prs, races: raceRows, vo2: vo2,
-                           title: title, detail: detail)
+                           longestWeekStreak: bestWeeks, prs: prs, races: raceRows, vo2: vo2)
     }
 
     private static func isYearSpan(_ s: Span) -> Bool { if case .year = s { return true }; return false }

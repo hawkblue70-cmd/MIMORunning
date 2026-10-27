@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 // MARK: - Period stats model
 
@@ -155,41 +154,6 @@ struct SummaryPeriodStats {
     }
 
     var isEmpty: Bool { activities.isEmpty }
-
-    var dailyDistanceEntries: [(day: Int, value: Double)] {
-        guard case .monthly(let year, let month) = kind else { return [] }
-        let cal = Calendar.current
-        var comps = DateComponents()
-        comps.year = year; comps.month = month; comps.day = 1
-        guard let start = cal.date(from: comps),
-              let range = cal.range(of: .day, in: .month, for: start) else { return [] }
-        var kmByDay: [Date: Double] = [:]
-        for a in activities where a.type == .running {
-            let dayStart = cal.startOfDay(for: a.date)
-            let dc = cal.dateComponents([.year, .month], from: dayStart)
-            if dc.year == year && dc.month == month {
-                kmByDay[dayStart, default: 0] += a.distance / 1000
-            }
-        }
-        let factor = useMiles ? 0.621371 : 1.0
-        return range.compactMap { d -> (Int, Double)? in
-            guard let date = cal.date(byAdding: .day, value: d - 1, to: start) else { return nil }
-            return (d, (kmByDay[date] ?? 0) * factor)
-        }
-    }
-
-    var monthlyDistanceEntries: [(month: Int, value: Double)] {
-        guard case .yearly(let year) = kind else { return [] }
-        let cal = Calendar.current
-        var kmByMonth: [Int: Double] = [:]
-        for a in activities where a.type == .running {
-            let mo = cal.component(.month, from: a.date)
-            let yr = cal.component(.year, from: a.date)
-            if yr == year { kmByMonth[mo, default: 0] += a.distance / 1000 }
-        }
-        let factor = useMiles ? 0.621371 : 1.0
-        return (1...12).map { m in (m, (kmByMonth[m] ?? 0) * factor) }
-    }
 }
 
 // MARK: - Palette
@@ -273,16 +237,14 @@ struct SummaryCardPalette {
     )
 }
 
-// MARK: - Common chrome (결산 카드 · 결산 묶음 슬라이드 공용)
+// MARK: - Common chrome
 
 /// 결산 카드 틀 — 384×480(4:5, 인스타 피드 묶음이 잘리지 않게 2026-10-28 폭 300→384, 높이·글자 크기는 그대로), 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
-/// 결산 카드와 묶음 슬라이드가 모두 이 틀 하나를 쓴다(데이터 표시 통일성 — 장마다 머리를 따로 그리지 않는다).
+/// 결산 카드(한 장에 모두)의 틀.
 struct SummaryCardChrome<Content: View>: View {
     let title: String
     let subtitle: String
     var miniMeImage: UIImage? = nil
-    /// 미니미를 본문에서 크게 쓰는 장(제목 장)은 머리 미니미를 뺀다
-    var showsMiniMe: Bool = true
     var theme: ShareTheme = .dark
     @ViewBuilder let content: () -> Content
 
@@ -305,9 +267,7 @@ struct SummaryCardChrome<Content: View>: View {
                     HStack(alignment: .top) {
                         MIMOWordmark(size: 14, strokeMIMO: theme == .light)
                         Spacer()
-                        if showsMiniMe {
-                            SummaryMiniMe(image: miniMeImage, size: 43, theme: theme)
-                        }
+                        SummaryMiniMe(image: miniMeImage, size: 43, theme: theme)
                     }
                     .frame(height: 43, alignment: .top)
                     .padding(.top, 12)
@@ -371,130 +331,7 @@ struct SummaryMiniMe: View {
     }
 }
 
-// MARK: - Period summary card (384 × 480, rendered via ImageRenderer)
-
-struct SummaryShareCardView: View {
-    let stats: SummaryPeriodStats
-    var miniMeImage: UIImage? = nil
-    var theme: ShareTheme = .dark
-
-    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
-
-    var body: some View {
-        SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
-                          miniMeImage: miniMeImage, theme: theme) {
-                    // Hero distance
-                    SummaryHero(value: stats.distanceStr, unit: stats.distanceUnit,
-                                label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"), theme: theme)
-
-                    if let delta = stats.distanceDeltaStr {
-                        HStack(spacing: 3) {
-                            Image(systemName: stats.distanceDeltaIsUp ? "arrow.up.right" : "arrow.down.right")
-                                .font(.system(size: 8, weight: .bold))
-                            Text(delta)
-                                .font(.system(size: 9, weight: .semibold))
-                        }
-                        .foregroundStyle(p.neutral)
-                        .padding(.top, 1)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    // Thin separator
-                    Rectangle()
-                        .fill(p.divider)
-                        .frame(height: 0.5)
-                        .padding(.top, 10)
-                        .padding(.bottom, 8)
-
-                    // Secondary stats
-                    HStack(spacing: 0) {
-                        secondaryCell(value: stats.durationStr,
-                                      label: AppLanguage.shared.s("운동 시간", "TIME", ja: "運動時間"),
-                                      labelColor: p.accentGold)
-                        cellDivider
-                        secondaryCell(value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
-                                      label: AppLanguage.shared.s("러닝 횟수", "RUNS", ja: "ラン回数"),
-                                      labelColor: p.brand)
-                        if let pace = stats.avgPaceStr {
-                            cellDivider
-                            secondaryCell(value: pace,
-                                          label: AppLanguage.shared.s("평균 페이스", "AVG PACE", ja: "平均ペース"),
-                                          labelColor: p.accentTeal)
-                        }
-                    }
-
-                    // Longest run
-                    if let longest = stats.longestStr {
-                        Rectangle()
-                            .fill(p.divider)
-                            .frame(height: 0.5)
-                            .padding(.vertical, 9)
-                        HStack(spacing: 5) {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(.system(size: 8))
-                                .foregroundStyle(p.brand)
-                            Text(AppLanguage.shared.s("최장 거리", "LONGEST", ja: "最長距離"))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(p.textSecondary)
-                            Spacer()
-                            Text(longest)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(p.textPrimary)
-                        }
-                    }
-
-                    // Distance chart: daily (월별 결산) / monthly (연간 결산)
-                    let dailyData   = stats.dailyDistanceEntries
-                    let monthData   = stats.monthlyDistanceEntries
-                    let showDaily   = dailyData.contains(where: { $0.value > 0 })
-                    let showMonthly = monthData.contains(where: { $0.value > 0 })
-                    if showDaily || showMonthly {
-                        Rectangle()
-                            .fill(p.divider)
-                            .frame(height: 0.5)
-                            .padding(.top, 10)
-                            .padding(.bottom, 6)
-                        HStack {
-                            Text(showDaily
-                                 ? AppLanguage.shared.s("일간 거리", "DAILY DIST", ja: "日別距離")
-                                 : AppLanguage.shared.s("월간 거리", "MONTHLY DIST", ja: "月別距離"))
-                                .font(.system(size: 8, weight: .semibold))
-                                .tracking(0.6)
-                                .foregroundStyle(p.textSecondary)
-                            Spacer()
-                            Text(stats.distanceUnit.uppercased())
-                                .font(.system(size: 7, weight: .medium))
-                                .foregroundStyle(p.axisLabel)
-                        }
-                        .padding(.bottom, 3)
-                        if showDaily {
-                            SummaryDailyDistanceChart(data: dailyData, palette: p)
-                        } else {
-                            SummaryMonthlyDistanceChart(data: monthData, palette: p)
-                        }
-                    }
-
-                    Spacer(minLength: 0)
-
-                    if let ytd = stats.ytdStr {
-                        Text(ytd)
-                            .font(.system(size: 9, weight: .medium))
-                            .tracking(0.5)
-                            .foregroundStyle(p.brand.opacity(0.6))
-                            .padding(.bottom, 3)
-                    }
-        }
-    }
-
-    private func secondaryCell(value: String, label: String, labelColor: Color) -> some View {
-        SummarySecondaryCell(value: value, label: label, labelColor: labelColor, theme: theme)
-    }
-
-    private var cellDivider: some View { SummaryCellDivider(theme: theme) }
-}
-
-// MARK: - 결산 카드 · 묶음 슬라이드 공용 조각 (값을 한 곳에서만 정한다)
+// MARK: - 결산 카드 공용 조각
 
 /// 큰 숫자(55 콘덴스드) + 단위(18 보라) + 라벨(11)
 struct SummaryHero: View {
@@ -527,72 +364,23 @@ struct SummaryHero: View {
 }
 
 /// 보조 지표 칸(값 16 · 라벨 11)
-struct SummarySecondaryCell: View {
-    let value: String
-    let label: String
-    let labelColor: Color
-    var theme: ShareTheme = .dark
-
-    var body: some View {
-        let p: SummaryCardPalette = theme == .light ? .light : .dark
-        VStack(alignment: .leading, spacing: 3) {
-            Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(p.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .tracking(0.3)
-                .foregroundStyle(labelColor.opacity(0.75))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct SummaryCellDivider: View {
-    var theme: ShareTheme = .dark
-
-    var body: some View {
-        let p: SummaryCardPalette = theme == .light ? .light : .dark
-        Rectangle()
-            .fill(p.divider)
-            .frame(width: 0.5, height: 27)
-            .padding(.horizontal, 8)
-    }
-}
 
 // MARK: - Share screen (presented as sheet)
 
+/// 결산 공유 — '한 장에 모두' 카드 하나만(2026-10-28 사용자 결정: 한 장·묶음 삭제). 미리보기 = 내보낼 이미지.
 struct SummaryShareCardScreen: View {
-    let statsList: [SummaryPeriodStats]
+    let stats: SummaryPeriodStats
+    let recap: PeriodRecap?
     var miniMeImage: UIImage? = nil
-    /// 묶음 슬라이드 내용 — 있으면 '한 장 / 묶음'을 고를 수 있다(첫 장 = 결산 카드)
-    var recap: PeriodRecap? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var summaryTheme: ShareTheme = .dark
-    @State private var previewImages: [UIImage] = []
-    /// 묶음 2번째 장부터(리듬·기록·추세·제목) — 첫 장은 previewImages[0]
-    @State private var slideImages: [UIImage] = []
-    /// 한 장(결산 카드) · 묶음(여러 장) · 한 장에 모두(묶음 내용을 4:5 한 장에)
-    private enum ShareMode { case single, bundle, allInOne }
-    @State private var shareMode: ShareMode = .single
-    @State private var allInOneImage: UIImage? = nil
+    @State private var image: UIImage? = nil
     @State private var isRendering = false
-    @State private var activeShare: SingleShareConfig? = nil
-
-    private struct SingleShareConfig: Identifiable {
-        let id: Int
-        let images: [UIImage]
-    }
-
-    private var bundleImages: [UIImage] { Array(previewImages.prefix(1)) + slideImages }
+    @State private var showShare = false
 
     private var isMonthly: Bool {
-        if let first = statsList.first, case .monthly = first.kind { return true }
+        if case .monthly = stats.kind { return true }
         return false
     }
 
@@ -602,52 +390,22 @@ struct SummaryShareCardScreen: View {
             VStack(spacing: 0) {
                 topBar
                 ScrollView {
-                    VStack(spacing: 0) {
-                        if recap != nil {
-                            bundleToggle
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 12)
-                        }
-                        if shareMode == .allInOne, recap != nil {
-                            VStack(spacing: 12) {
-                                allInOnePreview
-                                themeToggle
-                                    .padding(.horizontal, 24)
-                                allInOneShareButton
-                                    .padding(.horizontal, 24)
-                            }
-                            .padding(.bottom, 32)
-                        } else if shareMode == .bundle, recap != nil {
-                            VStack(spacing: 12) {
-                                bundlePreview
-                                themeToggle
-                                    .padding(.horizontal, 24)
-                                bundleShareButton
-                                    .padding(.horizontal, 24)
-                            }
-                            .padding(.bottom, 32)
-                        } else {
-                        ForEach(statsList.indices, id: \.self) { i in
-                            VStack(spacing: 12) {
-                                cardPreview(index: i)
-                                themeToggle
-                                    .padding(.horizontal, 24)
-                                cardShareButton(index: i)
-                                    .padding(.horizontal, 24)
-                            }
-                            .padding(.bottom, 32)
-                        }
-                        }
-                        Spacer(minLength: 16)
+                    VStack(spacing: 12) {
+                        preview
+                        themeToggle
+                            .padding(.horizontal, 24)
+                        shareButton
+                            .padding(.horizontal, 24)
                     }
                     .padding(.top, 20)
+                    .padding(.bottom, 32)
                 }
             }
         }
-        .task { await renderCards() }
-        .onChange(of: summaryTheme) { Task { await renderCards() } }
-        .sheet(item: $activeShare) { config in
-            ShareSheet(images: config.images)
+        .task { await render() }
+        .onChange(of: summaryTheme) { Task { await render() } }
+        .sheet(isPresented: $showShare) {
+            if let image { ShareSheet(images: [image]) }
         }
     }
 
@@ -671,20 +429,22 @@ struct SummaryShareCardScreen: View {
     }
 
     @ViewBuilder
-    private func cardPreview(index: Int) -> some View {
-        if index < previewImages.count {
-            Image(uiImage: previewImages[index])
+    private var preview: some View {
+        if !isRendering, let image {
+            Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: 300)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
+        } else if recap == nil {
+            Text(AppLanguage.shared.s("이 기간에 기록된 러닝이 없습니다", "No runs for this period", ja: "この期間に記録されたランはありません"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 300, height: 375)
         } else {
-            // 렌더 전 — 출력 크기(384×480)를 미리보기 폭 300에 맞춰 줄여 보인다
-            SummaryShareCardView(stats: statsList[index], miniMeImage: miniMeImage, theme: summaryTheme)
-                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .scaleEffect(300 / 384)
+            ProgressView()
+                .tint(Theme.violet)
                 .frame(width: 300, height: 375)
         }
     }
@@ -714,18 +474,17 @@ struct SummaryShareCardScreen: View {
     }
 
     @ViewBuilder
-    private func cardShareButton(index: Int) -> some View {
+    private var shareButton: some View {
         if isRendering {
             ProgressView()
                 .tint(Theme.violet)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-        } else if index < previewImages.count {
-            let title = statsList[index].kind.title
+        } else if image != nil {
             Button {
-                activeShare = SingleShareConfig(id: index, images: [previewImages[index]])
+                showShare = true
             } label: {
-                Label(title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export", ja: "走行距離を書き出す"),
+                Label(stats.kind.title + " " + AppLanguage.shared.s("러닝 마일리지 내보내기", "Running Mileage Export", ja: "走行距離を書き出す"),
                       systemImage: "square.and.arrow.up")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -738,215 +497,16 @@ struct SummaryShareCardScreen: View {
     }
 
     @MainActor
-    private func renderCards() async {
+    private func render() async {
+        guard let recap else { return }
         isRendering = true
-        previewImages = []
+        image = nil
         await Task.yield()
-        var images: [UIImage] = []
-        for stats in statsList {
-            let card = SummaryShareCardView(stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
-                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
-            let renderer = ImageRenderer(content: card)
-            renderer.scale = 3
-            if let img = renderer.uiImage { images.append(img) }
-        }
-        previewImages = images
-        var slides: [UIImage] = []
-        if let recap, let stats = statsList.first {
-            for slide in recap.slides {
-                let view = PeriodRecapSlideView(slide: slide, recap: recap, stats: stats,
-                                                miniMeImage: miniMeImage, theme: summaryTheme)
-                    .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
-                let renderer = ImageRenderer(content: view)
-                renderer.scale = 3
-                if let img = renderer.uiImage { slides.append(img) }
-            }
-        }
-        slideImages = slides
-        allInOneImage = nil
-        if let recap, let stats = statsList.first {
-            let view = PeriodRecapAllInOneCard(recap: recap, stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
-                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
-            let renderer = ImageRenderer(content: view)
-            renderer.scale = 3
-            allInOneImage = renderer.uiImage
-        }
+        let view = PeriodRecapAllInOneCard(recap: recap, stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
+            .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 3
+        image = renderer.uiImage
         isRendering = false
-    }
-
-    /// 한 장 | 묶음 N장 | 한 장에 모두
-    private var bundleToggle: some View {
-        let L = AppLanguage.shared
-        let n = 1 + (recap?.slides.count ?? 0)
-        return HStack(spacing: 0) {
-            themeSegment(label: L.s("한 장", "Single", ja: "1枚"), selected: shareMode == .single) { shareMode = .single }
-            themeSegment(label: L.s("묶음 \(n)장", "Set of \(n)", ja: "まとめ\(n)枚"), selected: shareMode == .bundle) { shareMode = .bundle }
-            themeSegment(label: L.s("한 장에 모두", "All in one", ja: "1枚に全部"), selected: shareMode == .allInOne) { shareMode = .allInOne }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-    }
-
-    /// 묶음 미리보기 — 내보낼 이미지 그대로 좌우로 넘긴다(미리보기 = 출력)
-    @ViewBuilder
-    private var bundlePreview: some View {
-        let images = bundleImages
-        if isRendering || images.isEmpty {
-            ProgressView()
-                .tint(Theme.violet)
-                .frame(width: 300, height: 375)
-        } else {
-            TabView {
-                ForEach(images.indices, id: \.self) { i in
-                    Image(uiImage: images[i])
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 300)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .padding(.bottom, 28)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 403)
-        }
-    }
-
-    @ViewBuilder
-    private var allInOnePreview: some View {
-        if !isRendering, let img = allInOneImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 300)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
-        } else {
-            ProgressView()
-                .tint(Theme.violet)
-                .frame(width: 300, height: 375)
-        }
-    }
-
-    @ViewBuilder
-    private var allInOneShareButton: some View {
-        if !isRendering, let img = allInOneImage {
-            Button {
-                activeShare = SingleShareConfig(id: -2, images: [img])
-            } label: {
-                Label(AppLanguage.shared.s("한 장에 모두 내보내기", "Export all-in-one", ja: "1枚にまとめて書き出す"),
-                      systemImage: "square.and.arrow.up")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var bundleShareButton: some View {
-        if !isRendering, !bundleImages.isEmpty {
-            let images = bundleImages
-            Button {
-                activeShare = SingleShareConfig(id: -1, images: images)
-            } label: {
-                Label(AppLanguage.shared.s("\(images.count)장 한꺼번에 내보내기", "Export \(images.count) images",
-                                           ja: "\(images.count)枚まとめて書き出す"),
-                      systemImage: "square.and.arrow.up.on.square")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Theme.violet)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-        }
-    }
-}
-
-// MARK: - Monthly distance chart (yearly summary card)
-
-private struct SummaryMonthlyDistanceChart: View {
-    let data: [(month: Int, value: Double)]
-    let palette: SummaryCardPalette
-
-    private static let monthAbbr = ["", "J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
-
-    var body: some View {
-        Chart(data.indices, id: \.self) { i in
-            BarMark(
-                x: .value("월", data[i].month),
-                y: .value("거리", data[i].value),
-                width: .fixed(14)
-            )
-            .foregroundStyle(data[i].value > 0 ? palette.monthlyBarColor.gradient : Color.clear.gradient)
-            .cornerRadius(2)
-        }
-        .chartXScale(domain: 1...12)
-        .chartXAxis {
-            AxisMarks(values: [1, 3, 5, 7, 9, 11]) { value in
-                AxisValueLabel {
-                    let m = value.as(Int.self) ?? 0
-                    Text(m > 0 && m < Self.monthAbbr.count ? Self.monthAbbr[m] : "")
-                        .font(.system(size: 7))
-                        .foregroundStyle(palette.axisLabel)
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 2)) { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.system(size: 7))
-                        .foregroundStyle(palette.axisLabel)
-                }
-                AxisGridLine()
-                    .foregroundStyle(palette.gridLine)
-            }
-        }
-        .frame(height: 100)
-    }
-}
-
-// MARK: - Daily distance chart (summary card)
-
-private struct SummaryDailyDistanceChart: View {
-    let data: [(day: Int, value: Double)]
-    let palette: SummaryCardPalette
-
-    var body: some View {
-        Chart(data.indices, id: \.self) { i in
-            BarMark(
-                x: .value("일", data[i].day),
-                y: .value("거리", data[i].value),
-                width: .fixed(5)
-            )
-            .foregroundStyle(data[i].value > 0 ? palette.monthlyBarColor.gradient : Color.clear.gradient)
-            .cornerRadius(2)
-        }
-        .chartXScale(domain: 1...31)
-        .chartXAxis {
-            AxisMarks(values: [1, 7, 14, 21, 28]) { value in
-                AxisValueLabel {
-                    Text("\(value.as(Int.self) ?? 0)")
-                        .font(.system(size: 7))
-                        .foregroundStyle(palette.axisLabel)
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 2)) { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.system(size: 7))
-                        .foregroundStyle(palette.axisLabel)
-                }
-                AxisGridLine()
-                    .foregroundStyle(palette.gridLine)
-            }
-        }
-        .frame(height: 100)
     }
 }
