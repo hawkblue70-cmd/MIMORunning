@@ -52,10 +52,15 @@ struct MeView: View {
     /// 대회 검색 시트를 열 때의 예정 대회 수 — 닫을 때 새로 등록했을 때만 예정으로 전환
     @State private var plannedCountAtSearch = 0
     @State private var shoeKmCache: [UUID: Double] = [:]
+    /// 기간별 결산 — 한 창에서 월/연을 고르고 ‹ ›로 넘긴다(2026-10-28 사용자 요청, 전엔 월 3장·연 2장 나열 + 접힘).
+    /// 월 = 이번 달 포함 최근 6개월, 연 = 올해 포함 최근 3년. 첫 러닝 이전 기간은 만들지 않는다. 인덱스 0 = 가장 최근.
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
-    /// 기간별 결산 펼침 — 기본 접힘(나 탭이 카드 다섯 장으로 길어지지 않게, 2026-09-29 사용자 요청)
-    @State private var statsExpanded = false
     @State private var cachedYearStats: [SummaryPeriodStats] = []
+    @State private var summaryIsYear = false
+    @State private var summaryMonthIndex = 0
+    @State private var summaryYearIndex = 0
+    /// 넘김 방향(전환 애니메이션용) — true = 최근 쪽으로
+    @State private var summaryForward = true
     @State private var lastStatsCacheKey: String = ""
     @State private var cachedMonthFormMetrics: [String: FormMetricsData] = [:]
     @AppStorage("distanceUnitMiles") private var useMiles = false
@@ -183,8 +188,19 @@ struct MeView: View {
         let key = "\(manager.activities.count)-\(useMiles)"
         guard key != lastStatsCacheKey else { return }
         lastStatsCacheKey = key
-        cachedMonthStats = [periodStats(monthOffset: 0), periodStats(monthOffset: 1), periodStats(monthOffset: 2)]
-        cachedYearStats  = [yearStats(yearOffset: 0), yearStats(yearOffset: 1)]
+        let cal = Calendar.current
+        let now = Date()
+        var monthCount = 1, yearCount = 1
+        if let first = runActivities.map(\.date).min() {
+            let fy = cal.component(.year, from: first), fm = cal.component(.month, from: first)
+            let cy = cal.component(.year, from: now),   cm = cal.component(.month, from: now)
+            monthCount = min(6, max(1, (cy - fy) * 12 + (cm - fm) + 1))
+            yearCount  = min(3, max(1, cy - fy + 1))
+        }
+        cachedMonthStats = (0..<monthCount).map { periodStats(monthOffset: $0) }
+        cachedYearStats  = (0..<yearCount).map { yearStats(yearOffset: $0) }
+        summaryMonthIndex = min(summaryMonthIndex, monthCount - 1)
+        summaryYearIndex  = min(summaryYearIndex,  yearCount - 1)
         cachedMonthFormMetrics = [:]  // 데이터 변경 시 폼 지표도 무효화
     }
 
@@ -1206,52 +1222,148 @@ struct MeView: View {
     // MARK: - Stats section
 
     private var statsSection: some View {
-        let s0 = cachedMonthStats.count > 0 ? cachedMonthStats[0] : periodStats(monthOffset: 0)
-        let s1 = cachedMonthStats.count > 1 ? cachedMonthStats[1] : periodStats(monthOffset: 1)
-        let s2 = cachedMonthStats.count > 2 ? cachedMonthStats[2] : periodStats(monthOffset: 2)
-        let y0 = cachedYearStats.count > 0  ? cachedYearStats[0]  : yearStats(yearOffset: 0)
-        let y1 = cachedYearStats.count > 1  ? cachedYearStats[1]  : yearStats(yearOffset: 1)
+        let L = AppLanguage.shared
+        let list = summaryIsYear
+            ? (cachedYearStats.isEmpty ? [yearStats(yearOffset: 0)] : cachedYearStats)
+            : (cachedMonthStats.isEmpty ? [periodStats(monthOffset: 0)] : cachedMonthStats)
+        let index = min(summaryIsYear ? summaryYearIndex : summaryMonthIndex, list.count - 1)
+        let stats = list[index]
+        // 화면 순서는 왼쪽 = 과거 — list는 0 = 최근이라 '이전'은 인덱스 +1
+        let canOlder = index < list.count - 1
+        let canNewer = index > 0
         return VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(.easeOut(duration: 0.2)) { statsExpanded.toggle() }
-            } label: {
-                HStack {
-                    Text(AppLanguage.shared.s("기간별 결산", "Period Summary", ja: "期間別のまとめ"))
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .rotationEffect(.degrees(statsExpanded ? 180 : 0))
-                }
-                .contentShape(Rectangle())
+            HStack {
+                Text(L.s("기간별 결산", "Period Summary", ja: "期間別のまとめ"))
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                summaryModePicker
             }
+            .padding(.horizontal, 16)
+
+            HStack {
+                Button { moveSummary(by: 1, count: list.count) } label: {
+                    Image(systemName: "chevron.left").frame(width: 32, height: 28)
+                }
+                .disabled(!canOlder)
+                .opacity(canOlder ? 1 : 0.25)
+                .accessibilityLabel(summaryIsYear ? L.s("이전 연도", "Previous year", ja: "前の年")
+                                                  : L.s("이전 달", "Previous month", ja: "前の月"))
+                Spacer()
+                Text(stats.kind.title)
+                    .monospacedDigit()
+                Spacer()
+                Button { moveSummary(by: -1, count: list.count) } label: {
+                    Image(systemName: "chevron.right").frame(width: 32, height: 28)
+                }
+                .disabled(!canNewer)
+                .opacity(canNewer ? 1 : 0.25)
+                .accessibilityLabel(summaryIsYear ? L.s("다음 연도", "Next year", ja: "次の年")
+                                                  : L.s("다음 달", "Next month", ja: "次の月"))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
-            .accessibilityLabel(AppLanguage.shared.s(statsExpanded ? "기간별 결산 접기" : "기간별 결산 펼치기",
-                                                     statsExpanded ? "Collapse period summary" : "Expand period summary",
-                                                     ja: statsExpanded ? "期間別のまとめを閉じる" : "期間別のまとめを開く"))
 
-            if statsExpanded {
-            SummarySectionCard(stats: s0, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s0.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s0) }
-                .padding(.horizontal, 16)
-            SummarySectionCard(stats: s1, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s1.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s1) }
-                .padding(.horizontal, 16)
-            SummarySectionCard(stats: s2, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[s2.kind.title]) { selectedSummaryStats = SelectedSummaryStats(stats: s2) }
-                .padding(.horizontal, 16)
-            SummarySectionCard(stats: y0, manager: manager) { selectedSummaryStats = SelectedSummaryStats(stats: y0) }
-                .padding(.horizontal, 16)
-            SummarySectionCard(stats: y1, manager: manager) { selectedSummaryStats = SelectedSummaryStats(stats: y1) }
-                .padding(.horizontal, 16)
+            SummarySectionCard(stats: stats, manager: manager,
+                               preloadedFormMetrics: cachedMonthFormMetrics[stats.kind.title]) {
+                selectedSummaryStats = SelectedSummaryStats(stats: stats)
+            }
+            .id(stats.kind.title)
+            .transition(.push(from: summaryForward ? .trailing : .leading))
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24).onEnded { v in
+                    let dx = v.translation.width
+                    // 세로 스크롤과 구분 — 가로로 충분히, 세로보다 확실히 클 때만(대회 기록 연도 넘김과 같은 기준)
+                    guard abs(dx) > 60, abs(dx) > abs(v.translation.height) * 1.5 else { return }
+                    moveSummary(by: dx < 0 ? -1 : 1, count: list.count)
+                }
+            )
+
+            if list.count > 1 {
+                HStack(spacing: 6) {
+                    // 왼쪽 = 과거 순서로 점을 찍는다
+                    ForEach((0..<list.count).reversed(), id: \.self) { i in
+                        Circle()
+                            .fill(i == index ? Theme.violet : Color.secondary.opacity(0.35))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
             }
         }
         .sheet(item: $selectedSummaryStats) { sel in
             SummaryShareCardScreen(statsList: [sel.stats], miniMeImage: miniMeStore.image)
         }
+    }
+
+    /// 월 | 연 — 바꾸면 보던 기간이 속한 해(월→연)나 그 해의 마지막 달(연→월)로 간다
+    private var summaryModePicker: some View {
+        let L = AppLanguage.shared
+        return HStack(spacing: 2) {
+            ForEach([false, true], id: \.self) { isYear in
+                let selected = summaryIsYear == isYear
+                Button {
+                    guard !selected else { return }
+                    switchSummaryMode(toYear: isYear)
+                } label: {
+                    Text(isYear ? L.s("연", "Year", ja: "年") : L.s("월", "Month", ja: "月"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(selected ? .white : .secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(selected ? Theme.violet : Color.clear)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Color.white.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    /// d = +1 → 과거 쪽, −1 → 최근 쪽 (list 인덱스 0 = 최근)
+    private func moveSummary(by d: Int, count: Int) {
+        let cur = summaryIsYear ? summaryYearIndex : summaryMonthIndex
+        let j = cur + d
+        guard j >= 0, j < count else { return }
+        // 방향을 먼저 반영한 뒤 다음 틱에 넘긴다 — 대회 기록 연도 넘김과 같은 이유(떠나는 카드 방향)
+        summaryForward = d < 0
+        DispatchQueue.main.async {
+            withAnimation(.snappy) {
+                if summaryIsYear { summaryYearIndex = j } else { summaryMonthIndex = j }
+            }
+        }
+    }
+
+    private func switchSummaryMode(toYear: Bool) {
+        let cal = Calendar.current
+        let now = Date()
+        let cy = cal.component(.year, from: now), cm = cal.component(.month, from: now)
+        if toYear {
+            let y: Int = {
+                guard cachedMonthStats.indices.contains(summaryMonthIndex),
+                      case .monthly(let y, _) = cachedMonthStats[summaryMonthIndex].kind else { return cy }
+                return y
+            }()
+            summaryYearIndex = max(0, min(cy - y, cachedYearStats.count - 1))
+        } else {
+            let y: Int = {
+                guard cachedYearStats.indices.contains(summaryYearIndex),
+                      case .yearly(let y) = cachedYearStats[summaryYearIndex].kind else { return cy }
+                return y
+            }()
+            // 그 해의 마지막 달(올해면 이번 달) — 6개월 범위 밖이면 가장 오래된 달
+            let offset = y == cy ? 0 : (cy - y) * 12 + (cm - 12)
+            summaryMonthIndex = max(0, min(offset, cachedMonthStats.count - 1))
+        }
+        summaryForward = true
+        withAnimation(.snappy) { summaryIsYear = toYear }
     }
 
     // MARK: - Shoes section
@@ -1676,14 +1788,10 @@ private struct SummarySectionCard: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header row
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(stats.kind.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text(stats.kind.subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.violet)
-                }
+                // 기간 이름(2026년 10월)은 위 ‹ › 줄에 있다 — 여기선 '이번 달 결산' 같은 상대 이름만
+                Text(stats.kind.subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.violet)
                 Spacer()
                 Button(action: onShare) {
                     HStack(spacing: 4) {
