@@ -56,13 +56,15 @@ struct MeView: View {
     /// 월 = 이번 달 포함 최근 6개월, 연 = 올해 포함 최근 3년. 첫 러닝 이전 기간은 만들지 않는다. 인덱스 0 = 가장 최근.
     @State private var cachedMonthStats: [SummaryPeriodStats] = []
     @State private var cachedYearStats: [SummaryPeriodStats] = []
+    /// 기간 이름 → 결산 카드 내용(리듬·PR·대회·VO2). 기록·대회 확정·VO2 도착 때 다시 만든다.
+    @State private var cachedRecaps: [String: PeriodRecap] = [:]
     @State private var summaryIsYear = false
     @State private var summaryMonthIndex = 0
     @State private var summaryYearIndex = 0
     /// 넘김 방향(전환 애니메이션용) — true = 최근 쪽으로
     @State private var summaryForward = true
     @State private var lastStatsCacheKey: String = ""
-    @State private var cachedMonthFormMetrics: [String: FormMetricsData] = [:]
+    @State private var cachedMonthFormMetrics: [String: SummaryFormMetrics] = [:]
     @AppStorage("distanceUnitMiles") private var useMiles = false
     @AppStorage("garminNoticeDismissed") private var garminNoticeDismissed = false
     @AppStorage("showRunning")  private var showRunning  = true
@@ -202,6 +204,15 @@ struct MeView: View {
         summaryMonthIndex = min(summaryMonthIndex, monthCount - 1)
         summaryYearIndex  = min(summaryYearIndex,  yearCount - 1)
         cachedMonthFormMetrics = [:]  // 데이터 변경 시 폼 지표도 무효화
+        refreshRecaps()
+    }
+
+    private func refreshRecaps() {
+        var out: [String: PeriodRecap] = [:]
+        for st in cachedMonthStats + cachedYearStats {
+            if let r = periodRecap(for: st) { out[st.kind.title] = r }
+        }
+        cachedRecaps = out
     }
 
     // 3지표를 디스크 캐시에서 1회만 읽어 월별 폼 지표 사전 계산
@@ -214,7 +225,7 @@ struct MeView: View {
         async let strFetch = manager.fetchMetricHistory(.strideLength, from: yearAgo)
         let (cad, pwr, str) = await (cadFetch, pwrFetch, strFetch)
 
-        var result: [String: FormMetricsData] = [:]
+        var result: [String: SummaryFormMetrics] = [:]
         let cal = Calendar.current
 
         func avg(_ pts: [(date: Date, value: Double)], from s: Date, to e: Date) -> Double? {
@@ -228,7 +239,7 @@ struct MeView: View {
             let start = cal.date(from: DateComponents(year: y, month: m)) ?? Date()
             let end   = cal.date(byAdding: .month, value: 1,  to: start) ?? Date()
             let prev  = cal.date(byAdding: .month, value: -1, to: start) ?? Date()
-            result[stats.kind.title] = FormMetricsData(
+            result[stats.kind.title] = SummaryFormMetrics(
                 cadence:          avg(cad, from: start, to: end),
                 prevCadence:      avg(cad, from: prev,  to: start),
                 power:            avg(pwr, from: start, to: end),
@@ -321,6 +332,8 @@ struct MeView: View {
         }
         .onChange(of: allStories.count) { refreshShoeKmCache() }
         .onChange(of: useMiles) { refreshStats() }
+        .onChange(of: engine.vo2Samples.count) { refreshRecaps() }
+        .onChange(of: raceDetector.matches.count) { refreshRecaps() }
         .onChange(of: AppLanguage.shared.current) { _, _ in
             engine.recomputePlans()   // verdict·plan notes는 빌드 시 L.s()로 저장 → 재계산 필요
         }
@@ -1266,10 +1279,10 @@ struct MeView: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
 
-            SummarySectionCard(stats: stats, manager: manager,
-                               preloadedFormMetrics: cachedMonthFormMetrics[stats.kind.title]) {
-                selectedSummaryStats = SelectedSummaryStats(stats: stats)
-            }
+            // 공유 카드와 같은 컴포넌트를 폭에 맞춰 줄여 보인다 — 보이는 화면 = 내보낸 이미지(2026-10-28)
+            PeriodSummaryInlineCard(stats: stats, recap: cachedRecaps[stats.kind.title],
+                                    form: cachedMonthFormMetrics[stats.kind.title],
+                                    miniMeImage: miniMeStore.image)
             .id(stats.kind.title)
             .transition(.push(from: summaryForward ? .trailing : .leading))
             .padding(.horizontal, 16)
@@ -1282,6 +1295,24 @@ struct MeView: View {
                     moveSummary(by: dx < 0 ? -1 : 1, count: list.count)
                 }
             )
+
+            Button {
+                selectedSummaryStats = SelectedSummaryStats(stats: stats)
+            } label: {
+                Label(summaryIsYear ? L.s("연말 결산 공유", "Share yearly summary", ja: "年末のまとめを共有")
+                                    : L.s("월말 결산 공유", "Share monthly summary", ja: "月末のまとめを共有"),
+                      systemImage: "square.and.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.violet)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Theme.violet.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(cachedRecaps[stats.kind.title] == nil)
+            .opacity(cachedRecaps[stats.kind.title] == nil ? 0.35 : 1)
+            .padding(.horizontal, 16)
 
             if list.count > 1 {
                 HStack(spacing: 6) {
@@ -1297,7 +1328,8 @@ struct MeView: View {
             }
         }
         .sheet(item: $selectedSummaryStats) { sel in
-            SummaryShareCardScreen(stats: sel.stats, recap: periodRecap(for: sel.stats),
+            SummaryShareCardScreen(stats: sel.stats, recap: cachedRecaps[sel.stats.kind.title] ?? periodRecap(for: sel.stats),
+                                   form: cachedMonthFormMetrics[sel.stats.kind.title],
                                    miniMeImage: miniMeStore.image)
         }
     }
@@ -1773,302 +1805,6 @@ struct MeView: View {
             .fill(Color.white.opacity(0.07))
             .frame(height: 0.5)
             .padding(.horizontal, 16)
-    }
-}
-
-// MARK: - Summary section card (inline in Me tab)
-
-private struct FormMetricsData {
-    let cadence: Double?
-    let prevCadence: Double?
-    let power: Double?
-    let prevPower: Double?
-    let strideLength: Double?
-    let prevStrideLength: Double?
-    var hasAny: Bool { cadence != nil || power != nil || strideLength != nil }
-}
-
-private struct SummarySectionCard: View {
-    let stats: SummaryPeriodStats
-    let manager: HealthKitManager
-    var preloadedFormMetrics: FormMetricsData? = nil
-    let onShare: () -> Void
-
-    @State private var formMetrics: FormMetricsData? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header row
-            HStack {
-                // 기간 이름(2026년 10월)은 위 ‹ › 줄에 있다 — 여기선 '이번 달 결산' 같은 상대 이름만
-                Text(stats.kind.subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.violet)
-                Spacer()
-                Button(action: onShare) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.caption.weight(.semibold))
-                        Text({
-                            if case .monthly = stats.kind {
-                                return AppLanguage.shared.s("월말 결산", "Monthly", ja: "月末のまとめ")
-                            }
-                            return AppLanguage.shared.s("연말 결산", "Yearly", ja: "年末のまとめ")
-                        }())
-                        .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(Theme.violet)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Theme.violet.opacity(0.12))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(stats.isEmpty)
-                .opacity(stats.isEmpty ? 0.35 : 1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 12)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.07))
-                .frame(height: 0.5)
-                .padding(.horizontal, 16)
-
-            // Stats grid
-            if stats.isEmpty {
-                Text(AppLanguage.shared.s("이 기간에 기록된 활동이 없습니다", "No activities for this period", ja: "この期間に記録されたアクティビティはありません"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 18)
-            } else {
-                HStack(spacing: 0) {
-                    statCell(
-                        value: stats.distanceStr + " " + stats.distanceUnit,
-                        label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"),
-                        color: .white
-                    )
-                    cellDivider
-                    statCell(
-                        value: stats.durationStr,
-                        label: AppLanguage.shared.s("운동 시간", "TIME", ja: "運動時間"),
-                        color: Theme.time
-                    )
-                    cellDivider
-                    statCell(
-                        value: AppLanguage.shared.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
-                        label: AppLanguage.shared.s("러닝", "RUNS", ja: "ランニング"),
-                        color: Theme.violet
-                    )
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-
-                if let pace = stats.avgPaceStr {
-                    HStack(spacing: 6) {
-                        Image(systemName: "speedometer")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.pace.opacity(0.7))
-                        Text(AppLanguage.shared.s("평균 페이스", "AVG PACE", ja: "平均ペース"))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(pace)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        if let longest = stats.longestStr {
-                            Text("·")
-                                .foregroundStyle(.tertiary)
-                            Text(AppLanguage.shared.s("최장 \(longest)", "Longest \(longest)", ja: "最長 \(longest)"))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
-
-                // Comparison strip
-                if stats.compDistanceKm != nil {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
-                        if let d = stats.distanceDeltaStr {
-                            compChip(text: d, up: stats.distanceDeltaIsUp)
-                        }
-                        if let c = stats.runCountDeltaStr {
-                            compChip(text: c, up: stats.runCount >= (stats.compRunCount ?? 0))
-                        }
-                        if let p = stats.paceDeltaStr {
-                            compChip(text: p, up: p.contains(AppLanguage.shared.s("빨라짐", "faster", ja: "速くなった")))
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                }
-
-                // YTD
-                if let ytd = stats.ytdStr {
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.violet.opacity(0.7))
-                        Text(ytd)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Theme.violet.opacity(0.85))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 4)
-                }
-
-                // Form metrics (워치 전용, 비동기 로드)
-                if let fm = formMetrics, fm.hasAny {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-
-                    HStack(spacing: 0) {
-                        if let cad = fm.cadence {
-                            formMetricCell(value: "\(Int(cad.rounded()))spm",
-                                           label: AppLanguage.shared.s("케이던스", "Cadence", ja: "ケイデンス"),
-                                           current: cad, prev: fm.prevCadence,
-                                           higherBetter: true)
-                        }
-                        if let pwr = fm.power {
-                            if fm.cadence != nil { formMetricDivider }
-                            formMetricCell(value: "\(Int(pwr.rounded()))W",
-                                           label: AppLanguage.shared.s("파워", "Power", ja: "パワー"),
-                                           current: pwr, prev: fm.prevPower,
-                                           higherBetter: true)
-                        }
-                        if let str = fm.strideLength {
-                            if fm.cadence != nil || fm.power != nil { formMetricDivider }
-                            formMetricCell(value: String(format: "%.2fm", str),
-                                           label: AppLanguage.shared.s("보폭", "Stride", ja: "ストライド"),
-                                           current: str, prev: fm.prevStrideLength,
-                                           higherBetter: true)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-                }
-            }
-
-            Spacer(minLength: 14)
-        }
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .task(id: stats.kind.title) {
-            // MeView에서 사전 계산된 데이터가 있으면 즉시 사용 — 디스크 재조회 없음
-            if let pre = preloadedFormMetrics { formMetrics = pre; return }
-            guard case .monthly(let y, let m) = stats.kind else { return }
-            let cal = Calendar.current
-            let start = cal.date(from: DateComponents(year: y, month: m)) ?? Date()
-            let end   = cal.date(byAdding: .month, value: 1, to: start)  ?? Date()
-            let prev  = cal.date(byAdding: .month, value: -1, to: start) ?? Date()
-
-            async let cadFetch = manager.fetchMetricHistory(.cadence,      from: prev)
-            async let pwrFetch = manager.fetchMetricHistory(.power,        from: prev)
-            async let strFetch = manager.fetchMetricHistory(.strideLength, from: prev)
-            let (cad, pwr, str) = await (cadFetch, pwrFetch, strFetch)
-
-            func avg(_ pts: [(date: Date, value: Double)], from s: Date, to e: Date) -> Double? {
-                let f = pts.filter { $0.date >= s && $0.date < e }
-                guard !f.isEmpty else { return nil }
-                return f.map(\.value).reduce(0, +) / Double(f.count)
-            }
-
-            formMetrics = FormMetricsData(
-                cadence:          avg(cad, from: start, to: end),
-                prevCadence:      avg(cad, from: prev,  to: start),
-                power:            avg(pwr, from: start, to: end),
-                prevPower:        avg(pwr, from: prev,  to: start),
-                strideLength:     avg(str, from: start, to: end),
-                prevStrideLength: avg(str, from: prev,  to: start)
-            )
-        }
-        .onChange(of: preloadedFormMetrics?.cadence) {
-            if let pre = preloadedFormMetrics { formMetrics = pre }
-        }
-    }
-
-    private func statCell(value: String, label: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(value)
-                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                .foregroundStyle(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var cellDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.08))
-            .frame(width: 0.5, height: 28)
-            .padding(.horizontal, 10)
-    }
-
-    private func compChip(text: String, up: Bool) -> some View {
-        let color: Color = up ? .green : Color(red: 1, green: 0.45, blue: 0.45)
-        return Text(text)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.12))
-            .clipShape(Capsule())
-    }
-
-    private func formMetricCell(value: String, label: String,
-                                current: Double, prev: Double?,
-                                higherBetter: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 3) {
-                Text(value)
-                    .font(.system(size: 14, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if let p = prev {
-                    let up = current > p
-                    let good = higherBetter ? up : !up
-                    Image(systemName: up ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(good ? Color.green : Color(red: 1, green: 0.45, blue: 0.45))
-                }
-            }
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white)
-        }
-        .frame(minWidth: 72, alignment: .leading)
-    }
-
-    private var formMetricDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.08))
-            .frame(width: 0.5, height: 32)
-            .padding(.horizontal, 12)
     }
 }
 

@@ -239,7 +239,7 @@ struct SummaryCardPalette {
 
 // MARK: - Common chrome
 
-/// 결산 카드 틀 — 384×480(4:5, 인스타 피드 묶음이 잘리지 않게 2026-10-28 폭 300→384, 높이·글자 크기는 그대로), 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
+/// 결산 카드 틀 — 448×560(4:5). 나 탭 카드의 지표까지 합쳐 2026-10-28 384×480에서 키움(글자 pt는 그대로), 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
 /// 결산 카드(한 장에 모두)의 틀.
 struct SummaryCardChrome<Content: View>: View {
     let title: String
@@ -248,7 +248,7 @@ struct SummaryCardChrome<Content: View>: View {
     var theme: ShareTheme = .dark
     @ViewBuilder let content: () -> Content
 
-    static var size: CGSize { CGSize(width: 384, height: 480) }
+    static var size: CGSize { CGSize(width: 448, height: 560) }
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
@@ -371,6 +371,7 @@ struct SummaryHero: View {
 struct SummaryShareCardScreen: View {
     let stats: SummaryPeriodStats
     let recap: PeriodRecap?
+    var form: SummaryFormMetrics? = nil
     var miniMeImage: UIImage? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -502,7 +503,7 @@ struct SummaryShareCardScreen: View {
         isRendering = true
         image = nil
         await Task.yield()
-        let view = PeriodRecapAllInOneCard(recap: recap, stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
+        let view = PeriodRecapAllInOneCard(recap: recap, stats: stats, form: form, miniMeImage: miniMeImage, theme: summaryTheme)
             .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 3

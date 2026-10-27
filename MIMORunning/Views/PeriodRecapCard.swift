@@ -1,13 +1,72 @@
 import SwiftUI
 import Charts
 
-// MARK: - 기간별 결산 공유 카드 (한 장에 모두, 4:5)
+// MARK: - 기간별 결산 카드 (나 탭 = 공유 출력, 4:5)
 
-/// 총거리 + 보조 지표 · 일별(연 = 월별) 거리 막대 · 리듬 | VO2 추세 · 기록·대회(최대 2줄). 없는 칸은 빼고 남은 칸이 넓어진다.
-/// 2026-10-28 사용자 결정: 묶음·한 장 카드 삭제, 기간 제목·부연(인사이트) 삭제 — 숫자만.
+/// 케이던스·파워·보폭 월 평균과 지난달 평균(워치 전용, 월만)
+struct SummaryFormMetrics {
+    let cadence: Double?
+    let prevCadence: Double?
+    let power: Double?
+    let prevPower: Double?
+    let strideLength: Double?
+    let prevStrideLength: Double?
+    var hasAny: Bool { cadence != nil || power != nil || strideLength != nil }
+}
+
+/// 나 탭 카드 — 공유 카드(`PeriodRecapAllInOneCard`)를 폭에 맞춰 줄여 그대로 보인다. 보이는 화면 = 내보낸 이미지.
+struct PeriodSummaryInlineCard: View {
+    let stats: SummaryPeriodStats
+    let recap: PeriodRecap?
+    var form: SummaryFormMetrics? = nil
+    var miniMeImage: UIImage? = nil
+
+    var body: some View {
+        let size = SummaryCardChrome<EmptyView>.size
+        Color.clear
+            .aspectRatio(size.width / size.height, contentMode: .fit)
+            .overlay(alignment: .topLeading) {
+                GeometryReader { g in
+                    Group {
+                        if let recap {
+                            PeriodRecapAllInOneCard(recap: recap, stats: stats, form: form, miniMeImage: miniMeImage)
+                        } else {
+                            PeriodRecapEmptyCard(stats: stats, miniMeImage: miniMeImage)
+                        }
+                    }
+                    .scaleEffect(g.size.width / size.width, anchor: .topLeading)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// 러닝이 없는 기간 — 같은 틀에 한 줄
+struct PeriodRecapEmptyCard: View {
+    let stats: SummaryPeriodStats
+    var miniMeImage: UIImage? = nil
+    var theme: ShareTheme = .dark
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
+        SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
+                          miniMeImage: miniMeImage, theme: theme) {
+            Spacer(minLength: 0)
+            Text(AppLanguage.shared.s("이 기간에 기록된 러닝이 없습니다", "No runs for this period", ja: "この期間に記録されたランはありません"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(p.textSecondary)
+                .frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// 총거리 + 시간·횟수·페이스·최장 · 지난 기간 대비·올해 누적 · 일별(연 = 월별) 거리 막대 · 리듬 | VO2 추세 · 폼(케이던스·파워·보폭) · 기록·대회(최대 2줄).
+/// 없는 칸은 빼고 남은 칸이 넓어진다. 2026-10-28 사용자 결정: 나 탭 카드와 공유 출력을 이 하나로 통일, 인사이트 문장 없음.
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
     let stats: SummaryPeriodStats
+    var form: SummaryFormMetrics? = nil
     var miniMeImage: UIImage? = nil
     var theme: ShareTheme = .dark
 
@@ -29,17 +88,22 @@ struct PeriodRecapAllInOneCard: View {
                     if let pace = stats.avgPaceStr {
                         miniStat(pace, L.s("평균 페이스", "AVG PACE", ja: "平均ペース"), p.accentTeal)
                     }
+                    if let longest = stats.longestStr {
+                        miniStat(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
+                    }
                 }
                 .padding(.bottom, 2)
             }
 
+            comparisonLine
+
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
-            // 일별 거리(연 = 월별) — 높이가 빠듯해 달력 칸·기록 줄을 줄여 4:5 한 장에 맞춘다
+            // 일별 거리(연 = 월별)
             RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
                             unit: stats.useMiles ? "MI" : "KM", theme: theme)
-            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 50)
+            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 46)
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
@@ -75,6 +139,22 @@ struct PeriodRecapAllInOneCard: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
+            // 폼(워치) — 지난달 평균보다 오르면 ▲
+            if let form, form.hasAny {
+                RecapDivider(theme: theme, top: 8, bottom: 6)
+                HStack(spacing: 0) {
+                    if let v = form.cadence {
+                        formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence)
+                    }
+                    if let v = form.power {
+                        formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower)
+                    }
+                    if let v = form.strideLength {
+                        formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength)
+                    }
+                }
+            }
+
             // 기록 · 대회
             if !recap.prs.isEmpty || !recap.races.isEmpty {
                 RecapDivider(theme: theme, top: 8, bottom: 6)
@@ -82,6 +162,66 @@ struct PeriodRecapAllInOneCard: View {
             }
             Spacer(minLength: 0)
         }
+    }
+
+    /// 지난 기간 대비(거리·횟수·페이스) + 올해 누적(이번 달만)
+    @ViewBuilder
+    private var comparisonLine: some View {
+        let chips: [(String, Bool)] = [
+            stats.distanceDeltaStr.map { ($0, stats.distanceDeltaIsUp) },
+            stats.runCountDeltaStr.map { ($0, stats.runCount >= (stats.compRunCount ?? 0)) },
+            stats.paceDeltaStr.map { ($0, $0.contains(L.s("빨라짐", "faster", ja: "速くなった"))) },
+        ].compactMap { $0 }
+        if !chips.isEmpty || stats.ytdStr != nil {
+            HStack(spacing: 4) {
+                if !chips.isEmpty {
+                    Text(recap.isYear ? L.s("작년 대비", "VS LAST YEAR", ja: "昨年比") : L.s("지난달 대비", "VS LAST MONTH", ja: "先月比"))
+                        .font(.system(size: 8, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(p.textSecondary)
+                    ForEach(chips.indices, id: \.self) { i in
+                        let up = chips[i].1
+                        let color = up ? p.positive : p.negative
+                        Text(chips[i].0)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(color.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                }
+                Spacer(minLength: 0)
+                if let ytd = stats.ytdStr {
+                    Text(ytd)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(p.brand)
+                }
+            }
+            .lineLimit(1)
+            .padding(.top, 6)
+        }
+    }
+
+    private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 3) {
+                Text(value)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(p.textPrimary)
+                if let prev, prev != cur {
+                    let up = cur > prev
+                    Image(systemName: up ? "arrow.up" : "arrow.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(up ? p.positive : p.negative)
+                }
+            }
+            Text(label)
+                .font(.system(size: 8, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(p.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func miniStat(_ value: String, _ label: String, _ color: Color) -> some View {
