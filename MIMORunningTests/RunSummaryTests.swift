@@ -783,4 +783,18 @@ struct RunSummaryTests {
         #expect(nights.count == 1)
         #expect(abs((nights.first?.value ?? 0) - 3.233) < 0.01)
     }
+
+    @Test func easyWeekUnderEasyCapIsNotHighIntensity() {
+        // 회복 주 · 평균 138 · 이지 상한 139 · Zone 3 78% — 아침 기준(139 아래)과 같게 고강도로 보지 않는다(2026-10-28)
+        var i = RunSummaryInput()
+        i.workoutType = .tempo; i.planPhase = "회복"
+        i.zoneFractions = [1: 0.02, 2: 0.20, 3: 0.78]
+        i.avgHeartRate = 138; i.easyCapHR = 139
+        let heart = RunSummary.lines(i).first { $0.axis == "심박" }
+        #expect(heart?.state == "회복 주 · 평균 심박 138로 이지 상한(139) 아래")
+        #expect(heart?.tone == .good)
+        // 이지 상한을 넘으면 지금처럼 "회복 주인데 고강도"
+        i.avgHeartRate = 145
+        #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state.hasPrefix("회복 주인데 고강도") == true)
+    }
 }

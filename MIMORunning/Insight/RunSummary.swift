@@ -45,6 +45,9 @@ struct RunSummaryInput {
     var distanceRank: Int? = nil
     var distanceSampleCount: Int? = nil
     var avgHeartRate: Int? = nil
+    /// 이지 상한(LT1, 엔진 관측 최대심박 × 0.785/0.80) — 아침 제안 "이지는 심박 N 아래"와 같은 값. 이지여야 하는 날의 판정이
+    /// 존(공식 최대심박) 대신 이 값을 본다 — 평균 138로 이지 상한 139 안이었는데 Zone 3 78%라 "회복 주인데 고강도"가 나왔다(2026-10-28)
+    var easyCapHR: Int? = nil
     var peakHeartRate: Int? = nil
     var temperatureC: Double? = nil
     var sevenDayAU: Double? = nil
@@ -370,7 +373,24 @@ enum RunSummary {
         } else {
             let high3 = frac(3) + frac(4) + frac(5)
             let pct = Int((high3 * 100).rounded())
-            if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
+            // 이지 상한 안이면(아침 제안과 같은 기준) 존 비율이 높아도 고강도가 아니다
+            let underCap: (hr: Int, cap: Int)? = {
+                guard let hr = i.avgHeartRate, let cap = i.easyCapHR, hr <= cap else { return nil }
+                return (hr, cap)
+            }()
+            if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac,
+               let u = underCap {
+                line = RunSummaryLine(axis: axis,
+                                      state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주 · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) 아래",
+                                                 "Easy week · avg HR \(u.hr), under your easy cap (\(u.cap))", ja: "軽めの週 · 平均心拍\(u.hr)でイージー上限(\(u.cap))未満"),
+                                      tone: .good)
+            } else if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac, let u = underCap {
+                let label = i.workoutType.koreanLabel
+                line = RunSummaryLine(axis: axis,
+                                      state: L.s("\(label) · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) 아래", "\(label) · avg HR \(u.hr), under your easy cap (\(u.cap))",
+                                                 ja: "\(label) · 平均心拍\(u.hr)でイージー上限(\(u.cap))未満"),
+                                      tone: .good)
+            } else if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
                 // 유형이 '계획된 고강도'여도 플랜이 우선한다 — 회복·테이퍼 주의 고강도는 계획대로가 아니다
                 planDeviationPhase = phase
                 line = RunSummaryLine(axis: axis,

@@ -265,7 +265,7 @@ enum TabDigestRhythm {
                                    isProblem: false, shade: .good, aboutForm: true,
                                    short: L.s("후반 지면접촉 \(g)ms · 단축", "Late ground contact \(g) ms · shorter", ja: "後半の接地時間\(g)ms · 短縮"))
                 } else if gctRise < 8 {
-                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
+                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다", "Form held to the end", ja: "後半までフォームがぶれませんでした"),
                                    isProblem: false, shade: .good, aboutForm: true,
                                    short: L.s("후반까지 폼 유지 · 지면접촉 \(g)ms", "Form held late · ground contact \(g) ms", ja: "後半までフォーム維持 · 接地時間\(g)ms"))
                 } else {
@@ -279,7 +279,7 @@ enum TabDigestRhythm {
                 let cadDrop = fc - sc
                 if cadDrop < 2 {
                     let c = TabDigest.signed(Int((sc - fc).rounded()))
-                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다. 역치 페이스가 몸에 익었습니다", "Form held — tempo pace feels natural", ja: "後半までフォームがぶれませんでした。閾値ペースが体になじんでいます"),
+                    return Verdict(text: L.s("후반까지 폼이 흔들리지 않았습니다", "Form held to the end", ja: "後半までフォームがぶれませんでした"),
                                    isProblem: false, shade: .good, aboutForm: true,
                                    short: L.s("후반까지 폼 유지 · 케이던스 \(c)spm", "Form held late · cadence \(c) spm", ja: "後半までフォーム維持 · ケイデンス\(c)spm"))
                 } else {

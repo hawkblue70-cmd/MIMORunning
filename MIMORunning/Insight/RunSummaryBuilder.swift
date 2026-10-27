@@ -276,6 +276,10 @@ enum RunSummaryBuilder {
         // 그날 아침 활력 징후 이상 — 아침 제안과 같은 저장값(MREngineStore.persistedVitalSignal)
         input.vitalSignal = MREngineStore.persistedVitalSignal(asOf: c.activity.date)
         input.lastNightSleepHours = MREngineStore.persistedSleepHours(asOf: c.activity.date)
+        // 이지 상한 = 엔진 LT1과 같은 식(관측 최대심박 × 여 0.800 · 남 0.785, Nuuttila 2025) — 아침 "이지는 심박 N 아래"와 같은 값
+        if let hm = c.hrMax, hm > 0 {
+            input.easyCapHR = Int((hm * (c.isMale == false ? 0.800 : 0.785)).rounded())
+        }
         // 이번 주(월요일 시작) 지금까지 거리 — 계획된 증량 주 비교용
         input.planWeekKm = c.planWeekKm
         if c.planWeekKm != nil {
