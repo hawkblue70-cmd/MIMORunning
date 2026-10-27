@@ -554,7 +554,8 @@ struct ActivityDetailView: View {
                                 digest: digest,
                                 morning: payload.morning,
                                 weekKm: runDayDistance(month: false), monthKm: runDayDistance(month: true),
-                                comparisonHR: avgHRExcludingWarmupPhase(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []))
+                                comparisonHR: avgHRExcludingWarmupPhase(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []),
+                                splits: detail?.splits ?? [])
                         }
                     }
                     StorySection(workoutID: activity.id.uuidString,

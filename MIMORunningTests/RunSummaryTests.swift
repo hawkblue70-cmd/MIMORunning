@@ -753,4 +753,24 @@ struct RunSummaryTests {
         i.todayIsHard = false
         #expect(RunSummary.lines(i).first { $0.axis == "훈련부하" }?.next == "계획 안의 증량입니다(이번 주 54.6km · 계획 54km).")
     }
+
+    @Test func shortSleepClosesIntensityGate() {
+        // 수면 3시간 14분 — HRV가 평소 범위여도 강도를 막는다(2026-10-27). 5시간 이상이거나 기록 없으면 열림.
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: nil, lastNightHRV: nil, lastNightSleepHours: 3.233)
+                == .shortSleep(hours: 3.233))
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: nil, lastNightHRV: nil, lastNightSleepHours: 6) == nil)
+        #expect(MRIntensityGate.closedReason(vital: nil, hrvTrend: nil, lastNightHRV: nil) == nil)
+        #expect(MRIntensityGate.fact(.shortSleep(hours: 3.233)) == "어젯밤 수면이 3시간 14분이었습니다.")
+    }
+
+    @Test func sleepNightHoursMergesOverlappingSources() {
+        // 아이폰 23:00~03:00 · 워치 23:30~02:30(겹침) + 워치 03:30~06:00 → 4시간 + 2.5시간 = 6.5시간, 기상일 키
+        let cal = Calendar.current
+        let d = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
+        func at(_ h: Double) -> Date { d.addingTimeInterval(h * 3600) }
+        let nights = mrSleepNightHours([(at(0), at(4)), (at(0.5), at(3.5)), (at(4.5), at(7))])
+        #expect(nights.count == 1)
+        #expect(abs((nights.first?.value ?? 0) - 6.5) < 0.01)
+        #expect(cal.isDate(nights.first!.date, inSameDayAs: at(7)))
+    }
 }

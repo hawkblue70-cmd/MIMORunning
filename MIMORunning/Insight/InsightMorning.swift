@@ -23,19 +23,30 @@ struct InsightMorning: Equatable {
         /// 이지 기준 숫자(있으면) — "→ 실제" 비교용. 옛 기록엔 없어 문장에서 읽는 폴백을 쓴다
         var easyCapHR: Int? = nil
         var easyPaceSec: Double? = nil
+        /// 강도 OK + 계획 포인트 세션이었나 — 포인트 날 "→ 실제" 비교(2026-10-27)
+        var sessionIsPoint: Bool = false
+    }
+
+    /// 판정 줄 머리말("오늘은 강도 OK · ") 뒤 세션 문장 — 없으면 nil
+    static func sessionText(line: String) -> String? {
+        let heads = ["오늘은 강도 OK · ", "Today: hard is OK · ", "今日は強度OK · "]
+        guard let h = heads.first(where: { line.hasPrefix($0) }) else { return nil }
+        return String(line.dropFirst(h.count))
+    }
+
+    /// 판정 줄이 포인트 세션인가(숫자 칸이 없던 옛 스냅샷용) — "오늘은 강도 OK · 빌드업 10km …"
+    static func lineLooksPoint(level: String, line: String) -> Bool {
+        guard level == "go", let rest = sessionText(line: line) else { return false }
+        let points = ["인터벌", "템포런", "빌드업", "대회 페이스", "Intervals", "Tempo run", "Build-up", "Race pace",
+                      "インターバル", "テンポ走", "ビルドアップ", "レースペース"]
+        return points.contains { rest.hasPrefix($0) }
     }
 
     /// 그날 아침 제안이 포인트 훈련이었나 — 강도 OK + 계획 포인트 세션. 총평 "의도한"을 붙일지 판단(2026-10-20).
     /// 숫자 칸(sessionIsPoint)이 없던 옛 스냅샷은 판정 줄의 세션 이름으로 읽는다("오늘은 강도 OK · 빌드업 10km …").
     static func plannedPoint(snapshot s: MRReadinessDaySnapshot?, cutoff: Date) -> Bool {
         guard let s, s.computedAt < cutoff, s.level == "go" else { return false }
-        if s.sessionIsPoint { return true }
-        let heads = ["오늘은 강도 OK · ", "Today: hard is OK · ", "今日は強度OK · "]
-        let points = ["인터벌", "템포런", "빌드업", "대회 페이스", "Intervals", "Tempo run", "Build-up", "Race pace",
-                      "インターバル", "テンポ走", "ビルドアップ", "レースペース"]
-        guard let h = heads.first(where: { s.line.hasPrefix($0) }) else { return false }
-        let rest = s.line.dropFirst(h.count)
-        return points.contains { rest.hasPrefix($0) }
+        return s.sessionIsPoint || lineLooksPoint(level: s.level, line: s.line)
     }
     /// 그날 아침
     var morningOf: Entry?
@@ -98,14 +109,16 @@ struct InsightMorning: Equatable {
 
     private static func entry(label: String, snapshot s: MRReadinessDaySnapshot) -> Entry {
         Entry(label: label, level: s.level, line: s.line, why: s.why, data: s.data, planLine: s.planLine,
-              easyCapHR: s.easyCapHR > 0 ? s.easyCapHR : nil, easyPaceSec: s.easyPaceSec > 0 ? s.easyPaceSec : nil)
+              easyCapHR: s.easyCapHR > 0 ? s.easyCapHR : nil, easyPaceSec: s.easyPaceSec > 0 ? s.easyPaceSec : nil,
+              sessionIsPoint: s.level == "go" && (s.sessionIsPoint || lineLooksPoint(level: s.level, line: s.line)))
     }
 
     private static func entry(label: String, readiness r: MRReadiness) -> Entry {
         // 재계산은 지난 시각 기준 — 그 밤 값이 없으면 '동기화 전'이 아니라 없음이라 꼬리를 붙이지 않는다
         Entry(label: label, level: MRReadinessSnapshotStore.levelString(r.level), line: r.line(includePending: false),
               why: r.why, data: r.data.joined(separator: " · "), planLine: r.planLine ?? "",
-              easyCapHR: r.easyCapHR, easyPaceSec: r.easyPaceSecPerKm)
+              easyCapHR: r.easyCapHR, easyPaceSec: r.easyPaceSecPerKm,
+              sessionIsPoint: r.level == .go && r.sessionIsPoint)
     }
 
     static func level(from s: String) -> MRReadiness.Level? {

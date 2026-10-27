@@ -480,18 +480,18 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
     }
 
     let usualLong = mrUsualLongRunKm(runs: runs, asOf: asOf, calendar: calendar)
+    // 강도 훈련(저장 유형이 포인트이거나 앱 판정 고강도)은 거리가 길어도 강도 훈련으로 센다 — 평소 롱런이 11~12km인 러너의
+    // 10~11km 빌드업이 모두 '롱런'으로 빠져 "지난 강도 훈련 8/28 템포런, 60일 전 → 오늘 포인트"가 매일 나왔다(2026-10-27).
+    func isPoint(_ w: MRWorkout) -> Bool {
+        hardStarts.contains(w.start)
+            || (ctx.pointTypes[w.start].map { MRPlanPoint.pointWorkoutTypes.contains($0) } ?? false)
+    }
     func isLong(_ w: MRWorkout) -> Bool {
-        guard let l = usualLong else { return false }
+        guard let l = usualLong, !isPoint(w) else { return false }
         return (w.distanceKm ?? 0) >= l * MRPlanWeekContext.longRunDoneFraction
     }
     let lastLong = past.filter(isLong).max { $0.start < $1.start }
-    let lastPoint = past
-        .filter { !isLong($0) }
-        .filter { w in
-            hardStarts.contains(w.start)
-                || (ctx.pointTypes[w.start].map { MRPlanPoint.pointWorkoutTypes.contains($0) } ?? false)
-        }
-        .max { $0.start < $1.start }
+    let lastPoint = past.filter(isPoint).max { $0.start < $1.start }
     let interval = mrPointEveryWeeks(runsPerWeek: ctx.runsPerWeek, habit: ctx.habitEveryWeeks).map { $0 * 7 }
 
     var pieces: [String] = []

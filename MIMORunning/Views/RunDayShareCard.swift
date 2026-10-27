@@ -452,6 +452,8 @@ struct RunDayShareCard: View {
     var isLight: Bool = false
     /// 몸 풀리기 전 구간을 뺀 평균 심박 — 있으면 '→ 실제' 비교가 이 값을 쓴다(avgHRExcludingWarmupPhase)
     var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
+    /// km 구간 — 포인트 날 "→ 실제"의 마지막 구간 페이스(빌드업)
+    var splits: [SplitData] = []
 
     private var divider: some View {
         Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
@@ -492,6 +494,10 @@ struct RunDayShareCard: View {
             let km = abs(d - d.rounded()) < 0.05 ? String(format: "%.0f", d) : String(format: "%.1f", d)
             let hrPart = hrStr.map { L.s(" · 평균 심박 \($0)", " · avg HR \($0)", ja: " · 平均心拍\($0)") } ?? ""
             return L.s("→ 실제: 쉬라는 날 \(km)km를 달렸습니다", "→ Actual: ran \(km) km on a suggested rest day", ja: "→ 実際: 休養の提案の日に\(km)km走りました") + hrPart
+        }
+        // 포인트 날 — 제안과 실제를 나란히, 판정 없이(2026-10-27: 빌드업 8km · 마지막 2.7km 5'37" 제안 → 10km · 마지막 3km 6'20")
+        if e.level == "go", e.sessionIsPoint, let session = InsightMorning.sessionText(line: e.line) {
+            return pointActual(session: session)
         }
         guard let hr = hrValue, let hrS = hrStr else { return nil }
         let text = e.why + " " + e.data
@@ -537,6 +543,36 @@ struct RunDayShareCard: View {
                        "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hrS) stayed under \(cap)",
                        ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hrS)で\(cap)未満でした")
         }
+    }
+
+    /// "→ 실제: 10.0km · 마지막 3km 6'20"(제안 빌드업 8km · 마지막 2.7km 5'37")" — 빌드업이 아니면 평균 페이스.
+    private func pointActual(session: String) -> String {
+        let L = AppLanguage.shared
+        let d = activity.distance / 1000
+        let kmStr = String(format: "%.1fkm", d)
+        var actual = kmStr
+        // 빌드업 "마지막 2.7km" → 끝에서부터 그 거리 이상(올림 km)의 실제 페이스
+        let lastPatterns = [#"마지막 ([0-9.]+)km"#, #"last ([0-9.]+)km"#, #"最後の([0-9.]+)km"#]
+        let target: Double? = lastPatterns.lazy.compactMap { p -> Double? in
+            guard let r = session.range(of: p, options: .regularExpression) else { return nil }
+            return Double(session[r].filter { $0.isNumber || $0 == "." })
+        }.first
+        if let t = target, t > 0 {
+            let need = t.rounded(.up)
+            var dist = 0.0, dur = 0.0
+            for sp in splits.sorted(by: { $0.id > $1.id }) where dist < need * 1000 - 50 {
+                dist += sp.distanceM; dur += sp.duration
+            }
+            if dist > 0 {
+                let n = Int((dist / 1000).rounded())
+                actual += L.s(" · 마지막 \(n)km \(mrFormatPace(dur / (dist / 1000)))", " · last \(n) km at \(mrFormatPace(dur / (dist / 1000)))",
+                              ja: " · 最後の\(n)km \(mrFormatPace(dur / (dist / 1000)))")
+            }
+        } else if let p = activity.paceSecPerKm {
+            actual += L.s(" · 평균 \(mrFormatPace(p))", " · avg \(mrFormatPace(p))", ja: " · 平均\(mrFormatPace(p))")
+        }
+        return L.s("→ 실제: \(actual)(제안 \(session))", "→ Actual: \(actual) (suggested \(session))", ja: "→ 実際: \(actual)(提案 \(session))")
+            .keepingNumberUnitsTogether
     }
 
     var body: some View {
@@ -632,6 +668,7 @@ struct RunDayShareSheet: View {
     var weekKm: Double? = nil
     var monthKm: Double? = nil
     var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
+    var splits: [SplitData] = []
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -653,7 +690,7 @@ struct RunDayShareSheet: View {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
                         weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight,
-                        comparisonHR: comparisonHR)
+                        comparisonHR: comparisonHR, splits: splits)
     }
 
     var body: some View {

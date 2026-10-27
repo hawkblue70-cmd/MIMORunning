@@ -34,6 +34,18 @@ func mrSleepSessions(_ asleep: [(start: Date, end: Date)],
     return out
 }
 
+/// 밤별 잠든 시간(시간) — 겹치는 기록(아이폰·워치가 같은 밤을 따로 쓴 경우)은 합집합으로 한 번만 센다.
+/// 밤 키는 HRV와 같은 규칙(기상 시각 기준 — 15시 이후 끝나면 다음 날, 12시 전이면 그날). 12~15시 낮잠은 버린다.
+func mrSleepNightHours(_ asleep: [(start: Date, end: Date)], calendar: Calendar = .current) -> [(date: Date, value: Double)] {
+    let merged = mrSleepSessions(asleep.filter { $0.end > $0.start }, gapMinutes: 0)
+    var byNight: [Date: TimeInterval] = [:]
+    for iv in merged {
+        guard let k = mrHRVNightKey(iv.end, calendar: calendar) ?? mrHRVNightKey(iv.start, calendar: calendar) else { continue }
+        byNight[k, default: 0] += iv.end.timeIntervalSince(iv.start)
+    }
+    return byNight.map { (date: $0.key, value: $0.value / 3600) }.sorted { $0.date < $1.date }
+}
+
 /// 밤별 중앙값.
 /// - `asleep`(잠든 구간)이 있으면 **수면 세션 동안 찍힌 값만** 그 밤에 넣는다(세션 끝 = 마지막 기상 시각의 밤 키).
 ///   애플 건강의 '수면' HRV처럼 밤중에 잠깐 깬 시간(화장실·새벽 뒤척임)의 값도 넣는다 — 하룻밤 샘플이 3~4개라

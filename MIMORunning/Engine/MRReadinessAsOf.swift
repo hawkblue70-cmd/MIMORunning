@@ -29,6 +29,7 @@ func mrReadinessAsOf(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRMode
                      restingHR: [(date: Date, value: Double)] = [],
                      respNights: [(date: Date, value: Double)] = [],
                      tempNights: [(date: Date, value: Double)] = [],
+                     sleepNights: [(date: Date, value: Double)] = [],
                      calendar: Calendar = .current) -> MRReadiness? {
     mrReadiness(runs: mrRunsBefore(runs, asOf: asOf), phys: phys, heatHR: heatHR,
                 hrvNights: mrNightsThrough(hrvNights, asOf: asOf, calendar: calendar),
@@ -40,5 +41,6 @@ func mrReadinessAsOf(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRMode
                 restingHR: mrNightsThrough(restingHR, asOf: asOf, calendar: calendar),
                 respNights: mrNightsThrough(respNights, asOf: asOf, calendar: calendar),
                 tempNights: mrNightsThrough(tempNights, asOf: asOf, calendar: calendar),
+                sleepNights: mrNightsThrough(sleepNights, asOf: asOf, calendar: calendar),
                 calendar: calendar)
 }

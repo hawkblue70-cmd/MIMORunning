@@ -69,6 +69,8 @@ final class MREngineStore: ObservableObject {
     @Published private(set) var hrvNights: [(date: Date, value: Double)] = []
     /// 밤 활력 징후 — 호흡수(회/분)·손목 온도(°C) 밤 값. 아침 제안 이상 징후 규칙만 쓴다(화면 없음). HRV와 같이 읽는다.
     private var respNights: [(date: Date, value: Double)] = []
+    /// 밤별 잠든 시간(시간) — 아침 강도 판정의 짧은 수면 관문(MRIntensityGate.shortSleep)
+    private var sleepNights: [(date: Date, value: Double)] = []
     private var tempNights: [(date: Date, value: Double)] = []
     /// 활력 징후 캐시를 한 번이라도 읽었나 — 업데이트 직후엔 HRV 캐시가 신선해도 활력 징후가 없어 재조회해야 한다
     private var vitalsLoaded = false
@@ -169,6 +171,7 @@ final class MREngineStore: ObservableObject {
     // 활력 징후 캐시 — HRV 캐시와 같은 시점에 저장·복원. 빈 배열도 '읽음'으로 남긴다(워치 없이 자는 사람이 매번 재조회하지 않게).
     private static let vitalRespKey = "mimo.vitalCache.resp.v1"
     private static let vitalTempKey = "mimo.vitalCache.temp.v1"
+    private static let sleepNightsKey = "mimo.sleepNights.v1"
 
     private func loadPersistedVitals() -> (resp: [(date: Date, value: Double)], temp: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard
@@ -548,6 +551,9 @@ final class MREngineStore: ObservableObject {
             respNights = v.resp
             tempNights = v.temp
             vitalsLoaded = true
+        }
+        if sleepNights.isEmpty, let a = UserDefaults.standard.array(forKey: Self.sleepNightsKey) as? [[Double]] {
+            sleepNights = a.compactMap { $0.count == 2 ? (Date(timeIntervalSince1970: $0[0]), $0[1]) : nil }
         }
         let hrvAge = hrvLastFetchedAt.map { Date().timeIntervalSince($0) } ?? .infinity
         // 오늘 키의 밤이 없으면(워치가 아침에 동기화) 24시간 안이어도 다시 읽는다 — 아침 제안이 어젯밤을 봐야 한다
@@ -1334,7 +1340,7 @@ final class MREngineStore: ObservableObject {
                            easyTarget: easyTarget,
                            grayZone: inputs.grayZone,
                            restingHR: rhrSamples,
-                           respNights: respNights, tempNights: tempNights)
+                           respNights: respNights, tempNights: tempNights, sleepNights: sleepNights)
         let line = prepLine(for: card, now: now)
         card?.prepLine = line
         return card
@@ -1375,7 +1381,8 @@ final class MREngineStore: ObservableObject {
                                planPhase: inputs.planPhase, asOf: asOf, hardRunStarts: hard,
                                planWeek: inputs.planWeek, pointRunTypes: pointRunTypes,
                                rhythm: inputs.rhythm, easyTarget: easyTarget, grayZone: inputs.grayZone,
-                               restingHR: rhrSamples, respNights: respNights, tempNights: tempNights)
+                               restingHR: rhrSamples, respNights: respNights, tempNights: tempNights,
+                               sleepNights: sleepNights)
     }
 
     /// 홈 대회 안내 줄 아래 한 줄 — 안내 줄이 가리키는 대회(가장 가까운 계획 대회)의 준비 비교.
@@ -1562,6 +1569,10 @@ final class MREngineStore: ObservableObject {
         respNights = resp
         tempNights = temp
         vitalsLoaded = true
+        if !asleep.isEmpty {
+            sleepNights = mrSleepNightHours(asleep)
+            UserDefaults.standard.set(sleepNights.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.sleepNightsKey)
+        }
         persistVitals(resp: resp, temp: temp)
         #if DEBUG
         logVitals(now: Date())

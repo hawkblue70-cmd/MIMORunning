@@ -35,6 +35,15 @@ struct MRRhythmTests {
         #expect(mrUsualLongRunKm(runs: short, asOf: day(2)) == nil)   // 8km 미만
     }
 
+    @Test func longBuildUpCountsAsPointNotLongRun() throws {
+        // 평소 롱런 16km(80% = 12.8km)인 러너의 14km 빌드업(지난 금요일) — 강도 훈련으로 세야 한다(2026-10-27)
+        let bu = run(-3, km: 14)
+        let runs = (history() + [bu]).sorted { $0.start < $1.start }
+        let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(types: [bu.start: .buildUp]), runs: runs, hardStarts: [], asOf: day(2)))
+        #expect(s.progress.contains("마지막 강도 훈련 5일 전"))
+        #expect(s.progress.contains("마지막 롱런 4일 전"))   // 롱런은 토요일 16km 그대로
+    }
+
     @Test func postRaceTwoWeeksIsEasyEvenWhenGo() throws {
         let s = try #require(mrRhythmSuggestion(level: .go, ctx: ctx(raceDaysAgo: 5), runs: history(), hardStarts: [], asOf: day(2)))
         #expect(s.session == "이지런")

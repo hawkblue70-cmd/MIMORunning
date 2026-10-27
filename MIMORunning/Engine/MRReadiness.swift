@@ -342,6 +342,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                  restingHR: [(date: Date, value: Double)] = [],
                  respNights: [(date: Date, value: Double)] = [],
                  tempNights: [(date: Date, value: Double)] = [],
+                 sleepNights: [(date: Date, value: Double)] = [],
                  calendar: Calendar = .current) -> MRReadiness? {
     let L = AppLanguage.shared
     let today = calendar.startOfDay(for: asOf)
@@ -560,7 +561,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     // 강도 허용 공용 판정(MRIntensityGate) — 여기부터는 "강도 OK"가 나올 수 있는 규칙. 러닝 뒤 총평과 같은 조건으로
     // 한 번 더 막는다(위 규칙들이 대부분 먼저 잡지만, 규칙 순서가 바뀌어도 두 화면이 어긋나지 않게, 2026-10-20).
-    if let g = MRIntensityGate.closedReason(vital: vital, hrvTrend: trend, lastNightHRV: todayNight) {
+    let todaySleep = sleepNights.last(where: { calendar.isDate($0.date, inSameDayAs: today) })?.value
+    if let g = MRIntensityGate.closedReason(vital: vital, hrvTrend: trend, lastNightHRV: todayNight, lastNightSleepHours: todaySleep) {
         return make(.easy, [MRIntensityGate.tag(g)],
                     why: MRIntensityGate.fact(g) + " " + L.s("오늘은 강도를 빼고 이지런으로 가세요.", "Skip the intensity today and keep it easy.", ja: "今日は強度を抜いてイージーランにしてください。"))
     }
