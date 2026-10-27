@@ -42,6 +42,23 @@ struct BuildUpVerdictTests {
         #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("7'16 7'02 6'58 6'29 6'25 6'36 6'45 6'25 6'25 6'19")))
     }
 
+    @Test("평소 페이스 기준 — 아주 느린 출발(몸 풀기) 뒤 평탄 → 빌드업 아님")
+    func slowStartThenFlatWithReference() {
+        let ref = 6 * 60 + 35.0
+        // 실사용 10/27: 7'10 7'05 6'59 → 6'30~6'40 오르내림 → 6'11
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("7'10 7'05 6'59 6'30 6'22 6'33 6'40 6'24 6'23 6'11"), referencePace: ref))
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("7'30 7'20 6'30 6'28 6'31 6'26 6'12"), referencePace: ref))
+    }
+
+    @Test("평소 페이스 기준 — 빠르게 시작해 끝까지 올린 러닝·고르게 올린 러닝 → 빌드업")
+    func fastStartBuildUpWithReference() {
+        let ref = 6 * 60 + 30.0
+        #expect(WorkoutTypeClassifier.isBuildUp(splits: splits("6'00 5'55 5'50 5'45 5'40 5'35 5'30"), referencePace: ref))
+        #expect(WorkoutTypeClassifier.isBuildUp(splits: splits("6'40 6'35 6'30 6'25 6'20 6'15 6'10 6'05 6'00 5'55"), referencePace: ref))
+        // 평소 페이스 안에서만 올린 러닝(끝 6'25") → 빌드업 아님
+        #expect(!WorkoutTypeClassifier.isBuildUp(splits: splits("6'55 6'50 6'45 6'40 6'35 6'30 6'25"), referencePace: ref))
+    }
+
     @Test("고르게 올린 10km → 빌드업")
     func steadyProgressionIsBuildUp() {
         #expect(WorkoutTypeClassifier.isBuildUp(splits: splits("6'40 6'35 6'30 6'25 6'20 6'15 6'10 6'05 6'00 5'55")))

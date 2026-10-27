@@ -40,7 +40,7 @@ struct WorkoutTypeClassifier {
         if isEasy(activity: activity, base: base, hrZones: hrZones) {
             return isLongRun(activity: activity, base: base) ? .lsd : .easy
         }
-        if isBuildUp(splits: splits)                                       { return .buildUp     }
+        if isBuildUp(splits: splits, referencePace: buildUpReference(activity: activity, base: base)) { return .buildUp }
         if isDistanceRun(activity: activity, base: base)                   { return .distanceRun }
         if isLSD(activity: activity, base: base, splits: splits)           { return .lsd         }
         if isLongRun(activity: activity, base: base)                       { return .longRun     }
@@ -139,16 +139,42 @@ struct WorkoutTypeClassifier {
     /// 추세선 빌드업의 마지막 단계(가운데 1/3 → 마지막 1/3) 최소 상승 — 임의로 정함(6'00" 기준 약 4초)
     static let buildUpLateStageMinGain = 0.01
 
-    static func isBuildUp(splits: [SplitData]) -> Bool {
-        buildUpVerdict(splits: splits).isBuildUp
+    static func isBuildUp(splits: [SplitData], referencePace: Double? = nil) -> Bool {
+        buildUpVerdict(splits: splits, referencePace: referencePace).isBuildUp
+    }
+
+    /// 몸 풀기로 보는 출발 km — 본인 평소 페이스보다 이만큼(초/km) 넘게 느린 km(앞에서부터 이어진 것). 임의로 정함.
+    static let buildUpWarmupSlowerSec = 20.0
+    /// 빌드업의 끝(마지막 1/3) 평균이 본인 평소 페이스보다 이만큼 빨라야 — 임의로 정함(6'30" 기준 약 12초).
+    static let buildUpFinishFasterFrac = 0.03
+
+    /// 빌드업 판정의 본인 기준 페이스(오늘 기온의 원본 페이스 잣대로 되돌린 평소 페이스 = 4주 중앙값).
+    /// 구간 페이스는 기온 환산 전 원본이라, 15°C 환산 기준선을 오늘 환산 배율로 나눠 같은 잣대로 맞춘다.
+    static func buildUpReference(activity: Activity, base: Baseline) -> Double? {
+        guard let ref = base.pace, let today = base.todayPace, let raw = activity.paceSecPerKm, today > 0 else { return base.pace }
+        return ref * raw / today
     }
 
     /// 빌드업 판정 + 트레이스 문구. `isBuildUp`과 디버그 트레이스가 같은 계산을 쓴다.
-    static func buildUpVerdict(splits: [SplitData]) -> (isBuildUp: Bool, note: String) {
+    /// `referencePace`(본인 평소 페이스)가 있으면(2026-10-28 사용자 결정):
+    ///   ① 앞에서부터 평소보다 20초/km 넘게 느린 km는 몸 풀기로 빼고 본다 — 아주 느린 출발(7'10"·7'05"·6'59") 뒤 평탄한 러닝이
+    ///      "처음보다 끝이 빠르다"로 빌드업이 됐다. 출발이 빠른 빌드업(6'00"→5'30")은 뺄 km가 없어 그대로 빌드업.
+    ///   ② 끝(마지막 1/3) 평균이 평소보다 3% 이상 빨라야 — 평소 페이스 안에서 오르내린 러닝은 빌드업이 아니다.
+    static func buildUpVerdict(splits: [SplitData], referencePace: Double? = nil) -> (isBuildUp: Bool, note: String) {
         func pf(_ s: Double) -> String { String(format: "%d'%02d\"", Int(s) / 60, Int(s) % 60) }
         let full = splits.filter { $0.distanceM >= 900 }
         guard full.count >= 4 else { return (false, "빌드업탈락: splits \(full.count) < 4") }
-        let all = full.map(\.paceSecPerKm)
+        var all = full.map(\.paceSecPerKm)
+        if let ref = referencePace {
+            let warm = all.prefix { $0 > ref + buildUpWarmupSlowerSec }.count
+            if warm > 0 { all = Array(all.dropFirst(warm)) }
+            guard all.count >= 4 else { return (false, "빌드업탈락: 몸 풀기 \(warm)km 빼면 \(all.count)km") }
+            let tail = all.suffix(max(1, all.count / 3))
+            let finish = tail.reduce(0, +) / Double(tail.count)
+            guard finish <= ref * (1 - buildUpFinishFasterFrac) else {
+                return (false, "빌드업탈락: 끝 1/3 \(pf(finish)) > 평소 \(pf(ref))×0.97" + (warm > 0 ? " (몸 풀기 \(warm)km 뺌)" : ""))
+            }
+        }
         let firstPace = all[0], lastPace = all[all.count - 1]
         guard lastPace < firstPace * 0.95 else {   // ≥5% first-to-last gain
             return (false, "빌드업탈락: 초→말 개선 \(Int((1 - lastPace / firstPace) * 100))% < 5%")
@@ -373,7 +399,7 @@ struct WorkoutTypeClassifier {
         }
 
         // 3. 빌드업 — 양 끝 km 뺀 3등분 단계 상승(각 1.5%) or 추세선 4%·R²≥0.40
-        let bu = buildUpVerdict(splits: splits)
+        let bu = buildUpVerdict(splits: splits, referencePace: buildUpReference(activity: activity, base: base))
         if bu.isBuildUp { return (.buildUp, bu.note) }
         notes.append(bu.note)
 
