@@ -577,7 +577,10 @@ struct SummaryShareCardScreen: View {
     @State private var previewImages: [UIImage] = []
     /// 묶음 2번째 장부터(리듬·기록·추세·제목) — 첫 장은 previewImages[0]
     @State private var slideImages: [UIImage] = []
-    @State private var bundleMode = false
+    /// 한 장(결산 카드) · 묶음(여러 장) · 한 장에 모두(묶음 내용을 4:5 한 장에)
+    private enum ShareMode { case single, bundle, allInOne }
+    @State private var shareMode: ShareMode = .single
+    @State private var allInOneImage: UIImage? = nil
     @State private var isRendering = false
     @State private var activeShare: SingleShareConfig? = nil
 
@@ -605,7 +608,16 @@ struct SummaryShareCardScreen: View {
                                 .padding(.horizontal, 24)
                                 .padding(.bottom, 12)
                         }
-                        if bundleMode, recap != nil {
+                        if shareMode == .allInOne, recap != nil {
+                            VStack(spacing: 12) {
+                                allInOnePreview
+                                themeToggle
+                                    .padding(.horizontal, 24)
+                                allInOneShareButton
+                                    .padding(.horizontal, 24)
+                            }
+                            .padding(.bottom, 32)
+                        } else if shareMode == .bundle, recap != nil {
                             VStack(spacing: 12) {
                                 bundlePreview
                                 themeToggle
@@ -751,16 +763,25 @@ struct SummaryShareCardScreen: View {
             }
         }
         slideImages = slides
+        allInOneImage = nil
+        if let recap, let stats = statsList.first {
+            let view = PeriodRecapAllInOneCard(recap: recap, stats: stats, miniMeImage: miniMeImage, theme: summaryTheme)
+                .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 3
+            allInOneImage = renderer.uiImage
+        }
         isRendering = false
     }
 
-    /// 한 장 | 묶음 N장
+    /// 한 장 | 묶음 N장 | 한 장에 모두
     private var bundleToggle: some View {
         let L = AppLanguage.shared
         let n = 1 + (recap?.slides.count ?? 0)
         return HStack(spacing: 0) {
-            themeSegment(label: L.s("한 장", "Single", ja: "1枚"), selected: !bundleMode) { bundleMode = false }
-            themeSegment(label: L.s("묶음 \(n)장", "Set of \(n)", ja: "まとめ\(n)枚"), selected: bundleMode) { bundleMode = true }
+            themeSegment(label: L.s("한 장", "Single", ja: "1枚"), selected: shareMode == .single) { shareMode = .single }
+            themeSegment(label: L.s("묶음 \(n)장", "Set of \(n)", ja: "まとめ\(n)枚"), selected: shareMode == .bundle) { shareMode = .bundle }
+            themeSegment(label: L.s("한 장에 모두", "All in one", ja: "1枚に全部"), selected: shareMode == .allInOne) { shareMode = .allInOne }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
@@ -787,6 +808,40 @@ struct SummaryShareCardScreen: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .frame(height: 403)
+        }
+    }
+
+    @ViewBuilder
+    private var allInOnePreview: some View {
+        if !isRendering, let img = allInOneImage {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
+        } else {
+            ProgressView()
+                .tint(Theme.violet)
+                .frame(width: 300, height: 375)
+        }
+    }
+
+    @ViewBuilder
+    private var allInOneShareButton: some View {
+        if !isRendering, let img = allInOneImage {
+            Button {
+                activeShare = SingleShareConfig(id: -2, images: [img])
+            } label: {
+                Label(AppLanguage.shared.s("한 장에 모두 내보내기", "Export all-in-one", ja: "1枚にまとめて書き出す"),
+                      systemImage: "square.and.arrow.up")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Theme.violet)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
         }
     }
 
