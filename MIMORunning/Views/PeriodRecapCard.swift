@@ -3,7 +3,7 @@ import Charts
 
 // MARK: - 기간별 결산 공유 카드 (한 장에 모두, 4:5)
 
-/// 총거리 + 보조 지표 · 리듬 | VO2 추세 · 기록·대회. 없는 칸은 빼고 남은 칸이 넓어진다.
+/// 총거리 + 보조 지표 · 일별(연 = 월별) 거리 막대 · 리듬 | VO2 추세 · 기록·대회(최대 2줄). 없는 칸은 빼고 남은 칸이 넓어진다.
 /// 2026-10-28 사용자 결정: 묶음·한 장 카드 삭제, 기간 제목·부연(인사이트) 삭제 — 숫자만.
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
@@ -33,14 +33,22 @@ struct PeriodRecapAllInOneCard: View {
                 .padding(.bottom, 2)
             }
 
-            RecapDivider(theme: theme, top: 10, bottom: 8)
+            RecapDivider(theme: theme, top: 8, bottom: 6)
+
+            // 일별 거리(연 = 월별) — 높이가 빠듯해 달력 칸·기록 줄을 줄여 4:5 한 장에 맞춘다
+            RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
+                                               : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
+                            unit: stats.useMiles ? "MI" : "KM", theme: theme)
+            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 50)
+
+            RecapDivider(theme: theme, top: 8, bottom: 6)
 
             // 리듬 | VO2 추세
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 0) {
                     RecapStreakLine(recap: recap, theme: theme)
                     RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
-                                     cellSize: 10, barHeight: 70)
+                                     cellSize: 8, barHeight: 56)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if let v = recap.vo2 {
@@ -60,7 +68,7 @@ struct PeriodRecapAllInOneCard: View {
                                 .foregroundStyle(p.textPrimary)
                         }
                         .padding(.bottom, 4)
-                        RecapVO2Line(vo2: v, theme: theme, height: 70)
+                        RecapVO2Line(vo2: v, theme: theme, height: 56)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -69,8 +77,8 @@ struct PeriodRecapAllInOneCard: View {
 
             // 기록 · 대회
             if !recap.prs.isEmpty || !recap.races.isEmpty {
-                RecapDivider(theme: theme, top: 10, bottom: 8)
-                RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme, maxRows: 4)
+                RecapDivider(theme: theme, top: 8, bottom: 6)
+                RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme, maxRows: 2)
             }
             Spacer(minLength: 0)
         }
@@ -223,6 +231,64 @@ struct RecapRhythmChart: View {
             }
         }
         .frame(height: barHeight)
+    }
+}
+
+/// 거리 막대 — 월 = 그 달 날짜별, 연 = 1~12월
+struct RecapDistanceBars: View {
+    let recap: PeriodRecap
+    let useMiles: Bool
+    var theme: ShareTheme = .dark
+    var height: CGFloat = 50
+
+    private static let monthAbbr = ["", "J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+
+    private var data: [(x: Int, km: Double)] {
+        let cal = InsightEngine.weekCalendar
+        let factor = useMiles ? 0.621371 : 1.0
+        if recap.isYear {
+            var byMonth: [Int: Double] = [:]
+            for (day, km) in recap.dayKm { byMonth[cal.component(.month, from: day), default: 0] += km }
+            return (1...12).map { ($0, (byMonth[$0] ?? 0) * factor) }
+        }
+        let count = cal.range(of: .day, in: .month, for: recap.start)?.count ?? 30
+        return (1...count).map { d in
+            let day = cal.date(byAdding: .day, value: d - 1, to: recap.start).map { cal.startOfDay(for: $0) }
+            return (d, (day.flatMap { recap.dayKm[$0] } ?? 0) * factor)
+        }
+    }
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
+        let pts = data
+        let isYear = recap.isYear
+        Chart(pts, id: \.x) { d in
+            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 14 : 5))
+                .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
+                .cornerRadius(2)
+        }
+        .chartXScale(domain: isYear ? 0...13 : 0...32)
+        .chartXAxis {
+            AxisMarks(values: isYear ? [1, 3, 5, 7, 9, 11] : [1, 7, 14, 21, 28]) { value in
+                AxisValueLabel {
+                    let v = value.as(Int.self) ?? 0
+                    Text(isYear ? (v > 0 && v < Self.monthAbbr.count ? Self.monthAbbr[v] : "") : "\(v)")
+                        .font(.system(size: 7))
+                        .foregroundStyle(p.axisLabel)
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 2)) { value in
+                AxisValueLabel {
+                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
+                        .font(.system(size: 7))
+                        .foregroundStyle(p.axisLabel)
+                }
+                AxisGridLine().foregroundStyle(p.gridLine)
+            }
+        }
+        .frame(height: height)
     }
 }
 
