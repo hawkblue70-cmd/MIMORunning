@@ -275,7 +275,7 @@ struct SummaryCardPalette {
 
 // MARK: - Common chrome (결산 카드 · 결산 묶음 슬라이드 공용)
 
-/// 결산 카드 틀 — 300×480, 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
+/// 결산 카드 틀 — 384×480(4:5, 인스타 피드 묶음이 잘리지 않게 2026-10-28 폭 300→384, 높이·글자 크기는 그대로), 위 보라 막대 · 워드마크 + 미니미 · 기간 이름 · 구분선 · 내용 · 아래 러너 표시.
 /// 결산 카드와 묶음 슬라이드가 모두 이 틀 하나를 쓴다(데이터 표시 통일성 — 장마다 머리를 따로 그리지 않는다).
 struct SummaryCardChrome<Content: View>: View {
     let title: String
@@ -285,6 +285,8 @@ struct SummaryCardChrome<Content: View>: View {
     var showsMiniMe: Bool = true
     var theme: ShareTheme = .dark
     @ViewBuilder let content: () -> Content
+
+    static var size: CGSize { CGSize(width: 384, height: 480) }
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
 
@@ -343,7 +345,7 @@ struct SummaryCardChrome<Content: View>: View {
                 .padding(.bottom, 13)
             }
         }
-        .frame(width: 300, height: 480)
+        .frame(width: SummaryCardChrome<EmptyView>.size.width, height: SummaryCardChrome<EmptyView>.size.height)
         .environment(\.colorScheme, theme == .dark ? .dark : .light)
     }
 }
@@ -369,7 +371,7 @@ struct SummaryMiniMe: View {
     }
 }
 
-// MARK: - Athletic share card (300 × 375, rendered via ImageRenderer)
+// MARK: - Period summary card (384 × 480, rendered via ImageRenderer)
 
 struct SummaryShareCardView: View {
     let stats: SummaryPeriodStats
@@ -666,10 +668,12 @@ struct SummaryShareCardScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Theme.violet.opacity(0.25), radius: 24, y: 10)
         } else {
+            // 렌더 전 — 출력 크기(384×480)를 미리보기 폭 300에 맞춰 줄여 보인다
             SummaryShareCardView(stats: statsList[index], miniMeImage: miniMeImage, theme: summaryTheme)
                 .environment(\.colorScheme, summaryTheme == .dark ? .dark : .light)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .frame(maxWidth: 300, maxHeight: 480)
+                .scaleEffect(300 / 384)
+                .frame(width: 300, height: 375)
         }
     }
 
@@ -769,7 +773,7 @@ struct SummaryShareCardScreen: View {
         if isRendering || images.isEmpty {
             ProgressView()
                 .tint(Theme.violet)
-                .frame(width: 300, height: 480)
+                .frame(width: 300, height: 375)
         } else {
             TabView {
                 ForEach(images.indices, id: \.self) { i in
@@ -782,7 +786,7 @@ struct SummaryShareCardScreen: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 508)
+            .frame(height: 403)
         }
     }
 
