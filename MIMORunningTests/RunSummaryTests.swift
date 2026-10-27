@@ -773,4 +773,14 @@ struct RunSummaryTests {
         #expect(abs((nights.first?.value ?? 0) - 6.5) < 0.01)
         #expect(cal.isDate(nights.first!.date, inSameDayAs: at(7)))
     }
+
+    @Test func sleepNightHoursKeepsMainSessionNotNaps() {
+        // 저녁 낮잠 17:00~18:00(다음 날 키) + 본 수면 01:00~04:14(3시간 14분) → 본 수면만, 낮잠 13:00~14:00은 버림
+        let cal = Calendar.current
+        let d = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 0))!
+        func at(_ h: Double) -> Date { d.addingTimeInterval(h * 3600) }
+        let nights = mrSleepNightHours([(at(13), at(14)), (at(17), at(18)), (at(25), at(28.233))])
+        #expect(nights.count == 1)
+        #expect(abs((nights.first?.value ?? 0) - 3.233) < 0.01)
+    }
 }

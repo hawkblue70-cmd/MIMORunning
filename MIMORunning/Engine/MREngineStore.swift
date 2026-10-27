@@ -184,6 +184,12 @@ final class MREngineStore: ObservableObject {
         return (decode(r), decode(t))
     }
 
+    /// 저장된 밤별 잠든 시간에서 그날(러닝한 날) 아침까지의 밤 — 러닝 뒤 총평의 짧은 수면 관문용. 없으면 nil.
+    static func persistedSleepHours(asOf: Date, calendar: Calendar = .current) -> Double? {
+        guard let a = UserDefaults.standard.array(forKey: sleepNightsKey) as? [[Double]] else { return nil }
+        return a.last(where: { $0.count == 2 && calendar.isDate(Date(timeIntervalSince1970: $0[0]), inSameDayAs: asOf) })?[1]
+    }
+
     /// 저장된 밤 활력 징후로 그날 아침의 이상 징후(손목 온도·호흡수) — 러닝 뒤 "같은 페이스 심박이 높다" 문장이
     /// 아침 카드와 같은 사실을 원인 자리에 적도록(2026-10-18). 캐시가 없거나 벗어난 게 없으면 nil.
     static func persistedVitalSignal(asOf: Date) -> MRVitalSignal? {

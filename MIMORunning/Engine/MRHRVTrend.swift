@@ -34,16 +34,22 @@ func mrSleepSessions(_ asleep: [(start: Date, end: Date)],
     return out
 }
 
-/// 밤별 잠든 시간(시간) — 겹치는 기록(아이폰·워치가 같은 밤을 따로 쓴 경우)은 합집합으로 한 번만 센다.
-/// 밤 키는 HRV와 같은 규칙(기상 시각 기준 — 15시 이후 끝나면 다음 날, 12시 전이면 그날). 12~15시 낮잠은 버린다.
+/// 밤별 잠든 시간(시간) — **그 밤의 본 수면 세션 하나**만 센다(낮잠·초저녁 선잠 제외, 2026-10-28).
+/// - 잠든 구간을 90분 간격 규칙(`mrSleepSessions`, HRV와 같은 규칙)으로 세션으로 묶고, 세션 안 잠든 시간은 겹친 기록
+///   (아이폰·워치가 같은 밤을 따로 쓴 경우)을 합집합으로 한 번만 센다. 밤중에 잠깐 깬 시간은 빠진다.
+/// - 밤 키는 HRV와 같은 규칙(세션이 끝난 시각 기준 — 15시 이후면 다음 날, 12시 전이면 그날, 12~15시에 끝난 낮잠은 버림).
+/// - 같은 밤 키에 세션이 여럿이면 잠든 시간이 가장 긴 세션이 본 수면 — 저녁 낮잠(17~18시)이 다음 날 밤에 더해지거나,
+///   아침 선잠이 짧은 밤을 가려 "5시간 미만"을 놓치지 않게.
 func mrSleepNightHours(_ asleep: [(start: Date, end: Date)], calendar: Calendar = .current) -> [(date: Date, value: Double)] {
-    let merged = mrSleepSessions(asleep.filter { $0.end > $0.start }, gapMinutes: 0)
-    var byNight: [Date: TimeInterval] = [:]
-    for iv in merged {
-        guard let k = mrHRVNightKey(iv.end, calendar: calendar) ?? mrHRVNightKey(iv.start, calendar: calendar) else { continue }
-        byNight[k, default: 0] += iv.end.timeIntervalSince(iv.start)
+    let valid = asleep.filter { $0.end > $0.start }
+    var best: [Date: TimeInterval] = [:]
+    for session in mrSleepSessions(valid) {
+        guard let k = mrHRVNightKey(session.end, calendar: calendar) ?? mrHRVNightKey(session.start, calendar: calendar) else { continue }
+        let inside = valid.filter { $0.start >= session.start && $0.end <= session.end }
+        let asleepSec = mrSleepSessions(inside, gapMinutes: 0).reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
+        best[k] = max(best[k] ?? 0, asleepSec)
     }
-    return byNight.map { (date: $0.key, value: $0.value / 3600) }.sorted { $0.date < $1.date }
+    return best.map { (date: $0.key, value: $0.value / 3600) }.sorted { $0.date < $1.date }
 }
 
 /// 밤별 중앙값.

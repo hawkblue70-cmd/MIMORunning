@@ -64,6 +64,8 @@ struct RunSummaryInput {
     var weekKmSoFar: Double? = nil
     /// 그날 아침 밤 활력 징후 이상(손목 온도·호흡수) — 있으면 "강도 넣기 좋은 시점"을 말하지 않는다(아침 제안과 같은 사실, 2026-10-20)
     var vitalSignal: MRVitalSignal? = nil
+    /// 러닝한 날 아침까지의 밤 잠든 시간(본 수면 세션) — 5시간 미만이면 강도 권유를 막는다(MRIntensityGate.shortSleep)
+    var lastNightSleepHours: Double? = nil
     var previousSevenAU: Double? = nil
     var loadSentence: EffortLoad.SentenceKind? = nil
     /// 이 러닝의 체감 강도가 아직 없음 — 7일 합에 오늘이 0으로 들어가 있으므로 높다/가볍다를 말하지 않는다
@@ -694,6 +696,14 @@ enum RunSummary {
                 return L.s("부하는 내려왔지만 ", "Load has come down, but ", ja: "負荷は下がりましたが、") + v.postRunCause + " "
                     + L.s("강도는 몸 상태가 평소로 돌아온 뒤에 넣으세요.", "Add intensity once your body is back to normal.", ja: "強度は体調が普段に戻ってから入れてください。")
             }
+            // 어젯밤 수면이 짧았던 날 — 아침 제안과 같은 관문(2026-10-28)
+            if case .shortSleep? = MRIntensityGate.closedReason(vital: nil, hrvTrend: nil, lastNightHRV: nil,
+                                                                lastNightSleepHours: i.lastNightSleepHours),
+               let h = i.lastNightSleepHours {
+                return L.s("부하는 내려왔지만 ", "Load has come down, but ", ja: "負荷は下がりましたが、")
+                    + MRIntensityGate.fact(.shortSleep(hours: h)) + " "
+                    + L.s("강도는 잠을 충분히 잔 날 넣으세요.", "Add intensity on a day after a full night's sleep.", ja: "強度はしっかり眠れた日に入れてください。")
+            }
             // HRV가 있으면 회복 판정을 한 번 더 거른다 — 부하는 내려왔어도 HRV가 아래·불안정이면 "충분히"라고 하지 않는다.
             // 위·안정이면 2주 이지 블록(회복이 쌓임)과 고강도 있음(잘 흡수함)을 나눠 말한다. 범위 안이면 기존 문장.
             if let t = i.hrvTrend {
@@ -728,7 +738,8 @@ enum RunSummary {
             let rising = (i.weekOverWeek ?? 0) >= restedWeekOverWeekMax
             guard rising else { return L.s("지금 리듬을 유지하면 좋습니다.", "Keep this rhythm.", ja: "今のリズムを維持するとよいです。") }
             // "고강도 사이에 쉬운 날"은 강도를 넣어도 된다는 뜻 — 공용 판정이 막으면 강도 없이(아침 제안과 같은 조건, 2026-10-20)
-            if let g = MRIntensityGate.closedReason(vital: i.vitalSignal, hrvTrend: i.hrvTrend, lastNightHRV: i.lastNightHRV) {
+            if let g = MRIntensityGate.closedReason(vital: i.vitalSignal, hrvTrend: i.hrvTrend, lastNightHRV: i.lastNightHRV,
+                                                    lastNightSleepHours: i.lastNightSleepHours) {
                 return L.s("지금 리듬을 유지하되 강도는 빼세요. ", "Keep this rhythm but skip the intensity. ", ja: "今のリズムは保ちつつ、強度は抜いてください。") + MRIntensityGate.fact(g)
             }
             if i.hrvTrend?.isReadyHigh == true {
