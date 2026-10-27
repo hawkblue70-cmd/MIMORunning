@@ -171,11 +171,24 @@ struct StampDateLabel: View {
     let date: Date
     /// 흰 배경(사진 없는 스탬프 카드) — 검은 글자, 그림자 없음
     var onLight: Bool = false
+    /// 날짜 아래 날씨 줄 — 아이콘(SF Symbol)·기온("18°C"). 기온이 없으면 줄 생략
+    var weatherIcon: String? = nil
+    var weatherText: String? = nil
     var body: some View {
-        Text(StampDateLabel.string(for: date))
-            .font(.system(size: 8, weight: .medium))
-            .foregroundStyle(onLight ? Color.black : Color.white)
-            .shadow(color: .black.opacity(onLight ? 0 : 0.4), radius: 2, x: 0, y: 1)
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(StampDateLabel.string(for: date))
+            if let t = weatherText {
+                HStack(spacing: 2) {
+                    if let icon = weatherIcon {
+                        Image(systemName: icon).font(.system(size: 7))
+                    }
+                    Text(t)
+                }
+            }
+        }
+        .font(.system(size: 8, weight: .medium))
+        .foregroundStyle(onLight ? Color.black : Color.white)
+        .shadow(color: .black.opacity(onLight ? 0 : 0.4), radius: 2, x: 0, y: 1)
     }
     /// 예: "2026. 9. 4 오후 6:16" (애슬레틱 카드 날짜 줄과 같은 포맷터)
     static func string(for date: Date) -> String {

@@ -148,7 +148,8 @@ struct StampStoryRenderView: View {
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
             if resolved.showDate, let d = data.date {
-                StampDateLabel(date: d, onLight: photo == nil)
+                StampDateLabel(date: d, onLight: photo == nil,
+                               weatherIcon: data.weatherIcon, weatherText: data.weatherText)
                     .padding(.horizontal, 14)
                     .padding(.top, 14 + 8)   // 워드마크(25pt) 세로 중앙 근처
                     .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)
@@ -253,7 +254,8 @@ struct StampAnimPreviewCard: View {
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
             if cfg.showDate, let d = data.date {
-                StampDateLabel(date: d, onLight: photo == nil)
+                StampDateLabel(date: d, onLight: photo == nil,
+                               weatherIcon: data.weatherIcon, weatherText: data.weatherText)
                     .padding(.horizontal, 14)
                     .padding(.top, 14 + 8)
                     .frame(width: renderWidth, height: renderHeight, alignment: .topTrailing)

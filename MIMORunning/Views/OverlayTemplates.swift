@@ -12,6 +12,9 @@ extension ShareCardScreen {
     var overlayPreviewData: StampData {
         var d = stampPreviewData
         d.raceName = confirmedRaceName
+        // 날짜 아래 날씨 줄은 스탬프 카드만 — 오버레이 카드는 로고·날짜·대회 뱃지만
+        d.weatherIcon = nil
+        d.weatherText = nil
         return d
     }
 

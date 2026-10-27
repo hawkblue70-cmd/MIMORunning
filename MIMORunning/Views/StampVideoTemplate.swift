@@ -103,7 +103,8 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
 /// 영상 출력에 얹히는 MIMO 워드마크(좌측 상단) 정적 이미지.
 /// 영상 미리보기(previewW=375*9/16≈211pt)와 동일한 논리 크기로 렌더.
 @MainActor
-func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil) -> UIImage? {
+func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil,
+                          weatherIcon: String? = nil, weatherText: String? = nil) -> UIImage? {
     // 영상 미리보기 컨테이너와 동일한 논리 폭 → 미리보기·출력 워드마크 크기 일치
     let baseW: CGFloat = 375.0 * 9.0 / 16.0  // ≈ 210.94pt
     let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
@@ -113,7 +114,7 @@ func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: Strin
             .padding(.leading, 14)
             .padding(.top, vPad)
         if let d = date {
-            StampDateLabel(date: d)
+            StampDateLabel(date: d, weatherIcon: weatherIcon, weatherText: weatherText)
                 .padding(.trailing, 14)
                 .padding(.top, vPad + 8)
                 .frame(width: baseW, alignment: .topTrailing)
@@ -604,7 +605,8 @@ extension ShareCardScreen {
                 }
                 .overlay(alignment: .topTrailing) {
                     if clipConfig.showDate {
-                        StampDateLabel(date: activity.date)
+                        StampDateLabel(date: activity.date,
+                                       weatherIcon: data.weatherIcon, weatherText: data.weatherText)
                             .padding(.trailing, 14)
                             .padding(.top, cardSectionH * 0.06 + 8)
                     }
@@ -891,7 +893,8 @@ extension ShareCardScreen {
         }
         .overlay(alignment: .topTrailing) {
             if displayConfig.showDate {
-                StampDateLabel(date: activity.date)
+                StampDateLabel(date: activity.date,
+                               weatherIcon: stampPreviewData.weatherIcon, weatherText: stampPreviewData.weatherText)
                     .padding(.trailing, 11)
                     .padding(.top, cardSectionH * 0.06 + 8)
             }

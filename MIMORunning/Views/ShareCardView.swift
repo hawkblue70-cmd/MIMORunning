@@ -943,7 +943,8 @@ struct ShareCardScreen: View {
                     .padding(.top, 375.0 * 0.06)
                     .frame(width: vidW, height: 375, alignment: .topLeading)
                 if stampVM.showDate {
-                    StampDateLabel(date: activity.date)
+                    StampDateLabel(date: activity.date,
+                                   weatherIcon: stampPreviewData.weatherIcon, weatherText: stampPreviewData.weatherText)
                         .padding(.trailing, vidW * 0.05)
                         .padding(.top, 375.0 * 0.06 + 8)
                         .frame(width: vidW, height: 375, alignment: .topTrailing)
@@ -3828,7 +3829,8 @@ struct ShareCardScreen: View {
         }
 
         let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: vm.showDate ? activity.date : nil,
-                                                raceName: data.raceName)
+                                                raceName: data.raceName,
+                                                weatherIcon: data.weatherIcon, weatherText: data.weatherText)
 
         var processedURLs: [URL] = []
         for (i, recipe) in vm.clipRecipes.enumerated() {
@@ -4183,7 +4185,9 @@ struct ShareCardScreen: View {
             }
             guard !photos.isEmpty else { isExportingVideo = false; return }
             let logoOverlay = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
-                                                   raceName: stampPreviewData.raceName)
+                                                   raceName: stampPreviewData.raceName,
+                                                   weatherIcon: stampPreviewData.weatherIcon,
+                                                   weatherText: stampPreviewData.weatherText)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
@@ -4410,7 +4414,9 @@ struct ShareCardScreen: View {
                 }
                 // 로고 정적 레이어 — stamp 모드에서만 필요 (VideoOverlayCard 없이 합성 시)
                 if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil,
-                                                        raceName: stampPreviewData.raceName) {
+                                                        raceName: stampPreviewData.raceName,
+                                                   weatherIcon: stampPreviewData.weatherIcon,
+                                                   weatherText: stampPreviewData.weatherText) {
                     exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
                         image: logoImg,
                         entranceMode: .none,
