@@ -25,11 +25,12 @@ struct PeriodRecap {
         let date: Date
     }
 
+    /// 이번 기간 평균 vs 지난 기간 평균(워치 VO2max 표본) — 케이던스·파워·보폭과 같은 '지난달 대비' 기준.
+    /// 하루하루 흔들리는 추정값이라 첫·끝 두 값 대신 평균끼리 비교한다(2026-10-28 사용자 결정). 절댓값은 화면에 쓰지 않는다.
     struct VO2Trend {
-        let points: [(date: Date, value: Double)]
-        var start: Double { points.first?.value ?? 0 }
-        var end: Double { points.last?.value ?? 0 }
-        var delta: Double { end - start }
+        let current: Double
+        let previous: Double
+        var delta: Double { current - previous }
     }
 
     let span: Span
@@ -74,14 +75,16 @@ struct PeriodRecap {
                      vo2Samples: [(date: Date, value: Double)], now: Date = Date(),
                      cal: Calendar = InsightEngine.weekCalendar) -> PeriodRecap? {
         let runs = allRuns.filter { $0.type == .running }
-        let (start, end): (Date, Date) = {
+        let (start, end, prevStart): (Date, Date, Date) = {
             switch span {
             case .month(let y, let m):
                 let s = cal.date(from: DateComponents(year: y, month: m, day: 1)) ?? now
-                return (s, cal.date(byAdding: .month, value: 1, to: s) ?? now)
+                return (s, cal.date(byAdding: .month, value: 1, to: s) ?? now,
+                        cal.date(byAdding: .month, value: -1, to: s) ?? now)
             case .year(let y):
                 let s = cal.date(from: DateComponents(year: y, month: 1, day: 1)) ?? now
-                return (s, cal.date(byAdding: .year, value: 1, to: s) ?? now)
+                return (s, cal.date(byAdding: .year, value: 1, to: s) ?? now,
+                        cal.date(byAdding: .year, value: -1, to: s) ?? now)
             }
         }()
         let inPeriod = runs.filter { $0.date >= start && $0.date < end }
@@ -145,12 +148,14 @@ struct PeriodRecap {
             .sorted { $0.date < $1.date }
 
         // VO2 — 기간 안 표본 2개 이상, 첫·끝 간격 월 14일·연 60일 이상일 때만(추세만)
-        let vo2Pts = vo2Samples.filter { $0.date >= start && $0.date < end }.sorted { $0.date < $1.date }
-        let minSpan: TimeInterval = (isYearSpan(span) ? 60 : 14) * 86400
+        // VO2 — 이번 기간·지난 기간 각각 표본 2개 이상일 때 평균끼리
+        func avg(_ from: Date, _ to: Date) -> Double? {
+            let v = vo2Samples.filter { $0.date >= from && $0.date < to }.map(\.value)
+            return v.count >= 2 ? v.reduce(0, +) / Double(v.count) : nil
+        }
         let vo2: VO2Trend? = {
-            guard vo2Pts.count >= 2, let f = vo2Pts.first, let l = vo2Pts.last,
-                  l.date.timeIntervalSince(f.date) >= minSpan else { return nil }
-            return VO2Trend(points: vo2Pts)
+            guard let cur = avg(start, end), let prev = avg(prevStart, start) else { return nil }
+            return VO2Trend(current: cur, previous: prev)
         }()
 
         return PeriodRecap(span: span, start: start, end: end, dayKm: dayKm, runCount: inPeriod.count,

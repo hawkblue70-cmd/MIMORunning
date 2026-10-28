@@ -81,16 +81,19 @@ struct PeriodRecapTests {
         #expect(r.recordRowCount == 1)
     }
 
-    @Test func vo2NeedsSpan() {
+    @Test func vo2ComparesMonthlyAverages() {
+        // 9월 평균 48.0 · 10월 평균 49.0 → +1.0. 한쪽이라도 표본 2개 미만이면 없음
         let runs = [run(2026, 10, 5)]
-        let short = [(date: date(2026, 10, 1), value: 48.0), (date: date(2026, 10, 10), value: 49.0)]
-        let long  = [(date: date(2026, 10, 1), value: 48.0), (date: date(2026, 10, 20), value: 49.5)]
+        let both = [(date: date(2026, 9, 3), value: 47.5), (date: date(2026, 9, 20), value: 48.5),
+                    (date: date(2026, 10, 2), value: 48.5), (date: date(2026, 10, 20), value: 49.5)]
+        let onlyOneSep = [(date: date(2026, 9, 3), value: 47.5),
+                          (date: date(2026, 10, 2), value: 48.5), (date: date(2026, 10, 20), value: 49.5)]
         let a = PeriodRecap.make(span: .month(year: 2026, month: 10), runs: runs, races: [],
-                                 vo2Samples: short, now: now)!
+                                 vo2Samples: both, now: now)!
         let b = PeriodRecap.make(span: .month(year: 2026, month: 10), runs: runs, races: [],
-                                 vo2Samples: long, now: now)!
-        #expect(a.vo2 == nil)
-        #expect(abs((b.vo2?.delta ?? 0) - 1.5) < 0.001)
+                                 vo2Samples: onlyOneSep, now: now)!
+        #expect(abs((a.vo2?.delta ?? 0) - 1.0) < 0.001)
+        #expect(b.vo2 == nil)
     }
 
     @Test func yearWeeksStopAtToday() {

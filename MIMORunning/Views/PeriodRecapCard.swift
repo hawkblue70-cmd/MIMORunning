@@ -111,7 +111,7 @@ struct PeriodRecapAllInOneCard: View {
                         statRow(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
                     }
                     if let km = stats.ytdDistanceKm, km > 0, !recap.isYear {
-                        statRow(String(format: "%.0f km", km), L.s("올해 누적", "YTD", ja: "今年の累計"), p.brand)
+                        statRow("\(Int(km.rounded()).formatted(.number.grouping(.automatic))) km", L.s("올해 누적", "YTD", ja: "今年の累計"), p.brand)
                     }
                 }
             }
@@ -137,10 +137,11 @@ struct PeriodRecapAllInOneCard: View {
                 if !recap.isYear, recap.vo2 != nil || form?.hasAny == true {
                     Rectangle().fill(p.divider).frame(width: 0.5)
                     VStack(alignment: .leading, spacing: 10) {
+                        // 유산소 — 지난달 평균 대비 변화값 + ▲▼
                         if let v = recap.vo2 {
                             let delta = (v.delta * 10).rounded() / 10
                             formCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
-                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil,
+                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.current, v.previous,
                                      color: Theme.chartAerobic, lightColor: Color(hex: "6B7280"), unit: "ml/kg/min")
                         }
                         if let form { formCells(form) }
