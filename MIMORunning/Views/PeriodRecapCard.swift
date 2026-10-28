@@ -61,8 +61,8 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 | 리듬 잔디 ② 지난 기간 대비·올해 누적
-/// ③ 일별(연 = 월별) 거리 막대 | 유산소(VO2max 변화값, 차트 없음)·케이던스·파워·보폭 ④ 기록·대회(제목·줄 큰 글자).
+/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 | 유산소(VO2max 변화값)·케이던스·파워·보폭
+/// ② 지난 기간 대비·올해 누적 ③ 일별(연 = 월별) 거리 막대(전체 폭) ④ 기록·대회(제목·줄 큰 글자). 잔디·차트 없음.
 /// 없는 칸은 빼고 남은 칸이 넓어진다. 나 탭 카드와 공유 출력이 이 하나를 쓴다(인사이트 문장 없음).
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
@@ -77,7 +77,7 @@ struct PeriodRecapAllInOneCard: View {
     var body: some View {
         SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
                           miniMeImage: miniMeImage, theme: theme) {
-            // ① 총거리(큰 숫자) | 운동 시간·러닝·평균 페이스·최장 | 리듬 잔디
+            // ① 총거리(큰 숫자) | 운동 시간·러닝·평균 페이스·최장 | 러닝 데이터 값
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
@@ -112,34 +112,8 @@ struct PeriodRecapAllInOneCard: View {
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 0) {
-                    RecapStreakLine(recap: recap, theme: theme, twoLines: true)
-                    RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
-                                     cellSize: 12, barHeight: 84)
-                }
-                .frame(width: 106, alignment: .leading)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-
-            // ② 지난 기간 대비 · 올해 누적
-            comparisonLine
-
-            RecapDivider(theme: theme, top: 8, bottom: 6)
-
-            // ③ 일별(연 = 월별) 거리 막대 | 러닝 데이터 값(VO2max 변화·케이던스·파워·보폭, 차트 없음)
-            let hasData = recap.vo2 != nil || form?.hasAny == true
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 0) {
-                    RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
-                                                       : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
-                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 128)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
-
-                if hasData {
-                    Rectangle().fill(p.divider).frame(width: 0.5)
+                // 러닝 데이터 값 — 유산소(VO2max 변화, 차트 없음)·케이던스·파워·보폭
+                if recap.vo2 != nil || form?.hasAny == true {
                     VStack(alignment: .leading, spacing: 8) {
                         if let v = recap.vo2 {
                             let delta = (v.delta * 10).rounded() / 10
@@ -148,11 +122,22 @@ struct PeriodRecapAllInOneCard: View {
                         }
                         if let form { formCells(form) }
                     }
-                    .padding(.top, 18)
-                    .frame(width: 124, alignment: .leading)
+                    .padding(.top, 8)
+                    .frame(width: 112, alignment: .leading)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
+
+            // ② 지난 기간 대비 · 올해 누적
+            comparisonLine
+
+            RecapDivider(theme: theme, top: 8, bottom: 6)
+
+            // ③ 일별(연 = 월별) 거리 막대 — 전체 폭
+            RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
+                                               : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
+                            unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
+            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 128)
 
             // ⑤ 기록 · 대회
             if !recap.prs.isEmpty || !recap.races.isEmpty {
@@ -287,123 +272,6 @@ struct RecapChartLabel: View {
     }
 }
 
-/// 리듬 머리 — "달린 날 12일 · 연속 3일 · 4주" 한 줄
-struct RecapStreakLine: View {
-    let recap: PeriodRecap
-    var theme: ShareTheme = .dark
-    /// 좁은 칸 — "18일 달림" / "연속 5일 · 5주" 두 줄
-    var twoLines: Bool = false
-
-    var body: some View {
-        let p: SummaryCardPalette = theme == .light ? .light : .dark
-        let L = AppLanguage.shared
-        VStack(alignment: .leading, spacing: 2) {
-            Text(L.s("리듬", "RHYTHM", ja: "リズム"))
-                .font(.system(size: 8, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(p.textSecondary)
-            if twoLines {
-                Text(L.s("\(recap.runDays)일 달림", "\(recap.runDays) days run", ja: "\(recap.runDays)日走った"))
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(p.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(L.s("연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
-                         "streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
-                         ja: "連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(p.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            } else {
-                Text(L.s("달린 날 \(recap.runDays)일 · 연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
-                         "\(recap.runDays) days · streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
-                         ja: "走った日 \(recap.runDays)日 · 連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(p.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .padding(.bottom, 5)
-    }
-}
-
-/// 리듬 차트 — 월 = 월요일 시작 달력 잔디(칸 색 = 그날 거리, 그 달 최대 대비 4단계), 연 = 주간 거리 막대
-struct RecapRhythmChart: View {
-    let recap: PeriodRecap
-    let useMiles: Bool
-    var theme: ShareTheme = .dark
-    var cellSize: CGFloat = 10
-    var barHeight: CGFloat = 70
-
-    private var p: SummaryCardPalette { theme == .light ? .light : .dark }
-
-    var body: some View {
-        if recap.isYear { weeklyBars } else { monthCalendar }
-    }
-
-    private var monthCalendar: some View {
-        let cal = InsightEngine.weekCalendar
-        let maxKm = recap.dayKm.values.max() ?? 1
-        let firstWeekday = (cal.component(.weekday, from: recap.start) + 5) % 7   // 월=0 … 일=6
-        let dayCount = cal.range(of: .day, in: .month, for: recap.start)?.count ?? 30
-        let cells: [Int?] = Array(repeating: nil, count: firstWeekday) + (1...dayCount).map { Optional($0) }
-        let rows = stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0..<min($0 + 7, cells.count)]) }
-        let gap = cellSize * 0.3
-        return VStack(alignment: .leading, spacing: gap * 0.7) {
-            ForEach(rows.indices, id: \.self) { r in
-                HStack(spacing: gap) {
-                    ForEach(0..<7, id: \.self) { c in
-                        let day = c < rows[r].count ? rows[r][c] : nil
-                        RoundedRectangle(cornerRadius: cellSize * 0.2)
-                            .fill(day.map { heatColor(km: kmOn(day: $0, cal: cal), max: maxKm) } ?? .clear)
-                            .frame(width: cellSize, height: cellSize)
-                    }
-                }
-            }
-        }
-    }
-
-    private func kmOn(day: Int, cal: Calendar) -> Double {
-        guard let d = cal.date(byAdding: .day, value: day - 1, to: recap.start) else { return 0 }
-        return recap.dayKm[cal.startOfDay(for: d)] ?? 0
-    }
-
-    private func heatColor(km: Double, max: Double) -> Color {
-        guard km > 0, max > 0 else { return p.heatEmpty }
-        switch km / max {
-        case ..<0.25: return p.heatLow
-        case ..<0.5:  return p.heatMid
-        case ..<0.75: return p.heatHigh
-        default:      return p.heatFull
-        }
-    }
-
-    private var weeklyBars: some View {
-        let factor = useMiles ? 0.621371 : 1.0
-        let data = recap.weekKm.enumerated().map { (i: $0.offset, km: $0.element.km * factor) }
-        return Chart(data, id: \.i) { d in
-            BarMark(x: .value("주", d.i), y: .value("거리", d.km), width: .fixed(1))
-                .foregroundStyle(d.km > 0 ? p.weeklyBarColor.gradient : Color.clear.gradient)
-                .cornerRadius(1)
-        }
-        .chartXScale(domain: -1...max(52, data.count))
-        .chartXAxis(.hidden)
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 2)) { value in
-                AxisValueLabel {
-                    Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.system(size: 7))
-                        .foregroundStyle(p.axisLabel)
-                }
-                AxisGridLine().foregroundStyle(p.gridLine)
-            }
-        }
-        .frame(height: barHeight)
-    }
-}
-
 /// 거리 막대 — 월 = 그 달 날짜별, 연 = 1~12월
 struct RecapDistanceBars: View {
     let recap: PeriodRecap
@@ -433,7 +301,7 @@ struct RecapDistanceBars: View {
         let pts = data
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
-            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 10 : 4))
+            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 24 : 9))
                 .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
