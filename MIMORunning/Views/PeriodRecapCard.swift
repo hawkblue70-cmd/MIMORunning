@@ -124,7 +124,7 @@ struct PeriodRecapAllInOneCard: View {
                     RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                        : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
                                     unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
-                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 185)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: recordFit.barHeight)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
@@ -150,10 +150,26 @@ struct PeriodRecapAllInOneCard: View {
             if !recap.prs.isEmpty || !recap.races.isEmpty {
                 Spacer(minLength: 0)
                 RecapDivider(theme: theme, top: 8, bottom: 6)
-                RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme, maxRows: 2)
+                RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme,
+                                maxRows: recordFit.rows, scale: recordFit.scale)
             }
             Spacer(minLength: 0)
         }
+    }
+
+    /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 259pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
+        let total = recap.prs.count + recap.races.count
+        let rows = min(total, 10)
+        guard rows > 0 else { return (185, 0, 1) }
+        let shared: CGFloat = 259, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let need = CGFloat(rows) * 30 - 8
+        let room = shared - barMax
+        if need <= room { return (barMax, rows, 1) }
+        let bar = max(barMin, barMax - (need - room))
+        let avail = shared - bar
+        return (bar, rows, need <= avail ? 1 : max(0.5, avail / need))
     }
 
     /// 지난 기간 대비(거리·횟수·페이스) + 올해 누적(이번 달만)
@@ -348,6 +364,8 @@ struct RecapRecordRows: View {
     let useMiles: Bool
     var theme: ShareTheme = .dark
     var maxRows: Int = 4
+    /// 줄이 많을 때 글자·간격을 함께 줄이는 배율(0.5…1) — 4:5 한 장에 맞추기
+    var scale: CGFloat = 1
 
     private var p: SummaryCardPalette { theme == .light ? .light : .dark }
     private var L: AppLanguage { AppLanguage.shared }
@@ -362,7 +380,7 @@ struct RecapRecordRows: View {
             RecapChartLabel(text: L.s("기록 · 대회", "RECORDS · RACES", ja: "記録 · レース"),
                             unit: hidden > 0 ? L.s("외 \(hidden)건", "+\(hidden) more", ja: "ほか\(hidden)件") : nil,
                             theme: theme, size: 13, color: p.textPrimary)
-            VStack(spacing: 8) {
+            VStack(spacing: 8 * scale) {
                 ForEach(prs.indices, id: \.self) { prRow(prs[$0]) }
                 ForEach(races.indices, id: \.self) { raceRow(races[$0]) }
             }
@@ -372,10 +390,10 @@ struct RecapRecordRows: View {
     private func prRow(_ pr: PeriodRecap.PR) -> some View {
         HStack(spacing: 6) {
             Text(pr.label)
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 15 * scale, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Text(pr.isFirst ? L.s("첫 완주", "FIRST", ja: "初完走") : L.s("최고 기록", "PB", ja: "自己ベスト"))
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11 * scale, weight: .semibold))
                 .foregroundStyle(p.brand)
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(p.brand.opacity(0.14))
@@ -388,12 +406,12 @@ struct RecapRecordRows: View {
     private func raceRow(_ race: PeriodRecap.Race) -> some View {
         HStack(spacing: 6) {
             Text(race.name)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15 * scale, weight: .semibold))
                 .foregroundStyle(p.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(raceDistance(race.distanceKm))
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11 * scale, weight: .medium))
                 .foregroundStyle(p.textSecondary)
             Spacer()
             timeAndDate(race.duration, race.date)
@@ -403,12 +421,12 @@ struct RecapRecordRows: View {
     private func timeAndDate(_ duration: TimeInterval, _ date: Date) -> some View {
         HStack(spacing: 6) {
             Text(PeriodRecap.fmtDuration(duration))
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 16 * scale, weight: .bold, design: .rounded))
                 .foregroundStyle(p.textPrimary)
             Text(dateStr(date))
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11 * scale, weight: .medium))
                 .foregroundStyle(p.textSecondary)
-                .frame(width: 40, alignment: .trailing)
+                .frame(width: 40 * scale, alignment: .trailing)
         }
     }
 
