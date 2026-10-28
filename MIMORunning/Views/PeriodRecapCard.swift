@@ -146,7 +146,7 @@ struct PeriodRecapAllInOneCard: View {
                         if let form { formCells(form) }
                     }
                     .padding(.bottom, 16)   // 막대 바닥(날짜 눈금 위)에 맞춤
-                    .frame(width: 124, alignment: .leading)
+                    .frame(width: 140, alignment: .leading)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -227,18 +227,18 @@ struct PeriodRecapAllInOneCard: View {
         }
     }
 
-    /// 라벨은 앱 지표 색(케이던스 노랑·파워 라임·보폭 주황·유산소 회색), 라이트 테마는 흰 배경에서 읽히는 진한 색
+    /// 라벨 11 · 값 18 — 총거리 옆 지표 표와 같은 크기. 라벨은 앱 지표 색(케이던스 노랑·파워 라임·보폭 주황·유산소 회색), 라이트 테마는 흰 배경에서 읽히는 진한 색
     private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?,
                           color: Color, lightColor: Color, unit: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(theme == .light ? lightColor : color)
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 52, alignment: .leading)
             // 단위는 값 아래 줄(유산소 ml/kg/min)
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(p.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -253,7 +253,7 @@ struct PeriodRecapAllInOneCard: View {
             if let prev, prev != cur {
                 let up = cur > prev
                 Image(systemName: up ? "arrow.up" : "arrow.down")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(up ? p.positive : p.negative)
             }
         }
