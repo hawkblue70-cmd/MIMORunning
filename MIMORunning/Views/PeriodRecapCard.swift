@@ -61,7 +61,7 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 ② 지난 기간 대비·올해 누적
+/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 2×2 ② 지난 기간 대비·올해 누적
 /// ③ 일별(연 = 월별) 거리 막대 | 유산소(VO2max 변화값)·케이던스·파워·보폭 ④ 기록·대회(제목·줄 큰 글자). 잔디·차트 없음.
 /// 없는 칸은 빼고 남은 칸이 넓어진다. 나 탭 카드와 공유 출력이 이 하나를 쓴다(인사이트 문장 없음).
 struct PeriodRecapAllInOneCard: View {
@@ -77,8 +77,8 @@ struct PeriodRecapAllInOneCard: View {
     var body: some View {
         SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
                           miniMeImage: miniMeImage, theme: theme) {
-            // ① 총거리(큰 숫자) | 운동 시간·러닝·평균 페이스·최장
-            HStack(alignment: .top, spacing: 10) {
+            // ① 총거리(큰 숫자) | 운동 시간 · 러닝 · 평균 페이스 · 최장(2×2, 값 위 · 라벨 아래)
+            HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
                         Text(stats.distanceStr)
@@ -97,20 +97,19 @@ struct PeriodRecapAllInOneCard: View {
                 }
                 .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    miniStat(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
-                    miniStat(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
-                             L.s("러닝", "RUNS", ja: "ラン"), p.brand)
-                    if let pace = stats.avgPaceStr {
-                        miniStat(pace, L.s("평균 페이스", "AVG PACE", ja: "平均ペース"), p.accentTeal)
+                Rectangle().fill(p.divider).frame(width: 0.5, height: 80)
+
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                    GridRow {
+                        statCell(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
+                        statCell(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
+                                 L.s("러닝", "RUNS", ja: "ラン"), p.brand)
                     }
-                    if let longest = stats.longestStr {
-                        miniStat(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
+                    GridRow {
+                        statCell(stats.avgPaceStr ?? "–", L.s("평균 페이스", "AVG PACE", ja: "平均ペース"), p.accentTeal)
+                        statCell(stats.longestStr ?? "–", L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
                     }
                 }
-                .padding(.top, 8)
-
-                Spacer(minLength: 0)
             }
             .fixedSize(horizontal: false, vertical: true)
 
@@ -125,7 +124,7 @@ struct PeriodRecapAllInOneCard: View {
                     RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                        : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
                                     unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
-                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 128)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 185)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
@@ -146,8 +145,9 @@ struct PeriodRecapAllInOneCard: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            // ⑤ 기록 · 대회
+            // ⑤ 기록 · 대회 — 카드 아래쪽에 붙인다(대회는 많지 않아 위 칸에 자리를 준다)
             if !recap.prs.isEmpty || !recap.races.isEmpty {
+                Spacer(minLength: 0)
                 RecapDivider(theme: theme, top: 8, bottom: 6)
                 RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme, maxRows: 2)
             }
@@ -228,16 +228,22 @@ struct PeriodRecapAllInOneCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func miniStat(_ value: String, _ label: String, _ color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(color.opacity(0.85))
+    /// 값(18) 위 · 라벨(10, 지표 색) 아래
+    private func statCell(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(p.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color == p.textSecondary ? p.textSecondary : color.opacity(0.9))
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+
 }
 
 // MARK: - 조각
@@ -318,16 +324,17 @@ struct RecapDistanceBars: View {
                 AxisValueLabel {
                     let v = value.as(Int.self) ?? 0
                     Text(isYear ? (v > 0 && v < Self.monthAbbr.count ? Self.monthAbbr[v] : "") : "\(v)")
-                        .font(.system(size: 7))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(p.axisLabel)
                 }
             }
         }
         .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 2)) { value in
+            // 0 · 중간 · 위 — 가운데 거리도 읽히게(2026-10-28)
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisValueLabel {
                     Text(String(format: "%.0f", value.as(Double.self) ?? 0))
-                        .font(.system(size: 7))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(p.axisLabel)
                 }
                 AxisGridLine().foregroundStyle(p.gridLine)
