@@ -99,7 +99,8 @@ struct PeriodRecapAllInOneCard: View {
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .trailing, spacing: 6) {
+                // 라벨 열 · 값 열 두 칸 — 라벨은 '운동 시간' 왼쪽, 값은 '19h' 왼쪽에 맞춤. 올해 누적도 같은 표에(이번 달만)
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
                     statRow(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
                     statRow(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
                             L.s("러닝", "RUNS", ja: "ラン"), p.brand)
@@ -109,11 +110,14 @@ struct PeriodRecapAllInOneCard: View {
                     if let longest = stats.longestStr {
                         statRow(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
                     }
+                    if let km = stats.ytdDistanceKm, km > 0, !recap.isYear {
+                        statRow(String(format: "%.0f km", km), L.s("올해 누적", "YTD", ja: "今年の累計"), p.brand)
+                    }
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            // ② 지난 기간 대비 · 올해 누적
+            // ② 지난 기간 대비(올해 누적은 ①의 표로)
             comparisonLine
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
@@ -137,12 +141,12 @@ struct PeriodRecapAllInOneCard: View {
                             let delta = (v.delta * 10).rounded() / 10
                             formCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
                                      L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil,
-                                     color: Theme.chartAerobic, lightColor: Color(hex: "6B7280"))
+                                     color: Theme.chartAerobic, lightColor: Color(hex: "6B7280"), unit: "ml/kg/min")
                         }
                         if let form { formCells(form) }
                     }
                     .padding(.bottom, 16)   // 막대 바닥(날짜 눈금 위)에 맞춤
-                    .frame(width: 112, alignment: .leading)
+                    .frame(width: 124, alignment: .leading)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -159,12 +163,12 @@ struct PeriodRecapAllInOneCard: View {
     }
 
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
-    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 247pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 227pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
         let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
-        let shared: CGFloat = 247, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let shared: CGFloat = 227, barMax: CGFloat = 185, barMin: CGFloat = 110
         let need = CGFloat(rows) * 30 - 8
         let room = shared - barMax
         if need <= room { return (barMax, rows, 1) }
@@ -173,7 +177,7 @@ struct PeriodRecapAllInOneCard: View {
         return (bar, rows, need <= avail ? 1 : max(0.5, avail / need))
     }
 
-    /// 지난 기간 대비(거리·횟수·페이스) + 올해 누적(이번 달만)
+    /// 지난 기간 대비(거리·횟수·페이스)
     @ViewBuilder
     private var comparisonLine: some View {
         let chips: [(String, Bool)] = [
@@ -181,7 +185,7 @@ struct PeriodRecapAllInOneCard: View {
             stats.runCountDeltaStr.map { ($0, stats.runCount >= (stats.compRunCount ?? 0)) },
             stats.paceDeltaStr.map { ($0, $0.contains(L.s("빨라짐", "faster", ja: "速くなった"))) },
         ].compactMap { $0 }
-        if !chips.isEmpty || stats.ytdStr != nil {
+        if !chips.isEmpty {
             HStack(spacing: 5) {
                 if !chips.isEmpty {
                     Text(recap.isYear ? L.s("작년 대비", "VS LAST YEAR", ja: "昨年比") : L.s("지난달 대비", "VS LAST MONTH", ja: "先月比"))
@@ -200,11 +204,6 @@ struct PeriodRecapAllInOneCard: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if let ytd = stats.ytdStr {
-                    Text(ytd)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(p.brand)
-                }
             }
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -230,7 +229,7 @@ struct PeriodRecapAllInOneCard: View {
 
     /// 라벨은 앱 지표 색(케이던스 노랑·파워 라임·보폭 주황·유산소 회색), 라이트 테마는 흰 배경에서 읽히는 진한 색
     private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?,
-                          color: Color, lightColor: Color) -> some View {
+                          color: Color, lightColor: Color, unit: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
@@ -241,6 +240,13 @@ struct PeriodRecapAllInOneCard: View {
                 .foregroundStyle(p.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            if let unit {
+                Text(unit)
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(p.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
             if let prev, prev != cur {
                 let up = cur > prev
                 Image(systemName: up ? "arrow.up" : "arrow.down")
@@ -253,7 +259,7 @@ struct PeriodRecapAllInOneCard: View {
 
     /// 라벨(11, 지표 색) + 값(18) 한 줄 — 세로 4줄 오른쪽 정렬
     private func statRow(_ value: String, _ label: String, _ color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        GridRow(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(color == p.textSecondary ? p.textSecondary : color.opacity(0.9))
