@@ -61,8 +61,8 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 배치(2026-10-28 사용자 지정): ① 총거리·운동 시간·러닝·평균 페이스·최장(같은 크기) | 리듬 잔디 ② 지난 기간 대비·올해 누적
-/// ③ 일별(연 = 월별) 거리 막대(전체 폭) ④ 러닝 데이터 한 줄 — VO2max 변화(차트 없음)·케이던스·파워·보폭 ⑤ 기록·대회.
+/// 배치(2026-10-28 사용자 지정): ① 총거리 + 시간·횟수·페이스·최장(큰 글자) ② 지난 기간 대비·올해 누적(큰 글자)
+/// ③ 일별(연 = 월별) 거리 막대 | 리듬 잔디(둘 다 크게) ④ VO2 추세 | 케이던스·파워·보폭 ⑤ 기록·대회(제목·줄 큰 글자).
 /// 없는 칸은 빼고 남은 칸이 넓어진다. 나 탭 카드와 공유 출력이 이 하나를 쓴다(인사이트 문장 없음).
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
@@ -77,69 +77,84 @@ struct PeriodRecapAllInOneCard: View {
     var body: some View {
         SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
                           miniMeImage: miniMeImage, theme: theme) {
-            // ① 지표 5개 | 리듬 잔디
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    statRow(stats.distanceStr + " " + stats.distanceUnit, L.s("총 거리", "TOTAL", ja: "総距離"), p.textPrimary)
-                    statRow(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
-                    statRow(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
-                            L.s("러닝", "RUNS", ja: "ラン"), p.brand)
+            // ① 총거리 + 보조 지표 4개
+            HStack(alignment: .bottom, spacing: 12) {
+                SummaryHero(value: stats.distanceStr, unit: stats.distanceUnit,
+                            label: L.s("총 거리", "TOTAL", ja: "総距離"), theme: theme)
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 4) {
+                    miniStat(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
+                    miniStat(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
+                             L.s("러닝", "RUNS", ja: "ラン"), p.brand)
                     if let pace = stats.avgPaceStr {
-                        statRow(pace, L.s("평균 페이스", "AVG PACE", ja: "平均ペース"), p.accentTeal)
+                        miniStat(pace, L.s("평균 페이스", "AVG PACE", ja: "平均ペース"), p.accentTeal)
                     }
                     if let longest = stats.longestStr {
-                        statRow(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
+                        miniStat(longest, L.s("최장", "LONGEST", ja: "最長"), p.textSecondary)
                     }
                 }
-                .frame(width: 196, alignment: .leading)
-
-                Rectangle().fill(p.divider).frame(width: 0.5)
-                VStack(alignment: .leading, spacing: 0) {
-                    RecapStreakLine(recap: recap, theme: theme, twoLines: true)
-                    RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
-                                     cellSize: 13, barHeight: 88)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 2)
             }
-            .fixedSize(horizontal: false, vertical: true)
 
             // ② 지난 기간 대비 · 올해 누적
             comparisonLine
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
-            // ③ 거리 막대 — 전체 폭
-            RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
-                                               : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                            unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
-            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 115)
+            // ③ 거리 막대 | 리듬 잔디
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 0) {
+                    RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
+                                                       : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
+                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 100)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
-            // ④ 러닝 데이터 — VO2max 변화(숫자만) · 케이던스 · 파워 · 보폭
-            if recap.vo2 != nil || form?.hasAny == true {
+                Rectangle().fill(p.divider).frame(width: 0.5)
+                VStack(alignment: .leading, spacing: 0) {
+                    RecapStreakLine(recap: recap, theme: theme, twoLines: true)
+                    RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
+                                     cellSize: 11, barHeight: 84)
+                }
+                .frame(width: 112, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            // ④ VO2 추세 | 폼 3개
+            let hasForm = form?.hasAny == true
+            if recap.vo2 != nil || hasForm {
                 RecapDivider(theme: theme, top: 8, bottom: 6)
-                HStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 14) {
                     if let v = recap.vo2 {
-                        let delta = (v.delta * 10).rounded() / 10
-                        dataCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
-                                 recap.isYear ? L.s("VO2MAX 연간", "VO2MAX YR", ja: "VO2MAX 年間")
-                                              : L.s("VO2MAX 월간", "VO2MAX MO", ja: "VO2MAX 月間"),
-                                 arrowUp: nil)
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(alignment: .firstTextBaseline) {
+                                RecapChartLabel(text: recap.isYear ? L.s("VO2MAX 연초 → 연말", "VO2MAX · YEAR", ja: "VO2MAX 年初 → 年末")
+                                                                   : L.s("VO2MAX 월초 → 월말", "VO2MAX · MONTH", ja: "VO2MAX 月初 → 月末"),
+                                                theme: theme, size: 10)
+                                Text(RecapVO2Line.deltaText(v))
+                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .foregroundStyle(p.textPrimary)
+                            }
+                            RecapVO2Line(vo2: v, theme: theme, height: 62)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let form {
-                        if let v = form.cadence {
-                            dataCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"),
-                                     arrowUp: form.prevCadence.flatMap { $0 == v ? nil : v > $0 })
+                    if let form, hasForm {
+                        if recap.vo2 != nil {
+                            Rectangle().fill(p.divider).frame(width: 0.5)
                         }
-                        if let v = form.power {
-                            dataCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"),
-                                     arrowUp: form.prevPower.flatMap { $0 == v ? nil : v > $0 })
-                        }
-                        if let v = form.strideLength {
-                            dataCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"),
-                                     arrowUp: form.prevStrideLength.flatMap { $0 == v ? nil : v > $0 })
+                        let cells = formCells(form)
+                        if recap.vo2 != nil {
+                            VStack(alignment: .leading, spacing: 6) { cells }
+                                .frame(width: 112, alignment: .leading)
+                        } else {
+                            HStack(spacing: 0) { cells }
                         }
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             // ⑤ 기록 · 대회
@@ -149,44 +164,6 @@ struct PeriodRecapAllInOneCard: View {
             }
             Spacer(minLength: 0)
         }
-    }
-
-    /// 라벨(11) + 값(17) — 총거리도 다른 지표와 같은 크기
-    private func statRow(_ value: String, _ label: String, _ color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(color == p.textPrimary ? p.textSecondary : color.opacity(0.85))
-                .frame(width: 70, alignment: .leading)
-            Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundStyle(p.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-    }
-
-    /// 러닝 데이터 칸 — 값(15) + 지난달 대비 화살표 + 라벨(10)
-    private func dataCell(_ value: String, _ label: String, arrowUp: Bool?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 3) {
-                Text(value)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(p.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if let up = arrowUp {
-                    Image(systemName: up ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(up ? p.positive : p.negative)
-                }
-            }
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(p.textSecondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// 지난 기간 대비(거리·횟수·페이스) + 올해 누적(이번 달만)
@@ -228,8 +205,50 @@ struct PeriodRecapAllInOneCard: View {
         }
     }
 
+    @ViewBuilder
+    private func formCells(_ form: SummaryFormMetrics) -> some View {
+        if let v = form.cadence {
+            formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence)
+        }
+        if let v = form.power {
+            formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower)
+        }
+        if let v = form.strideLength {
+            formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength)
+        }
+    }
 
+    private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(p.textSecondary)
+                .frame(width: 44, alignment: .leading)
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(p.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if let prev, prev != cur {
+                let up = cur > prev
+                Image(systemName: up ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(up ? p.positive : p.negative)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
+    private func miniStat(_ value: String, _ label: String, _ color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color.opacity(0.85))
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(p.textPrimary)
+        }
+    }
 }
 
 // MARK: - 조각
@@ -442,6 +461,38 @@ struct RecapDistanceBars: View {
                 AxisGridLine().foregroundStyle(p.gridLine)
             }
         }
+        .frame(height: height)
+    }
+}
+
+/// VO2max 선 — 눈금 없이 추세만, 첫·끝 점 표시
+struct RecapVO2Line: View {
+    let vo2: PeriodRecap.VO2Trend
+    var theme: ShareTheme = .dark
+    var height: CGFloat = 70
+
+    static func deltaText(_ v: PeriodRecap.VO2Trend) -> String {
+        let delta = (v.delta * 10).rounded() / 10
+        return delta == 0 ? "±0.0" : String(format: "%+.1f", delta)
+    }
+
+    var body: some View {
+        let p: SummaryCardPalette = theme == .light ? .light : .dark
+        let pts = vo2.points
+        let lo = (pts.map(\.value).min() ?? 0) - 1
+        let hi = (pts.map(\.value).max() ?? 0) + 1
+        Chart(pts.indices, id: \.self) { i in
+            LineMark(x: .value("날짜", pts[i].date), y: .value("VO2", pts[i].value))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(p.accentTeal)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+            PointMark(x: .value("날짜", pts[i].date), y: .value("VO2", pts[i].value))
+                .symbolSize(i == 0 || i == pts.count - 1 ? 30 : 0)
+                .foregroundStyle(p.accentTeal)
+        }
+        .chartYScale(domain: lo...hi)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)   // 절댓값 눈금 없이 추세만
         .frame(height: height)
     }
 }
