@@ -87,11 +87,11 @@ struct PeriodRecapAllInOneCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
                         Text(stats.distanceUnit)
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 28, weight: .bold))
                             .foregroundStyle(p.brand)
                     }
                     Text(L.s("총 거리", "TOTAL", ja: "総距離"))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .tracking(1)
                         .foregroundStyle(p.textSecondary)
                 }
@@ -127,7 +127,7 @@ struct PeriodRecapAllInOneCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                        : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
+                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 13)
                     RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: recordFit.barHeight)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,12 +163,12 @@ struct PeriodRecapAllInOneCard: View {
     }
 
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
-    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 227pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 217pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
         let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
-        let shared: CGFloat = 227, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let shared: CGFloat = 217, barMax: CGFloat = 185, barMin: CGFloat = 110
         let need = CGFloat(rows) * 30 - 8
         let room = shared - barMax
         if need <= room { return (barMax, rows, 1) }
@@ -189,15 +189,15 @@ struct PeriodRecapAllInOneCard: View {
             HStack(spacing: 5) {
                 if !chips.isEmpty {
                     Text(recap.isYear ? L.s("작년 대비", "VS LAST YEAR", ja: "昨年比") : L.s("지난달 대비", "VS LAST MONTH", ja: "先月比"))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(p.textSecondary)
                     ForEach(chips.indices, id: \.self) { i in
                         let up = chips[i].1
                         let color = up ? p.positive : p.negative
                         Text(chips[i].0)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(color)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(color.opacity(0.12))
                             .clipShape(Capsule())
@@ -235,17 +235,20 @@ struct PeriodRecapAllInOneCard: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(theme == .light ? lightColor : color)
                 .frame(width: 44, alignment: .leading)
-            Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(p.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            if let unit {
-                Text(unit)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(p.textSecondary)
+            // 단위는 값 아래 줄(유산소 ml/kg/min)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(p.textPrimary)
                     .lineLimit(1)
-                    .fixedSize()
+                    .minimumScaleFactor(0.8)
+                if let unit {
+                    Text(unit)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(p.textSecondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
             if let prev, prev != cur {
                 let up = cur > prev
