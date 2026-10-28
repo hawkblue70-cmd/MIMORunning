@@ -61,7 +61,7 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 총거리 + 시간·횟수·페이스·최장 · 지난 기간 대비·올해 누적 · 일별(연 = 월별) 거리 막대 · 리듬 | VO2 추세 · 폼(케이던스·파워·보폭) · 기록·대회(최대 2줄).
+/// 총거리 + 시간·횟수·페이스·최장 · 지난 기간 대비·올해 누적 · 일별(연 = 월별) 거리 막대 | 리듬 | VO2 추세(한 줄) · 폼(케이던스·파워·보폭) · 기록·대회(최대 2줄).
 /// 없는 칸은 빼고 남은 칸이 넓어진다. 2026-10-28 사용자 결정: 나 탭 카드와 공유 출력을 이 하나로 통일, 인사이트 문장 없음.
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
@@ -99,42 +99,38 @@ struct PeriodRecapAllInOneCard: View {
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
-            // 일별 거리(연 = 월별)
-            RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
-                                               : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                            unit: stats.useMiles ? "MI" : "KM", theme: theme)
-            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 46)
-
-            RecapDivider(theme: theme, top: 8, bottom: 6)
-
-            // 리듬 | VO2 추세
-            HStack(alignment: .top, spacing: 14) {
+            // 일별 거리(연 = 월별) | 리듬 잔디 | VO2 — 한 줄(2026-10-28 사용자 요청), 막대가 남은 폭을 다 쓴다
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 0) {
-                    RecapStreakLine(recap: recap, theme: theme)
-                    RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
-                                     cellSize: 8, barHeight: 56)
+                    RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
+                                                       : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
+                                    unit: stats.useMiles ? "MI" : "KM", theme: theme)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 110)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+
+                Rectangle().fill(p.divider).frame(width: 0.5)
+                VStack(alignment: .leading, spacing: 0) {
+                    RecapStreakLine(recap: recap, theme: theme, twoLines: true)
+                    RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
+                                     cellSize: 9, barHeight: 60)
+                }
+                .frame(width: 84, alignment: .leading)
+
                 if let v = recap.vo2 {
                     Rectangle().fill(p.divider).frame(width: 0.5)
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(recap.isYear ? L.s("VO2MAX 연초 → 연말", "VO2MAX · YEAR", ja: "VO2MAX 年初 → 年末")
-                                              : L.s("VO2MAX 월초 → 월말", "VO2MAX · MONTH", ja: "VO2MAX 月初 → 月末"))
-                                .font(.system(size: 8, weight: .semibold))
-                                .tracking(0.6)
-                                .foregroundStyle(p.textSecondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                            Spacer(minLength: 0)
-                            Text(RecapVO2Line.deltaText(v))
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(p.textPrimary)
-                        }
-                        .padding(.bottom, 4)
-                        RecapVO2Line(vo2: v, theme: theme, height: 56)
+                        RecapChartLabel(text: recap.isYear ? L.s("VO2MAX 연간", "VO2MAX · YEAR", ja: "VO2MAX 年間")
+                                                           : L.s("VO2MAX 월간", "VO2MAX · MONTH", ja: "VO2MAX 月間"),
+                                        theme: theme)
+                        Text(RecapVO2Line.deltaText(v))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(p.textPrimary)
+                            .padding(.bottom, 4)
+                        RecapVO2Line(vo2: v, theme: theme, height: 66)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: 92, alignment: .leading)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -278,6 +274,8 @@ struct RecapChartLabel: View {
 struct RecapStreakLine: View {
     let recap: PeriodRecap
     var theme: ShareTheme = .dark
+    /// 좁은 칸 — "18일 달림" / "연속 5일 · 5주" 두 줄
+    var twoLines: Bool = false
 
     var body: some View {
         let p: SummaryCardPalette = theme == .light ? .light : .dark
@@ -287,13 +285,28 @@ struct RecapStreakLine: View {
                 .font(.system(size: 8, weight: .semibold))
                 .tracking(0.6)
                 .foregroundStyle(p.textSecondary)
-            Text(L.s("달린 날 \(recap.runDays)일 · 연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
-                     "\(recap.runDays) days · streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
-                     ja: "走った日 \(recap.runDays)日 · 連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(p.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            if twoLines {
+                Text(L.s("\(recap.runDays)일 달림", "\(recap.runDays) days run", ja: "\(recap.runDays)日走った"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(p.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(L.s("연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
+                         "streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
+                         ja: "連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(p.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            } else {
+                Text(L.s("달린 날 \(recap.runDays)일 · 연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
+                         "\(recap.runDays) days · streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
+                         ja: "走った日 \(recap.runDays)日 · 連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(p.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
         .padding(.bottom, 5)
     }
@@ -354,7 +367,7 @@ struct RecapRhythmChart: View {
         let factor = useMiles ? 0.621371 : 1.0
         let data = recap.weekKm.enumerated().map { (i: $0.offset, km: $0.element.km * factor) }
         return Chart(data, id: \.i) { d in
-            BarMark(x: .value("주", d.i), y: .value("거리", d.km), width: .fixed(2))
+            BarMark(x: .value("주", d.i), y: .value("거리", d.km), width: .fixed(1))
                 .foregroundStyle(d.km > 0 ? p.weeklyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(1)
         }
@@ -403,7 +416,7 @@ struct RecapDistanceBars: View {
         let pts = data
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
-            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 14 : 5))
+            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 10 : 4))
                 .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
