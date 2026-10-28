@@ -270,7 +270,7 @@ struct SummaryCardChrome<Content: View>: View {
                         SummaryMiniMe(image: miniMeImage, size: 43, theme: theme)
                     }
                     .frame(height: 43, alignment: .top)
-                    .padding(.top, 12)
+                    .padding(.top, 22)
                     .padding(.bottom, 7)
 
                     // Period
@@ -302,8 +302,9 @@ struct SummaryCardChrome<Content: View>: View {
                     }
                     .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 13)
+                // 상하좌우 여백(2026-10-28 18·12·13 → 30·22·24)
+                .padding(.horizontal, 30)
+                .padding(.bottom, 24)
             }
         }
         .frame(width: SummaryCardChrome<EmptyView>.size.width, height: SummaryCardChrome<EmptyView>.size.height)
