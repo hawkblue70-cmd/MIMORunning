@@ -61,8 +61,9 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 총거리 + 시간·횟수·페이스·최장 · 지난 기간 대비·올해 누적 · 일별(연 = 월별) 거리 막대 | 리듬 | VO2 추세(한 줄) · 폼(케이던스·파워·보폭) · 기록·대회(최대 2줄).
-/// 없는 칸은 빼고 남은 칸이 넓어진다. 2026-10-28 사용자 결정: 나 탭 카드와 공유 출력을 이 하나로 통일, 인사이트 문장 없음.
+/// 배치(2026-10-28 사용자 지정): ① 총거리 + 시간·횟수·페이스·최장(큰 글자) ② 지난 기간 대비·올해 누적(큰 글자)
+/// ③ 일별(연 = 월별) 거리 막대 | 리듬 잔디(둘 다 크게) ④ VO2 추세 | 케이던스·파워·보폭 ⑤ 기록·대회(제목·줄 큰 글자).
+/// 없는 칸은 빼고 남은 칸이 넓어진다. 나 탭 카드와 공유 출력이 이 하나를 쓴다(인사이트 문장 없음).
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
     let stats: SummaryPeriodStats
@@ -76,12 +77,12 @@ struct PeriodRecapAllInOneCard: View {
     var body: some View {
         SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
                           miniMeImage: miniMeImage, theme: theme) {
-            // 총거리 + 보조 지표
+            // ① 총거리 + 보조 지표 4개
             HStack(alignment: .bottom, spacing: 12) {
                 SummaryHero(value: stats.distanceStr, unit: stats.distanceUnit,
                             label: L.s("총 거리", "TOTAL", ja: "総距離"), theme: theme)
                 Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 3) {
+                VStack(alignment: .trailing, spacing: 4) {
                     miniStat(stats.durationStr, L.s("운동 시간", "TIME", ja: "運動時間"), p.accentGold)
                     miniStat(L.s("\(stats.runCount)회", "\(stats.runCount)", ja: "\(stats.runCount)回"),
                              L.s("러닝", "RUNS", ja: "ラン"), p.brand)
@@ -95,17 +96,18 @@ struct PeriodRecapAllInOneCard: View {
                 .padding(.bottom, 2)
             }
 
+            // ② 지난 기간 대비 · 올해 누적
             comparisonLine
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
-            // 일별 거리(연 = 월별) | 리듬 잔디 | VO2 — 한 줄(2026-10-28 사용자 요청), 막대가 남은 폭을 다 쓴다
-            HStack(alignment: .top, spacing: 12) {
+            // ③ 거리 막대 | 리듬 잔디
+            HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 0) {
                     RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                        : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                                    unit: stats.useMiles ? "MI" : "KM", theme: theme)
-                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 110)
+                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 100)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
@@ -114,44 +116,48 @@ struct PeriodRecapAllInOneCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     RecapStreakLine(recap: recap, theme: theme, twoLines: true)
                     RecapRhythmChart(recap: recap, useMiles: stats.useMiles, theme: theme,
-                                     cellSize: 9, barHeight: 60)
+                                     cellSize: 11, barHeight: 84)
                 }
-                .frame(width: 84, alignment: .leading)
-
-                if let v = recap.vo2 {
-                    Rectangle().fill(p.divider).frame(width: 0.5)
-                    VStack(alignment: .leading, spacing: 0) {
-                        RecapChartLabel(text: recap.isYear ? L.s("VO2MAX 연간", "VO2MAX · YEAR", ja: "VO2MAX 年間")
-                                                           : L.s("VO2MAX 월간", "VO2MAX · MONTH", ja: "VO2MAX 月間"),
-                                        theme: theme)
-                        Text(RecapVO2Line.deltaText(v))
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(p.textPrimary)
-                            .padding(.bottom, 4)
-                        RecapVO2Line(vo2: v, theme: theme, height: 66)
-                    }
-                    .frame(width: 92, alignment: .leading)
-                }
+                .frame(width: 112, alignment: .leading)
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            // 폼(워치) — 지난달 평균보다 오르면 ▲
-            if let form, form.hasAny {
+            // ④ VO2 추세 | 폼 3개
+            let hasForm = form?.hasAny == true
+            if recap.vo2 != nil || hasForm {
                 RecapDivider(theme: theme, top: 8, bottom: 6)
-                HStack(spacing: 0) {
-                    if let v = form.cadence {
-                        formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence)
+                HStack(alignment: .top, spacing: 14) {
+                    if let v = recap.vo2 {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(alignment: .firstTextBaseline) {
+                                RecapChartLabel(text: recap.isYear ? L.s("VO2MAX 연초 → 연말", "VO2MAX · YEAR", ja: "VO2MAX 年初 → 年末")
+                                                                   : L.s("VO2MAX 월초 → 월말", "VO2MAX · MONTH", ja: "VO2MAX 月初 → 月末"),
+                                                theme: theme, size: 10)
+                                Text(RecapVO2Line.deltaText(v))
+                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .foregroundStyle(p.textPrimary)
+                            }
+                            RecapVO2Line(vo2: v, theme: theme, height: 62)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let v = form.power {
-                        formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower)
-                    }
-                    if let v = form.strideLength {
-                        formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength)
+                    if let form, hasForm {
+                        if recap.vo2 != nil {
+                            Rectangle().fill(p.divider).frame(width: 0.5)
+                        }
+                        let cells = formCells(form)
+                        if recap.vo2 != nil {
+                            VStack(alignment: .leading, spacing: 6) { cells }
+                                .frame(width: 112, alignment: .leading)
+                        } else {
+                            HStack(spacing: 0) { cells }
+                        }
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
 
-            // 기록 · 대회
+            // ⑤ 기록 · 대회
             if !recap.prs.isEmpty || !recap.races.isEmpty {
                 RecapDivider(theme: theme, top: 8, bottom: 6)
                 RecapRecordRows(recap: recap, useMiles: stats.useMiles, theme: theme, maxRows: 2)
@@ -169,20 +175,19 @@ struct PeriodRecapAllInOneCard: View {
             stats.paceDeltaStr.map { ($0, $0.contains(L.s("빨라짐", "faster", ja: "速くなった"))) },
         ].compactMap { $0 }
         if !chips.isEmpty || stats.ytdStr != nil {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 if !chips.isEmpty {
                     Text(recap.isYear ? L.s("작년 대비", "VS LAST YEAR", ja: "昨年比") : L.s("지난달 대비", "VS LAST MONTH", ja: "先月比"))
-                        .font(.system(size: 8, weight: .semibold))
-                        .tracking(0.6)
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(p.textSecondary)
                     ForEach(chips.indices, id: \.self) { i in
                         let up = chips[i].1
                         let color = up ? p.positive : p.negative
                         Text(chips[i].0)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(color)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
                             .background(color.opacity(0.12))
                             .clipShape(Capsule())
                     }
@@ -190,44 +195,57 @@ struct PeriodRecapAllInOneCard: View {
                 Spacer(minLength: 0)
                 if let ytd = stats.ytdStr {
                     Text(ytd)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(p.brand)
                 }
             }
             .lineLimit(1)
-            .padding(.top, 6)
+            .minimumScaleFactor(0.8)
+            .padding(.top, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func formCells(_ form: SummaryFormMetrics) -> some View {
+        if let v = form.cadence {
+            formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence)
+        }
+        if let v = form.power {
+            formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower)
+        }
+        if let v = form.strideLength {
+            formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength)
         }
     }
 
     private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 3) {
-                Text(value)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(p.textPrimary)
-                if let prev, prev != cur {
-                    let up = cur > prev
-                    Image(systemName: up ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(up ? p.positive : p.negative)
-                }
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label)
-                .font(.system(size: 8, weight: .semibold))
-                .tracking(0.6)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(p.textSecondary)
+                .frame(width: 44, alignment: .leading)
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(p.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if let prev, prev != cur {
+                let up = cur > prev
+                Image(systemName: up ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(up ? p.positive : p.negative)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func miniStat(_ value: String, _ label: String, _ color: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .tracking(0.3)
-                .foregroundStyle(color.opacity(0.75))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color.opacity(0.85))
             Text(value)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(p.textPrimary)
         }
     }
@@ -251,18 +269,20 @@ struct RecapChartLabel: View {
     let text: String
     var unit: String? = nil
     var theme: ShareTheme = .dark
+    var size: CGFloat = 8
+    var color: Color? = nil
 
     var body: some View {
         let p: SummaryCardPalette = theme == .light ? .light : .dark
         HStack {
             Text(text)
-                .font(.system(size: 8, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(p.textSecondary)
+                .font(.system(size: size, weight: .semibold))
+                .tracking(size <= 8 ? 0.6 : 0.2)
+                .foregroundStyle(color ?? p.textSecondary)
             Spacer()
             if let unit {
                 Text(unit)
-                    .font(.system(size: 7, weight: .medium))
+                    .font(.system(size: max(7, size - 1), weight: .medium))
                     .foregroundStyle(p.axisLabel)
             }
         }
@@ -287,14 +307,14 @@ struct RecapStreakLine: View {
                 .foregroundStyle(p.textSecondary)
             if twoLines {
                 Text(L.s("\(recap.runDays)일 달림", "\(recap.runDays) days run", ja: "\(recap.runDays)日走った"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(p.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(L.s("연속 \(recap.longestDayStreak)일 · \(recap.longestWeekStreak)주",
                          "streak \(recap.longestDayStreak)d · \(recap.longestWeekStreak)wk",
                          ja: "連続 \(recap.longestDayStreak)日 · \(recap.longestWeekStreak)週"))
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(p.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -496,8 +516,8 @@ struct RecapRecordRows: View {
         VStack(alignment: .leading, spacing: 0) {
             RecapChartLabel(text: L.s("기록 · 대회", "RECORDS · RACES", ja: "記録 · レース"),
                             unit: hidden > 0 ? L.s("외 \(hidden)건", "+\(hidden) more", ja: "ほか\(hidden)件") : nil,
-                            theme: theme)
-            VStack(spacing: 6) {
+                            theme: theme, size: 13, color: p.textPrimary)
+            VStack(spacing: 8) {
                 ForEach(prs.indices, id: \.self) { prRow(prs[$0]) }
                 ForEach(races.indices, id: \.self) { raceRow(races[$0]) }
             }
@@ -507,12 +527,12 @@ struct RecapRecordRows: View {
     private func prRow(_ pr: PeriodRecap.PR) -> some View {
         HStack(spacing: 6) {
             Text(pr.label)
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(p.textPrimary)
             Text(pr.isFirst ? L.s("첫 완주", "FIRST", ja: "初完走") : L.s("최고 기록", "PB", ja: "自己ベスト"))
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(p.brand)
-                .padding(.horizontal, 5).padding(.vertical, 2)
+                .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(p.brand.opacity(0.14))
                 .clipShape(Capsule())
             Spacer()
@@ -523,11 +543,12 @@ struct RecapRecordRows: View {
     private func raceRow(_ race: PeriodRecap.Race) -> some View {
         HStack(spacing: 6) {
             Text(race.name)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(p.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(raceDistance(race.distanceKm))
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(p.textSecondary)
             Spacer()
             timeAndDate(race.duration, race.date)
@@ -537,12 +558,12 @@ struct RecapRecordRows: View {
     private func timeAndDate(_ duration: TimeInterval, _ date: Date) -> some View {
         HStack(spacing: 6) {
             Text(PeriodRecap.fmtDuration(duration))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(p.textPrimary)
             Text(dateStr(date))
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(p.textSecondary)
-                .frame(width: 34, alignment: .trailing)
+                .frame(width: 40, alignment: .trailing)
         }
     }
 
