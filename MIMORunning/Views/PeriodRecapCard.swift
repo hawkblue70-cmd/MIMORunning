@@ -119,7 +119,7 @@ struct PeriodRecapAllInOneCard: View {
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
             // ③ 일별(연 = 월별) 거리 막대 | 러닝 데이터 값 — 유산소(VO2max 변화, 차트 없음)·케이던스·파워·보폭
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .bottom, spacing: 14) {
                 VStack(alignment: .leading, spacing: 0) {
                     RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
                                                        : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
@@ -136,11 +136,12 @@ struct PeriodRecapAllInOneCard: View {
                         if let v = recap.vo2 {
                             let delta = (v.delta * 10).rounded() / 10
                             formCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
-                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil)
+                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil,
+                                     color: Theme.chartAerobic, lightColor: Color(hex: "6B7280"))
                         }
                         if let form { formCells(form) }
                     }
-                    .padding(.top, 18)
+                    .padding(.bottom, 16)   // 막대 바닥(날짜 눈금 위)에 맞춤
                     .frame(width: 112, alignment: .leading)
                 }
             }
@@ -158,12 +159,12 @@ struct PeriodRecapAllInOneCard: View {
     }
 
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
-    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 259pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 247pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
         let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
-        let shared: CGFloat = 259, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let shared: CGFloat = 247, barMax: CGFloat = 185, barMin: CGFloat = 110
         let need = CGFloat(rows) * 30 - 8
         let room = shared - barMax
         if need <= room { return (barMax, rows, 1) }
@@ -214,21 +215,26 @@ struct PeriodRecapAllInOneCard: View {
     @ViewBuilder
     private func formCells(_ form: SummaryFormMetrics) -> some View {
         if let v = form.cadence {
-            formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence)
+            formCell("\(Int(v.rounded()))spm", L.s("케이던스", "CADENCE", ja: "ケイデンス"), v, form.prevCadence,
+                     color: Theme.cadence, lightColor: Color(hex: "B08900"))
         }
         if let v = form.power {
-            formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower)
+            formCell("\(Int(v.rounded()))W", L.s("파워", "POWER", ja: "パワー"), v, form.prevPower,
+                     color: Theme.power, lightColor: Color(hex: "4D7C0F"))
         }
         if let v = form.strideLength {
-            formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength)
+            formCell(String(format: "%.2fm", v), L.s("보폭", "STRIDE", ja: "ストライド"), v, form.prevStrideLength,
+                     color: Theme.strideLength, lightColor: Color(hex: "C2570C"))
         }
     }
 
-    private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?) -> some View {
+    /// 라벨은 앱 지표 색(케이던스 노랑·파워 라임·보폭 주황·유산소 회색), 라이트 테마는 흰 배경에서 읽히는 진한 색
+    private func formCell(_ value: String, _ label: String, _ cur: Double, _ prev: Double?,
+                          color: Color, lightColor: Color) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(p.textSecondary)
+                .foregroundStyle(theme == .light ? lightColor : color)
                 .frame(width: 44, alignment: .leading)
             Text(value)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -329,7 +335,7 @@ struct RecapDistanceBars: View {
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
             BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 24 : 7))
-                .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
+                .foregroundStyle(d.km > 0 ? p.brand.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
         .chartXScale(domain: isYear ? 0...13 : 0...32)

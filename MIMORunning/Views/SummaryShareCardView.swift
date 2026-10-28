@@ -274,11 +274,12 @@ struct SummaryCardChrome<Content: View>: View {
                     .padding(.bottom, 7)
 
                     // Period
+                    // 기간 이름 26 · 상대 이름 15(2026-10-28 18·11에서 같은 비율로 키움)
                     Text(title)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(p.textPrimary)
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(p.brand)
                         .padding(.top, 2)
