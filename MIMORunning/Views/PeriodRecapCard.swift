@@ -129,7 +129,8 @@ struct PeriodRecapAllInOneCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
 
-                if recap.vo2 != nil || form?.hasAny == true {
+                // 연 결산은 오른쪽 칸 없이 막대가 전체 폭(2026-10-28 사용자 결정 — 유산소 빼고, 폼은 월만)
+                if !recap.isYear, recap.vo2 != nil || form?.hasAny == true {
                     Rectangle().fill(p.divider).frame(width: 0.5)
                     VStack(alignment: .leading, spacing: 10) {
                         if let v = recap.vo2 {
@@ -311,7 +312,7 @@ struct RecapDistanceBars: View {
         let pts = data
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
-            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 18 : 7))
+            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 24 : 7))
                 .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
