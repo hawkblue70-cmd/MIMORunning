@@ -340,6 +340,12 @@ struct RecapDistanceBars: View {
         }
     }
 
+    private func yTop(_ maxKm: Double, isYear: Bool) -> Double {
+        let unit = useMiles ? 0.621371 : 1.0
+        let top = isYear ? maxKm * 1.05 : maxKm + 5 * unit
+        return max(top, 1)
+    }
+
     var body: some View {
         let p: SummaryCardPalette = theme == .light ? .light : .dark
         let pts = data
@@ -350,6 +356,8 @@ struct RecapDistanceBars: View {
                 .cornerRadius(2)
         }
         .chartXScale(domain: isYear ? 0...13 : 0...32)
+        // 축 위 끝 = 가장 긴 날 + 5km(월) · 가장 많은 달 + 5%(연) — 막대가 위까지 차게(2026-10-28)
+        .chartYScale(domain: 0...yTop(pts.map(\.km).max() ?? 0, isYear: isYear))
         .chartXAxis {
             AxisMarks(values: isYear ? [1, 3, 5, 7, 9, 11] : [1, 7, 14, 21, 28]) { value in
                 AxisValueLabel {
