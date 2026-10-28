@@ -160,7 +160,7 @@ struct PeriodRecapAllInOneCard: View {
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
     /// 막대 + 기록 줄이 함께 쓰는 높이는 약 259pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
-        let total = recap.prs.count + recap.races.count
+        let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
         let shared: CGFloat = 259, barMax: CGFloat = 185, barMin: CGFloat = 110
@@ -372,10 +372,11 @@ struct RecapRecordRows: View {
 
     var body: some View {
         // 기록이 줄을 다 차지하지 않게 — 대회가 있으면 기록은 최대 maxRows−1
+        let allPRs = recap.standalonePRs
         let prCap = recap.races.isEmpty ? maxRows : max(1, maxRows - 1)
-        let prs = Array(recap.prs.reversed().prefix(prCap))
+        let prs = Array(allPRs.reversed().prefix(prCap))
         let races = Array(recap.races.prefix(maxRows - prs.count))
-        let hidden = (recap.prs.count - prs.count) + (recap.races.count - races.count)
+        let hidden = (allPRs.count - prs.count) + (recap.races.count - races.count)
         VStack(alignment: .leading, spacing: 0) {
             RecapChartLabel(text: L.s("기록 · 대회", "RECORDS · RACES", ja: "記録 · レース"),
                             unit: hidden > 0 ? L.s("외 \(hidden)건", "+\(hidden) more", ja: "ほか\(hidden)件") : nil,
@@ -392,15 +393,20 @@ struct RecapRecordRows: View {
             Text(pr.label)
                 .font(.system(size: 15 * scale, weight: .bold))
                 .foregroundStyle(p.textPrimary)
-            Text(pr.isFirst ? L.s("첫 완주", "FIRST", ja: "初完走") : L.s("최고 기록", "PB", ja: "自己ベスト"))
-                .font(.system(size: 11 * scale, weight: .semibold))
-                .foregroundStyle(p.brand)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(p.brand.opacity(0.14))
-                .clipShape(Capsule())
+            prChip(pr)
             Spacer()
             timeAndDate(pr.duration, pr.date)
         }
+    }
+
+    private func prChip(_ pr: PeriodRecap.PR) -> some View {
+        Text(pr.isFirst ? L.s("첫 완주", "FIRST", ja: "初完走") : L.s("최고 기록", "PB", ja: "自己ベスト"))
+            .font(.system(size: 11 * scale, weight: .semibold))
+            .foregroundStyle(p.brand)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(p.brand.opacity(0.14))
+            .clipShape(Capsule())
+            .fixedSize()
     }
 
     private func raceRow(_ race: PeriodRecap.Race) -> some View {
@@ -413,6 +419,7 @@ struct RecapRecordRows: View {
             Text(raceDistance(race.distanceKm))
                 .font(.system(size: 11 * scale, weight: .medium))
                 .foregroundStyle(p.textSecondary)
+            if let pr = recap.pr(for: race) { prChip(pr) }
             Spacer()
             timeAndDate(race.duration, race.date)
         }

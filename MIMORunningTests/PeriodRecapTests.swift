@@ -68,6 +68,19 @@ struct PeriodRecapTests {
         #expect(r.races.map(\.name) == ["춘천 10K"])
     }
 
+    @Test func prOnRaceRunMergesIntoRaceRow() {
+        // 10월 대회 10K가 곧 10K 최고 기록 → 기록 줄은 대회 한 줄
+        let a = run(2026, 10, 4, km: 10, min: 53)
+        let m = PersistedRaceMatch(activityID: a.id, raceName: "서울 10K", distanceKm: 10, raceDate: a.date,
+                                   isConfirmed: true, isDismissed: false, isManual: false, gateVersion: nil)
+        let r = PeriodRecap.make(span: .month(year: 2026, month: 10), runs: [run(2026, 9, 5, km: 10, min: 55), a],
+                                 races: [m], vo2Samples: [], now: now)!
+        #expect(r.prs.count == 1)
+        #expect(r.standalonePRs.isEmpty)
+        #expect(r.pr(for: r.races[0]) != nil)
+        #expect(r.recordRowCount == 1)
+    }
+
     @Test func vo2NeedsSpan() {
         let runs = [run(2026, 10, 5)]
         let short = [(date: date(2026, 10, 1), value: 48.0), (date: date(2026, 10, 10), value: 49.0)]

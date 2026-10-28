@@ -9,6 +9,7 @@ struct PeriodRecap {
     }
 
     struct PR: Equatable {
+        let activityID: UUID
         let label: String
         let duration: TimeInterval
         let date: Date
@@ -17,6 +18,7 @@ struct PeriodRecap {
     }
 
     struct Race: Equatable {
+        let activityID: UUID
         let name: String
         let distanceKm: Double
         let duration: TimeInterval
@@ -46,6 +48,10 @@ struct PeriodRecap {
     let vo2: VO2Trend?
 
     var isYear: Bool { if case .year = span { return true }; return false }
+    /// 대회 러닝이 곧 최고 기록이면 대회 줄 하나로 합친다 — 그 PR은 따로 줄을 만들지 않음
+    var standalonePRs: [PR] { prs.filter { p in !races.contains { $0.activityID == p.activityID } } }
+    func pr(for race: Race) -> PR? { prs.first { $0.activityID == race.activityID } }
+    var recordRowCount: Int { standalonePRs.count + races.count }
     var runDays: Int { dayKm.count }
     var weeksRan: Int { weekKm.filter { $0.km > 0 }.count }
 
@@ -124,7 +130,7 @@ struct PeriodRecap {
             guard let best = upToEnd.min(by: { $0.duration < $1.duration }),
                   best.date >= start else { continue }
             let isFirst = !upToEnd.contains { $0.date < start }
-            prs.append(PR(label: bucketLabel(b.id), duration: best.duration, date: best.date, isFirst: isFirst))
+            prs.append(PR(activityID: best.id, label: bucketLabel(b.id), duration: best.duration, date: best.date, isFirst: isFirst))
         }
 
         // 대회 — 확정된 매칭 중 이 기간
@@ -134,7 +140,7 @@ struct PeriodRecap {
             .filter { $0.isConfirmed && !$0.isDismissed }
             .compactMap { m in
                 guard let a = byID[m.activityID] else { return nil }
-                return Race(name: m.raceName, distanceKm: m.distanceKm, duration: a.duration, date: a.date)
+                return Race(activityID: a.id, name: m.raceName, distanceKm: m.distanceKm, duration: a.duration, date: a.date)
             }
             .sorted { $0.date < $1.date }
 
