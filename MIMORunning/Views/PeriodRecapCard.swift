@@ -61,8 +61,8 @@ struct PeriodRecapEmptyCard: View {
     }
 }
 
-/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 | 유산소(VO2max 변화값)·케이던스·파워·보폭
-/// ② 지난 기간 대비·올해 누적 ③ 일별(연 = 월별) 거리 막대(전체 폭) ④ 기록·대회(제목·줄 큰 글자). 잔디·차트 없음.
+/// 배치(2026-10-28 사용자 지정): ① 총거리(72pt) | 운동 시간·러닝·평균 페이스·최장 ② 지난 기간 대비·올해 누적
+/// ③ 일별(연 = 월별) 거리 막대 | 유산소(VO2max 변화값)·케이던스·파워·보폭 ④ 기록·대회(제목·줄 큰 글자). 잔디·차트 없음.
 /// 없는 칸은 빼고 남은 칸이 넓어진다. 나 탭 카드와 공유 출력이 이 하나를 쓴다(인사이트 문장 없음).
 struct PeriodRecapAllInOneCard: View {
     let recap: PeriodRecap
@@ -77,7 +77,7 @@ struct PeriodRecapAllInOneCard: View {
     var body: some View {
         SummaryCardChrome(title: stats.kind.title, subtitle: stats.kind.subtitle,
                           miniMeImage: miniMeImage, theme: theme) {
-            // ① 총거리(큰 숫자) | 운동 시간·러닝·평균 페이스·최장 | 러닝 데이터 값
+            // ① 총거리(큰 숫자) | 운동 시간·러닝·평균 페이스·최장
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
@@ -111,20 +111,6 @@ struct PeriodRecapAllInOneCard: View {
                 .padding(.top, 8)
 
                 Spacer(minLength: 0)
-
-                // 러닝 데이터 값 — 유산소(VO2max 변화, 차트 없음)·케이던스·파워·보폭
-                if recap.vo2 != nil || form?.hasAny == true {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let v = recap.vo2 {
-                            let delta = (v.delta * 10).rounded() / 10
-                            formCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
-                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil)
-                        }
-                        if let form { formCells(form) }
-                    }
-                    .padding(.top, 8)
-                    .frame(width: 112, alignment: .leading)
-                }
             }
             .fixedSize(horizontal: false, vertical: true)
 
@@ -133,11 +119,32 @@ struct PeriodRecapAllInOneCard: View {
 
             RecapDivider(theme: theme, top: 8, bottom: 6)
 
-            // ③ 일별(연 = 월별) 거리 막대 — 전체 폭
-            RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
-                                               : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
-                            unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
-            RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 128)
+            // ③ 일별(연 = 월별) 거리 막대 | 러닝 데이터 값 — 유산소(VO2max 변화, 차트 없음)·케이던스·파워·보폭
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 0) {
+                    RecapChartLabel(text: recap.isYear ? L.s("월별 거리", "MONTHLY DIST", ja: "月別距離")
+                                                       : L.s("일별 거리", "DAILY DIST", ja: "日別距離"),
+                                    unit: stats.useMiles ? "MI" : "KM", theme: theme, size: 10)
+                    RecapDistanceBars(recap: recap, useMiles: stats.useMiles, theme: theme, height: 128)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+
+                if recap.vo2 != nil || form?.hasAny == true {
+                    Rectangle().fill(p.divider).frame(width: 0.5)
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let v = recap.vo2 {
+                            let delta = (v.delta * 10).rounded() / 10
+                            formCell(delta == 0 ? "±0.0" : String(format: "%+.1f", delta),
+                                     L.s("유산소", "VO2MAX", ja: "VO2MAX"), v.end, nil)
+                        }
+                        if let form { formCells(form) }
+                    }
+                    .padding(.top, 18)
+                    .frame(width: 112, alignment: .leading)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
 
             // ⑤ 기록 · 대회
             if !recap.prs.isEmpty || !recap.races.isEmpty {
@@ -301,7 +308,7 @@ struct RecapDistanceBars: View {
         let pts = data
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
-            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 24 : 9))
+            BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 18 : 7))
                 .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
