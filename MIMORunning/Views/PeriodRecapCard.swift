@@ -163,12 +163,12 @@ struct PeriodRecapAllInOneCard: View {
     }
 
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
-    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 217pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 213pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
         let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
-        let shared: CGFloat = 217, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let shared: CGFloat = 213, barMax: CGFloat = 185, barMin: CGFloat = 110
         let need = CGFloat(rows) * 30 - 8
         let room = shared - barMax
         if need <= room { return (barMax, rows, 1) }
@@ -395,7 +395,7 @@ struct RecapRecordRows: View {
         VStack(alignment: .leading, spacing: 0) {
             RecapChartLabel(text: L.s("기록 · 대회", "RECORDS · RACES", ja: "記録 · レース"),
                             unit: hidden > 0 ? L.s("외 \(hidden)건", "+\(hidden) more", ja: "ほか\(hidden)件") : nil,
-                            theme: theme, size: 13, color: p.textPrimary)
+                            theme: theme, size: 16, color: p.accentGold)
             VStack(spacing: 8 * scale) {
                 ForEach(prs.indices, id: \.self) { prRow(prs[$0]) }
                 ForEach(races.indices, id: \.self) { raceRow(races[$0]) }
