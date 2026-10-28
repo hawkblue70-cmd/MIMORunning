@@ -243,11 +243,12 @@ struct PeriodRecapAllInOneCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 if let unit {
+                    // 값 칸 폭(약 84pt) 안 한 줄 — 넘치면 줄어든다
                     Text(unit)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(p.textSecondary)
                         .lineLimit(1)
-                        .fixedSize()
+                        .minimumScaleFactor(0.7)
                 }
             }
             if let prev, prev != cur {
