@@ -331,40 +331,6 @@ struct SummaryMiniMe: View {
     }
 }
 
-// MARK: - 결산 카드 공용 조각
-
-/// 큰 숫자(55 콘덴스드) + 단위(18 보라) + 라벨(11)
-struct SummaryHero: View {
-    let value: String
-    var unit: String? = nil
-    let label: String
-    var theme: ShareTheme = .dark
-
-    var body: some View {
-        let p: SummaryCardPalette = theme == .light ? .light : .dark
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .lastTextBaseline, spacing: 5) {
-                Text(value)
-                    .font(.system(size: 55, weight: .black, design: .default).width(.compressed))
-                    .foregroundStyle(p.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.55)
-                if let unit {
-                    Text(unit)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(p.brand)
-                }
-            }
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(1)
-                .foregroundStyle(p.textSecondary)
-        }
-    }
-}
-
-/// 보조 지표 칸(값 16 · 라벨 11)
-
 // MARK: - Share screen (presented as sheet)
 
 /// 결산 공유 — '한 장에 모두' 카드 하나만(2026-10-28 사용자 결정: 한 장·묶음 삭제). 미리보기 = 내보낼 이미지.
