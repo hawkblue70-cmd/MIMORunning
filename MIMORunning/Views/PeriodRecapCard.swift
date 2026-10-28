@@ -335,7 +335,7 @@ struct RecapDistanceBars: View {
         let isYear = recap.isYear
         Chart(pts, id: \.x) { d in
             BarMark(x: .value("날", d.x), y: .value("거리", d.km), width: .fixed(isYear ? 24 : 7))
-                .foregroundStyle(d.km > 0 ? p.brand.gradient : Color.clear.gradient)
+                .foregroundStyle(d.km > 0 ? p.monthlyBarColor.gradient : Color.clear.gradient)
                 .cornerRadius(2)
         }
         .chartXScale(domain: isYear ? 0...13 : 0...32)
