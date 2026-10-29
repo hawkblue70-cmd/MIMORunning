@@ -626,7 +626,9 @@ enum FormPhase {
         case .held:            return L.s("끝까지 유지", "Held to the finish", ja: "最後まで維持")
         case .heavier:
             if r.isSoftCadenceOnly {
-                return L.s("편한 페이스 · 케이던스만 살짝 내려감", "Easy pace · cadence eased slightly", ja: "楽なペース · ケイデンスだけ少し低下")
+                // "케이던스만"은 러닝 전체에서 케이던스만 달랐다고 읽혀, 같은 화면 "지면접촉이 평소보다 길었습니다"와 부딪혔다(2026-10-29) —
+                // 후반 변화라는 것만 밝힌다
+                return L.s("편한 페이스 · 후반 케이던스 살짝 내려감", "Easy pace · cadence eased slightly late", ja: "楽なペース · 後半にケイデンスが少し低下")
             }
             return L.s("마지막 \(lateKm)km 살짝 무거워짐", "A bit heavier in the last \(lateKm) km", ja: "最後の\(lateKm)kmで少し重くなった")
         case .cadenceDefended: return L.s("후반 케이던스는 유지", "Cadence held late", ja: "後半のピッチは維持")

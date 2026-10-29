@@ -122,7 +122,7 @@ struct RunSummaryTests {
         i.workoutType = .easy
         let line = lines(i)[0]
         #expect(line.tone == .good)
-        #expect(line.state == "편한 페이스 · 케이던스만 살짝 내려감")
+        #expect(line.state == "편한 페이스 · 후반 케이던스 살짝 내려감")
         #expect(line.next == nil)
         #expect(line.evidence != nil)
     }

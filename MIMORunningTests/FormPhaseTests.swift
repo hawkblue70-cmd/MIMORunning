@@ -330,7 +330,7 @@ struct FormPhaseTests {
         #expect(r?.late == .heavier([.cadence]))
         #expect(r?.isSoftCadenceOnly == true)
         #expect(FormPhase.sentence(r!, isLongDistance: false) == "마지막 3km엔 케이던스가 조금 내려갔습니다. 편한 날엔 자연스러운 변화입니다.")
-        #expect(FormPhase.shortState(r!) == "편한 페이스 · 케이던스만 살짝 내려감")
+        #expect(FormPhase.shortState(r!) == "편한 페이스 · 후반 케이던스 살짝 내려감")
     }
 
     @Test func easyFrameStrideDropIsNotSoft() {
