@@ -27,6 +27,10 @@ enum TabDigestPerformance {
     static func decouplingPct(splits: [SplitData], workoutType: WorkoutType, distKm: Double,
                               altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Double? {
         guard isDecouplingApplicable(workoutType: workoutType, distKm: distKm) else { return nil }
+        // 앞쪽 2km 이상 심박이 비면(워치가 출발 직후 못 잼) 재지 않는다 — 전반이 아직 오르는 중인 3km부터 시작해
+        // 11.5%로 부풀었다(2026-10-29). 비교 기준인 전반이 몸 풀리는 중이거나 빈 구간이면 숫자가 뜻이 없다.
+        let leadingNoHR = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }.prefix { $0.avgHeartRate == nil }.count
+        guard leadingNoHR < 2 else { return nil }
         // 몸 풀리기 전 구간(웜업 반응 또는 광학 오독)은 뺀다 — Friel도 몸 풀기 뒤로 잰다. 앞 절반 심박이 부풀어 −13%가 나왔다(실제 약 −0.5%, 2026-10-21)
         let full = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
         guard full.count >= 6 else { return nil }
@@ -40,6 +44,19 @@ enum TabDigestPerformance {
         }
         guard let e1 = efficiency(full[..<half]), let e2 = efficiency(full[half...]), e1 > 0 else { return nil }
         return (e1 - e2) / e1 * 100
+    }
+
+    /// 디커플링 전반이 후반보다 빨랐나(같은 구간 선택) — "초반이 빨랐을 수" 문장은 이때만. 판단할 수 없으면 nil.
+    static func decouplingFirstHalfFaster(splits: [SplitData],
+                                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Bool? {
+        let full = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        guard full.count >= 6 else { return nil }
+        let half = full.count / 2
+        func pace(_ p: ArraySlice<SplitData>) -> Double {
+            let d = p.reduce(0.0) { $0 + $1.distanceM }
+            return d > 0 ? p.reduce(0.0) { $0 + $1.duration } / (d / 1000) : 0
+        }
+        return pace(full[..<half]) < pace(full[half...])
     }
 
     /// 구간별 뜻과 근거 — 숫자는 모두 보여주고, 문장만 유형·기온으로 갈라 읽는다.
@@ -58,7 +75,8 @@ enum TabDigestPerformance {
     /// shade: 카드 색 — 초록(.good)·흰색 0.85(.neutral)·주의색(.caution).
     /// isProblem: 5% 넘게 올랐고 덥지 않은 날(설계 P3). 빌드업은 계획이라 문제가 아니다.
     static func decouplingVerdict(pct: Double, workoutType wt: WorkoutType, temperatureC: Double?,
-                                  lateHRRoseFirst: Bool, samePaceRise: FormNarrative.SamePaceHRRise? = nil) -> TabDigestRhythm.Verdict {
+                                  lateHRRoseFirst: Bool, samePaceRise: FormNarrative.SamePaceHRRise? = nil,
+                                  firstHalfFaster: Bool? = nil) -> TabDigestRhythm.Verdict {
         let L = AppLanguage.shared
         let hot = (temperatureC ?? -.infinity) >= decouplingHotTempC
         typealias V = TabDigestRhythm.Verdict
@@ -118,7 +136,11 @@ enum TabDigestPerformance {
             ? V(text: L.s("후반에 심박이 많이 올랐습니다. 더위와 수분 부족이 컸을 것입니다.",
                           "HR drifted a lot — heat and fluid loss likely played a big part.", ja: "後半に心拍が大きく上がりました。暑さと水分不足の影響が大きかったと考えられます。"),
                 isProblem: false, shade: .caution, short: drift + heatTail)
-            : V(text: L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있습니다.",
+            : V(text: firstHalfFaster == false
+                    // 초반이 더 느렸던 러닝에 "초반이 빨랐을 수"는 데이터와 반대(2026-10-29: 7'01"·6'49"·6'43" 출발)
+                    ? L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버거울 수 있습니다.",
+                          "HR drifted a lot — this distance and effort may still be a stretch.", ja: "後半に心拍が大きく上がりました。この距離と強度がまだきついのかもしれません。")
+                    : L.s("후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버겁거나 초반이 빨랐을 수 있습니다.",
                           "HR drifted a lot — this may still be a stretch, or the start was too fast.", ja: "後半に心拍が大きく上がりました。この距離と強度がまだきついか、序盤が速かったのかもしれません。"),
                 isProblem: true, shade: .caution, short: drift + L.s(" · 10% 초과", " · over 10%", ja: " · 10%超"))
     }
@@ -446,7 +468,8 @@ enum TabDigestPerformance {
                                                                          workoutType: c.workoutType, history: c.history)
             let v = decouplingVerdict(pct: pct, workoutType: c.workoutType, temperatureC: c.activity.temperatureC,
                                       lateHRRoseFirst: lateFirst,
-                                      samePaceRise: c.workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []) : nil)
+                                      samePaceRise: c.workoutType == .buildUp ? FormNarrative.samePaceHRRise(splits: c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []) : nil,
+                                      firstHalfFaster: decouplingFirstHalfFaster(splits: c.detail?.splits ?? [], altitudeProfile: c.detail?.altitudeProfile ?? []))
             if v.isProblem || v.shade == .caution || lateFirst {
                 problem(3, .lateHR, v.text, nil, short: v.short)
             } else if v.isGood {

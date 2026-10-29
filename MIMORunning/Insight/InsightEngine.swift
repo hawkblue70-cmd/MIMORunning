@@ -133,7 +133,7 @@ struct InsightEngine {
         #endif
         // Safety is the highest priority. For once-in-a-lifetime achievements (firstAchievement,
         // raceDay), safety becomes the title and the achievement is embedded in the detail line.
-        let safetyCandidate = safetyNote(activity, prior, condition: condition, heatHR: heatHR)
+        let safetyCandidate = safetyNote(activity, prior, condition: condition, heatHR: heatHR, typeOf: typeOf)
         if let safety = safetyCandidate {
             #if DEBUG
             _dbgFacts = "safety:\(safety.theme.rawValue)"
@@ -729,10 +729,11 @@ struct InsightEngine {
         _ a: Activity,
         _ prior: [Activity],
         condition: ActivityCondition?,
-        heatHR: MRHeatHRModel = MRHeatHRModel()
+        heatHR: MRHeatHRModel = MRHeatHRModel(),
+        typeOf: ((UUID) -> WorkoutType?)? = nil
     ) -> InsightResult? {
         let isHot = condition?.weather?.isHot ?? false
-        if let r = hrElevatedNote(a, prior, heatHR: heatHR) { return r }
+        if let r = hrElevatedNote(a, prior, heatHR: heatHR, typeOf: typeOf) { return r }
         if isHot, let r = heatCareNote(a, prior) { return r }
         return nil
     }
@@ -751,7 +752,8 @@ struct InsightEngine {
     /// 그대로 발화한다(과거엔 더운 날 전체를 침묵시켰다 — heatHR이 그 자리를 대신한다).
     /// 기온 커버리지가 낮으면(`heatComparable`) 양쪽 다 원본 심박으로 비교한다.
     /// Scanned against most-recent 60 runs to bound cost (pace-band match is O(n)).
-    static func hrElevatedNote(_ a: Activity, _ prior: [Activity], heatHR: MRHeatHRModel = MRHeatHRModel()) -> InsightResult? {
+    static func hrElevatedNote(_ a: Activity, _ prior: [Activity], heatHR: MRHeatHRModel = MRHeatHRModel(),
+                               typeOf: ((UUID) -> WorkoutType?)? = nil) -> InsightResult? {
         guard let currentPace = a.paceSecPerKm else { return nil }
         let band = Array(prior.prefix(60)
             .filter { guard let p = $0.paceSecPerKm else { return false }; return abs(p - currentPace) <= 5.0 })
@@ -763,7 +765,13 @@ struct InsightEngine {
         let avgBandHR = bandHRs.reduce(0, +) / Double(bandHRs.count)
         guard currentHR >= avgBandHR * 1.08 else { return nil }
         let L = AppLanguage.shared
-        let excess = Int((currentHR - avgBandHR).rounded())
+        // 숫자는 같은 카드의 심박 효율·퍼포먼스와 한 출처(RunInsightEngine.efficiencyInsight, 최근 8주 비슷한 페이스) —
+        // 헤드라인 "약 15bpm" · 퍼포먼스 "10bpm 높음" · 맨 아래 "10bpm 높습니다"가 한 화면에서 갈렸다(2026-10-29).
+        // 효율 비교가 '높다'고 하지 않으면(더위로 설명·차이 3bpm 미만·낮음) 헤드라인도 말하지 않는다.
+        let eff = RunInsightEngine.efficiencyInsight(activity: a, history: prior, heatHR: heatHR, typeOf: typeOf)
+        if let eff { guard eff.source == .efficiencyComparisonHigher else { return nil } }
+        else if RunInsightEngine.efficiencySample(activity: a, history: prior, typeOf: typeOf).count >= 3 { return nil }   // 표본은 있는데 차이 3bpm 미만
+        let excess = eff?.highlights.first.flatMap { Int($0.filter(\.isNumber)) } ?? Int((currentHR - avgBandHR).rounded())
         #if DEBUG
         let distStr = String(format: "%.1fkm", a.distance / 1000)
         print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(Int(currentHR))bpm excess=\(excess)bpm dist=\(distStr)")

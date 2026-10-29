@@ -3421,7 +3421,8 @@ private struct PerformanceInsightCard: View {
         let lateFirst = pct <= 5 && RunSummaryBuilder.lateHRRoseFirst(activity: activity, detail: detail, workoutType: wt, history: history)
         let v = TabDigestPerformance.decouplingVerdict(pct: pct, workoutType: wt, temperatureC: activity.temperatureC,
                                                        lateHRRoseFirst: lateFirst,
-                                                       samePaceRise: wt == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []) : nil)
+                                                       samePaceRise: wt == .buildUp ? FormNarrative.samePaceHRRise(splits: detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []) : nil,
+                                                       firstHalfFaster: TabDigestPerformance.decouplingFirstHalfFaster(splits: detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []))
         let color: Color
         switch v.shade {
         case .good:    color = ink.ic.green

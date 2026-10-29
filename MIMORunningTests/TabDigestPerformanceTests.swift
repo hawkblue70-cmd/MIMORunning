@@ -213,4 +213,24 @@ struct TabDigestPerformanceTests {
         #expect(isTerse(p3?.short))
         #expect(p3?.short?.hasPrefix("디커플링") == true)
     }
+
+    @Test func decouplingSkipsWhenEarlyHRMissing() {
+        // 처음 2km 심박 없음(워치가 출발 직후 못 잼) → 디커플링을 재지 않는다(2026-10-29)
+        func sp(_ i: Int, _ pace: Double, _ hr: Int?) -> SplitData {
+            SplitData(id: i, distanceM: 1000, duration: pace, avgHeartRate: hr, avgCadence: nil, avgPower: nil,
+                      avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+        }
+        let paces: [Double] = [421, 409, 403, 387, 391, 377, 384, 388, 384, 384, 367]
+        let hrs: [Int?] = [nil, nil, 128, 134, 142, 145, 149, 150, 155, 162, 158]
+        let s = zip(paces, hrs).enumerated().map { sp($0.offset + 1, $0.element.0, $0.element.1) }
+        #expect(TabDigestPerformance.decouplingPct(splits: s, workoutType: .general, distKm: 11) == nil)
+        // 첫 1km만 비면 잰다
+        var one = s; one[1] = sp(2, 409, 131)
+        #expect(TabDigestPerformance.decouplingPct(splits: one, workoutType: .general, distKm: 11) != nil)
+        // 초반이 더 느렸으면 "초반이 빨랐을 수"는 빼고
+        #expect(TabDigestPerformance.decouplingFirstHalfFaster(splits: one) == false)
+        let v = TabDigestPerformance.decouplingVerdict(pct: 11.5, workoutType: .general, temperatureC: 12, lateHRRoseFirst: false,
+                                                       firstHalfFaster: false)
+        #expect(v.text == "후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버거울 수 있습니다.")
+    }
 }
