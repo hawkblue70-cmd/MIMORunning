@@ -910,10 +910,10 @@ private struct StampRunTotalsView: View {
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: sz(8, scale), verticalSpacing: sz(3, scale)) {
-            // 거리 숫자만 기간별 고정색 — 보라 단계(짧은 기간일수록 옅게) + 전체는 누적 거리의 나이키 런 레벨 색
-            row("THIS WEEK",  totals.weekKm,  color: Color(hex: "C9BCFE"))
-            row("THIS MONTH", totals.monthKm, color: Color(hex: "A38BFD"))
-            row("THIS YEAR",  totals.yearKm,  color: Theme.violet)
+            // 이번 주·이번 달·올해는 스탬프 색 그대로, 전체 숫자만 누적 거리의 나이키 런 레벨 색
+            row("THIS WEEK",  totals.weekKm,  color: fill)
+            row("THIS MONTH", totals.monthKm, color: fill)
+            row("THIS YEAR",  totals.yearKm,  color: fill)
             let level = StampRunTotals.runLevelColor(allKm: totals.allKm)
             row("ALL TIME",   totals.allKm,   color: level.color, darkNumber: level.isDark)
         }
@@ -923,7 +923,7 @@ private struct StampRunTotalsView: View {
     private func row(_ label: String, _ km: Double, color: Color, darkNumber: Bool = false) -> some View {
         GridRow(alignment: .lastTextBaseline) {
             Text(label)
-                .font(.system(size: sz(12, scale), weight: .bold))   // 8 → 16(두 배) → 12 (16은 커서 중간값, 2026-10-30)
+                .font(.system(size: sz(10, scale), weight: .bold))   // 8 → 16 → 12 → 10 (실기기 조정, 2026-10-30)
                 .tracking(1.2)
                 .lineLimit(1).fixedSize()
             HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
