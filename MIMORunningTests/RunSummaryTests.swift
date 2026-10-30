@@ -798,4 +798,10 @@ struct RunSummaryTests {
         // 상한을 넘으면 존 비율 대신 상한과의 차이(2026-10-30)
         #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state == "회복 주인데 이지 상한 위 · 평균 145(상한 139)")
     }
+
+    @Test func runDayHeadTitleDropsRepeatedType() {
+        #expect(RunDayShareCard.headTitle(label: "롱런", title: "기록을 쓴 롱런") == "기록을 쓴 롱런")
+        #expect(RunDayShareCard.headTitle(label: "롱런 · 빌드업", title: "기록을 쓴 빌드업") == "롱런 · 기록을 쓴 빌드업")
+        #expect(RunDayShareCard.headTitle(label: "이지런", title: "끝까지 달린 러닝") == "이지런 · 끝까지 달린 러닝")
+    }
 }

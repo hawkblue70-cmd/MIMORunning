@@ -545,6 +545,13 @@ struct RunDayShareCard: View {
         }
     }
 
+    /// "유형 · 제목" — 제목에 이미 들어 있는 유형 이름은 빼고 잇는다("롱런 · 기록을 쓴 롱런" → "기록을 쓴 롱런",
+    /// "롱런 · 빌드업" + "기록을 쓴 빌드업" → "롱런 · 기록을 쓴 빌드업"). 앱 오늘의 인사이트 제목과 같게 읽히도록(2026-10-30).
+    static func headTitle(label: String, title: String) -> String {
+        let rest = label.components(separatedBy: " · ").filter { !$0.isEmpty && !title.contains($0) }
+        return (rest + [title]).joined(separator: " · ")
+    }
+
     /// "→ 실제: 10.0km · 마지막 3km 6'20"(제안 빌드업 8km · 마지막 2.7km 5'37")" — 빌드업이 아니면 평균 페이스.
     private func pointActual(session: String) -> String {
         let L = AppLanguage.shared
@@ -611,7 +618,7 @@ struct RunDayShareCard: View {
                 Text(L.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
-                Text((workoutTypeLabel ?? activity.type.label) + " · " + text.title)
+                Text(Self.headTitle(label: workoutTypeLabel ?? activity.type.label, title: text.title))
                     .font(.headline.bold())
                     .foregroundStyle(isLight ? RunCardLight.text : .white)
                     .fixedSize(horizontal: false, vertical: true)
