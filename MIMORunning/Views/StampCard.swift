@@ -464,6 +464,21 @@ struct StampRunTotals: Equatable {
         return StampRunTotals(weekKm: w, monthKm: m, yearKm: y, allKm: a)
     }
 
+    /// 전체 누적 거리 숫자 색 — 나이키 런 클럽 런 레벨(평생 누적 km) 구간을 따른다.
+    /// 옐로 0~49.9 · 오렌지 50~249.9 · 그린 250~999.9 · 블루 1,000~2,499.9 · 퍼플 2,500~4,999.9 · 블랙 5,000~14,999.9 · 볼트 15,000+.
+    /// 나이키가 공식 색 코드를 공개하지 않아 HEX는 근사값. 블랙은 어두운 사진에서 묻히므로 `isDark`로 흰 테두리를 따로 단다.
+    static func runLevelColor(allKm km: Double) -> (color: Color, isDark: Bool) {
+        switch km {
+        case ..<50:     return (Color(hex: "FFE500"), false)   // 옐로
+        case ..<250:    return (Color(hex: "FF6A13"), false)   // 오렌지
+        case ..<1000:   return (Color(hex: "3DDC84"), false)   // 그린
+        case ..<2500:   return (Color(hex: "1E90FF"), false)   // 블루
+        case ..<5000:   return (Color(hex: "9B5DE5"), false)   // 퍼플
+        case ..<15000:  return (Color(hex: "111111"), true)    // 블랙
+        default:        return (Color(hex: "CEFF00"), false)   // 볼트
+        }
+    }
+
     /// 100km 미만은 소수 한 자리, 이상은 정수 + 천 단위 쉼표 (예: 32.4 · 1,204)
     static func format(_ km: Double) -> String {
         if km < 100 { return String(format: "%.1f", km) }
@@ -895,16 +910,17 @@ private struct StampRunTotalsView: View {
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: sz(8, scale), verticalSpacing: sz(3, scale)) {
-            // 거리 숫자만 기간별 고정색 — 보라 단계(짧은 기간일수록 옅게) + 전체는 볼트(나이키 러닝 계열 형광 연두)
+            // 거리 숫자만 기간별 고정색 — 보라 단계(짧은 기간일수록 옅게) + 전체는 누적 거리의 나이키 런 레벨 색
             row("THIS WEEK",  totals.weekKm,  color: Color(hex: "C9BCFE"))
             row("THIS MONTH", totals.monthKm, color: Color(hex: "A38BFD"))
             row("THIS YEAR",  totals.yearKm,  color: Theme.violet)
-            row("ALL TIME",   totals.allKm,   color: Color(hex: "CEFF00"))
+            let level = StampRunTotals.runLevelColor(allKm: totals.allKm)
+            row("ALL TIME",   totals.allKm,   color: level.color, darkNumber: level.isDark)
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
     }
 
-    private func row(_ label: String, _ km: Double, color: Color) -> some View {
+    private func row(_ label: String, _ km: Double, color: Color, darkNumber: Bool = false) -> some View {
         GridRow(alignment: .lastTextBaseline) {
             Text(label)
                 .font(.system(size: sz(16, scale), weight: .bold))   // 8 → 16 (실기기에서 작아 두 배, 2026-10-30)
@@ -915,6 +931,8 @@ private struct StampRunTotalsView: View {
                     .font(.system(size: sz(22, scale), weight: .black).width(.compressed))
                     .italic()
                     .foregroundStyle(color)
+                    // 블랙 레벨 숫자: 바깥 검정 테두리와 붙어 어두운 사진에서 사라지므로 안쪽에 흰 테두리를 한 겹 더
+                    .stampTextOutline(show: darkNumber, fill: color, outline: .white)
                     .lineLimit(1).fixedSize()
                 Text("KM")
                     .font(.system(size: sz(8, scale), weight: .bold))
