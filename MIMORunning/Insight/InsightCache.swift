@@ -72,7 +72,10 @@ actor InsightCache {
     static func cacheFileName(activityID: UUID, isRefined: Bool, language: String) -> String {
         let refined  = isRefined ? "1" : "0"
         let safeLang = language.replacingOccurrences(of: "/", with: "_")
-        return "\(MRModelVersion.prefix)mimo_insight_\(activityID.uuidString)_\(refined)_\(safeLang)_v\(cacheVersion).json"
+        // 유형 캐시 버전도 키에 — 운동 유형을 다시 분류해도(v14~v16) 인사이트 제목은 옛 유형("기록을 쓴 거리주")으로 남아
+        // 헤더 "롱런"과 갈렸다(2026-10-30). 유형 규칙이 바뀌면 인사이트도 자동으로 다시 만든다.
+        let typeTag = HealthKitManager.workoutTypeCacheKey.split(separator: ".").last.map(String.init) ?? "t"
+        return "\(MRModelVersion.prefix)mimo_insight_\(activityID.uuidString)_\(refined)_\(safeLang)_v\(cacheVersion)_\(typeTag).json"
     }
 
     private func diskURL(activityID: UUID, isRefined: Bool, language: String) -> URL {
