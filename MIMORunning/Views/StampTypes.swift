@@ -159,7 +159,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .scoreboard:   return (small: 0.27, medium: 0.37, large: 0.49, xlarge: 0.58)   // 심박까지 한 줄, 폭 311. 특대는 좌우 여백에 걸려 0.61 → 0.58
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
-        case .runTotals:    return (small: 0.70, medium: 0.96, large: 1.26, xlarge: 1.50)   // 라벨+값 4줄(자연 폭 ≈120·높이 ≈100 추정). StampMeasureTests 실측 후 조정
+        case .runTotals:    return (small: 0.43, medium: 0.59, large: 0.77, xlarge: 0.96)   // 라벨+값 4줄. 실기기에서 옛 중(0.96)이 특대로 맞음(2026-10-30) → 소·중·대는 40·55·72·90% 비율로
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
         case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
         case .summaryGridPace: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)   // 요약 그리드와 같은 배율. 특대 없음(supportsXLarge) — 차트가 붙어 높이 상한을 넘는다
