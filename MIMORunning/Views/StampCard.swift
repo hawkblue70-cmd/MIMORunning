@@ -1010,20 +1010,51 @@ private struct StampMonthRecapView: View {
         }
     }
 
-    /// 1일~말일 막대 — 높이는 그 달 가장 많이 뛴 날 기준. 안 뛴 날은 빈칸
+    /// 1일~말일 막대 — 높이는 그 달 가장 많이 뛴 날 기준. 안 뛴 날은 빈칸.
+    /// 오른쪽에 거리 눈금(0·10·20…)과 옅은 가로선 — 막대 높이가 몇 km인지 읽히게(월 결산 화면 차트와 같은 방식).
     private var dailyBars: some View {
         let days = totals.dailyKm
         let maxKm = max(days.max() ?? 0, 1)
         let chartW = sz(150, scale), chartH = sz(46, scale)   // 34 → 46 (실기기에서 낮아 보여, 2026-10-30)
         let gap = max(1, sz(1.5, scale))
         let barW = max(1, (chartW - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
-        return HStack(alignment: .bottom, spacing: gap) {
-            ForEach(days.indices, id: \.self) { i in
-                Rectangle()
-                    .frame(width: barW, height: days[i] > 0 ? max(sz(2, scale), chartH * days[i] / maxKm) : 0)
+        let ticks = Self.ticks(maxKm: maxKm)
+        let labelFont = Font.system(size: sz(7, scale), weight: .bold)
+        return HStack(alignment: .bottom, spacing: sz(4, scale)) {
+            ZStack(alignment: .bottomLeading) {
+                // 눈금 가로선 (0 제외 — 바닥은 막대가 이미 그린다)
+                ForEach(ticks.filter { $0 > 0 }, id: \.self) { t in
+                    Rectangle()
+                        .frame(width: chartW, height: max(0.5, sz(0.5, scale)))
+                        .opacity(0.35)
+                        .offset(y: -chartH * CGFloat(t / maxKm))
+                }
+                HStack(alignment: .bottom, spacing: gap) {
+                    ForEach(days.indices, id: \.self) { i in
+                        Rectangle()
+                            .frame(width: barW, height: days[i] > 0 ? max(sz(2, scale), chartH * days[i] / maxKm) : 0)
+                    }
+                }
             }
+            .frame(width: chartW, height: chartH, alignment: .bottomLeading)
+            // 눈금 숫자 — 선 높이에 글자 가운데를 맞춘다
+            ZStack(alignment: .bottomLeading) {
+                ForEach(ticks, id: \.self) { t in
+                    Text("\(Int(t))")
+                        .font(labelFont)
+                        .lineLimit(1).fixedSize()
+                        .alignmentGuide(.bottom) { d in d[VerticalAlignment.center] }
+                        .offset(y: -chartH * CGFloat(t / maxKm))
+                }
+            }
+            .frame(height: chartH, alignment: .bottomLeading)
         }
-        .frame(width: chartW, height: chartH, alignment: .bottomLeading)
+    }
+
+    /// 눈금 간격 — 최댓값에 따라 5·10·20·50km, 0부터 최댓값 이하까지
+    static func ticks(maxKm: Double) -> [Double] {
+        let step: Double = maxKm <= 12 ? 5 : maxKm <= 30 ? 10 : maxKm <= 60 ? 20 : 50
+        return stride(from: 0, through: maxKm, by: step).map { $0 }
     }
 }
 
