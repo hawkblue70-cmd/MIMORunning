@@ -393,16 +393,33 @@ enum RunSummary {
             } else if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
                 // 유형이 '계획된 고강도'여도 플랜이 우선한다 — 회복·테이퍼 주의 고강도는 계획대로가 아니다
                 planDeviationPhase = phase
-                line = RunSummaryLine(axis: axis,
-                                      state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주인데 고강도 · Zone 3 이상 \(pct)%",
-                                                 "High intensity in an easy week · \(pct)% in Zone 3+", ja: "軽めの週なのに高強度 · ゾーン3以上\(pct)%"),
-                                      tone: .neutral)
+                let ph = phase == postRacePhase ? "대회를 마친" : phase
+                // 이지 상한을 알면 존 비율 대신 상한과의 차이 — 상한을 2bpm 넘은 러닝을 "고강도 · Zone 3 이상 91%"라 부르면
+                // 같은 화면 도넛 "유산소 구간"과 부딪히고 아침 숫자(139 아래)와도 갈렸다(2026-10-30)
+                if let hr = i.avgHeartRate, let cap = i.easyCapHR {
+                    line = RunSummaryLine(axis: axis,
+                                          state: L.s("\(ph) 주인데 이지 상한 위 · 평균 \(hr)(상한 \(cap))",
+                                                     "Above your easy cap in an easy week · avg \(hr) (cap \(cap))", ja: "軽めの週なのにイージー上限超え · 平均\(hr)(上限\(cap))"),
+                                          tone: .neutral)
+                } else {
+                    line = RunSummaryLine(axis: axis,
+                                          state: L.s("\(ph) 주인데 고강도 · Zone 3 이상 \(pct)%",
+                                                     "High intensity in an easy week · \(pct)% in Zone 3+", ja: "軽めの週なのに高強度 · ゾーン3以上\(pct)%"),
+                                          tone: .neutral)
+                }
             } else if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac {
                 isEasyHighBranch = true
                 let label = i.workoutType.koreanLabel
-                line = RunSummaryLine(axis: axis,
-                                      state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for \(label) · \(pct)% in Zone 3+", ja: "\(label)としては高い · ゾーン3以上\(pct)%"),
-                                      tone: .neutral)
+                if let hr = i.avgHeartRate, let cap = i.easyCapHR {
+                    line = RunSummaryLine(axis: axis,
+                                          state: L.s("\(label) 기준 높음 · 평균 \(hr)(이지 상한 \(cap))", "High for \(label) · avg \(hr) (easy cap \(cap))",
+                                                     ja: "\(label)としては高い · 平均\(hr)(イージー上限\(cap))"),
+                                          tone: .neutral)
+                } else {
+                    line = RunSummaryLine(axis: axis,
+                                          state: L.s("\(label) 기준 높음 · Zone 3 이상 \(pct)%", "High for \(label) · \(pct)% in Zone 3+", ja: "\(label)としては高い · ゾーン3以上\(pct)%"),
+                                          tone: .neutral)
+                }
             } else {
                 switch dom {
                 case 1: line = RunSummaryLine(axis: axis, state: L.s("가벼운 회복 강도", "Light recovery", ja: "軽い回復強度"), tone: .good)

@@ -795,6 +795,7 @@ struct RunSummaryTests {
         #expect(heart?.tone == .good)
         // 이지 상한을 넘으면 지금처럼 "회복 주인데 고강도"
         i.avgHeartRate = 145
-        #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state.hasPrefix("회복 주인데 고강도") == true)
+        // 상한을 넘으면 존 비율 대신 상한과의 차이(2026-10-30)
+        #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state == "회복 주인데 이지 상한 위 · 평균 145(상한 139)")
     }
 }

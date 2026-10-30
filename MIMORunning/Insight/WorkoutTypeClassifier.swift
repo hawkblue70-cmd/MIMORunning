@@ -262,12 +262,13 @@ struct WorkoutTypeClassifier {
         return activity.distance > med * 1.20
     }
 
-    /// Long distance + pace near/faster than personal baseline (race-intent effort).
-    /// Pace must be < baseline × 1.10 so it's distinctly faster than easy/LSD.
+    /// 거리주 = 롱런 거리 + 평소 페이스(4주 중앙값) 이상으로 빠름(대회 의도). 예전 문턱 1.10배는 평소보다 10% 느려도
+    /// 거리주라, 이지 페이스(6'31")와 같은 6'29" 13.6km가 "거리주 · 기록을 쓴 거리주"가 됐다(2026-10-30, 사용자 결정).
+    static let distanceRunPaceFrac = 1.00
     private static func isDistanceRun(activity: Activity, base: Baseline) -> Bool {
         guard isLongRun(activity: activity, base: base) else { return false }
         guard let pace = base.todayPace, let med = base.pace else { return false }
-        return pace < med * 1.10
+        return pace <= med * distanceRunPaceFrac
     }
 
     /// Long distance + very slow pace (≥20% slower than baseline) + very even effort (CV ≤ 8%).
@@ -422,11 +423,11 @@ struct WorkoutTypeClassifier {
 
         // 4. 거리주
         if isLong, let pace = myPace, let m = med {
-            let thr = m * 1.10
-            if pace < thr {
-                return (.distanceRun, "거리주: \(pf(pace)) < 기준\(pf(m))×1.10=\(pf(thr)) · \(baseStr)")
+            let thr = m * distanceRunPaceFrac
+            if pace <= thr {
+                return (.distanceRun, "거리주: \(pf(pace)) ≤ 기준\(pf(m))=\(pf(thr)) · \(baseStr)")
             }
-            notes.append("거리주탈락: \(pf(pace)) ≥ \(pf(thr))(기준\(pf(m))×1.10)")
+            notes.append("거리주탈락: \(pf(pace)) > 기준\(pf(m))")
         } else if isLong {
             notes.append("거리주탈락: 기준선 없음")
         }

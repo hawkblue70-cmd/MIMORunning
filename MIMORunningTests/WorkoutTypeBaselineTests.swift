@@ -98,6 +98,15 @@ final class WorkoutTypeBaselineTests: XCTestCase {
                                                       splits: flatSplits(count: 9, pace: 400), hrZones: zones), .easy)
     }
 
+    /// 거리주는 평소 페이스 이상으로 빠를 때만 — 평소 6'25"인 러너의 6'29" 13.6km는 롱런, 6'17" 21km는 거리주(2026-10-30)
+    func testDistanceRunNeedsPaceAtOrFasterThanBaseline() {
+        let hist = (1...6).map { run(daysAgo: $0 * 4, km: 9, pace: 385) }
+        let slowLong = run(daysAgo: 0, km: 13.6, pace: 389)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: slowLong, history: hist, splits: flatSplits(count: 13, pace: 389)), .longRun)
+        let fastLong = run(daysAgo: 0, km: 21, pace: 377)
+        XCTAssertEqual(WorkoutTypeClassifier.classify(activity: fastLong, history: hist, splits: flatSplits(count: 21, pace: 377)), .distanceRun)
+    }
+
     // MARK: - baselinePace
 
     func testPaceBaselineIsMedianNotMean() {
