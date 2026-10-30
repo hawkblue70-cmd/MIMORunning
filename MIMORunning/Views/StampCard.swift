@@ -1014,7 +1014,7 @@ private struct StampMonthRecapView: View {
     private var dailyBars: some View {
         let days = totals.dailyKm
         let maxKm = max(days.max() ?? 0, 1)
-        let chartW = sz(150, scale), chartH = sz(34, scale)
+        let chartW = sz(150, scale), chartH = sz(46, scale)   // 34 → 46 (실기기에서 낮아 보여, 2026-10-30)
         let gap = max(1, sz(1.5, scale))
         let barW = max(1, (chartW - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
         return HStack(alignment: .bottom, spacing: gap) {
