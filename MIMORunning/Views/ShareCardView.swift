@@ -224,6 +224,8 @@ struct ShareCardScreen: View {
     @State private var stampCoordText: String?      = nil
     @State private var stampMapImage: UIImage?      = nil
     @State private var stampRoutePoints: [CGPoint]? = nil
+    /// 누적 거리 스탬프 — 시트를 열 때 한 번 계산(활동 목록 전체를 훑으므로 body에서 매번 하지 않는다)
+    @State private var stampRunTotals: StampRunTotals? = nil
 
     private var isStamp: Bool      { card == .stamp }
     var isOneLiner: Bool   { card == .oneLiner }
@@ -1050,6 +1052,7 @@ struct ShareCardScreen: View {
         d.shoeName    = displayShoeName
         // 대회 — 확정 + 대회 칩 ON일 때만 로고 아래 뱃지
         d.raceName    = stampVM.showRace ? confirmedRace?.raceName : nil
+        d.runTotals   = stampRunTotals
         return d
     }
 
@@ -4462,6 +4465,9 @@ struct ShareCardScreen: View {
     // Extracted from .task {} to keep the closure trivial and avoid type-checker timeouts.
     @MainActor
     private func onAppear() async {
+        if stampRunTotals == nil, let acts = manager?.activities {
+            stampRunTotals = StampRunTotals.compute(activities: acts, asOf: activity.date)
+        }
         // Restore selected photo from stored data on re-entry (e.g. after app restart).
         // Without this, selectedPhoto stays nil and the legacy all-cards branch fires.
         if !storyPhotos.isEmpty {

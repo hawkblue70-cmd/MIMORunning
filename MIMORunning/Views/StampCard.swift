@@ -94,6 +94,8 @@ struct StampData {
     var raceName: String?        = nil
     /// 심박 곡선(bpm) — 다듬고 줄인 값(`StampHRChart.prepare`). 요약 그리드+심박. 부족하면 그 스탬프를 고를 수 없다
     var hrSamples: [Double]?     = nil
+    /// 기간별 누적 러닝 거리 — 누적 거리 스탬프. 없으면 그 스탬프를 고를 수 없다
+    var runTotals: StampRunTotals? = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -433,6 +435,48 @@ private func stampMetricFooter(data: StampData, hr: Bool, cal: Bool) -> String? 
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
 }
 
+// MARK: - Run Totals (누적 거리 스탬프 데이터)
+
+/// 이번 주·이번 달·올해·전체 누적 러닝 거리(km). 기준은 공유하는 러닝의 시각 — 그 러닝까지 포함하고 뒤 러닝은 뺀다.
+/// 지난 러닝을 공유해도 "그때의" 이번 주·이번 달이 된다. 주는 월요일 시작(성장 탭과 같음).
+struct StampRunTotals: Equatable {
+    let weekKm: Double
+    let monthKm: Double
+    let yearKm: Double
+    let allKm: Double
+
+    static func compute(activities: [Activity], asOf: Date) -> StampRunTotals? {
+        var cal = Calendar(identifier: .gregorian)
+        cal.firstWeekday = 2   // 월요일 시작
+        cal.timeZone = .current
+        guard let week  = cal.dateInterval(of: .weekOfYear, for: asOf)?.start,
+              let month = cal.dateInterval(of: .month, for: asOf)?.start,
+              let year  = cal.dateInterval(of: .year, for: asOf)?.start else { return nil }
+        var w = 0.0, m = 0.0, y = 0.0, a = 0.0
+        for act in activities where act.type == .running && act.date <= asOf {
+            let km = act.distance / 1000
+            a += km
+            if act.date >= year  { y += km }
+            if act.date >= month { m += km }
+            if act.date >= week  { w += km }
+        }
+        guard a > 0 else { return nil }
+        return StampRunTotals(weekKm: w, monthKm: m, yearKm: y, allKm: a)
+    }
+
+    /// 100km 미만은 소수 한 자리, 이상은 정수 + 천 단위 쉼표 (예: 32.4 · 1,204)
+    static func format(_ km: Double) -> String {
+        if km < 100 { return String(format: "%.1f", km) }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.usesGroupingSeparator = true
+        f.groupingSeparator = ","
+        return f.string(from: NSNumber(value: km.rounded())) ?? String(format: "%.0f", km)
+    }
+}
+
 // MARK: - StampCard
 
 struct StampCard: View {
@@ -587,6 +631,11 @@ struct StampCard: View {
             StampInlineTripleView(data: data, fill: fill, outline: outline, scale: scale,
                                   showHeartRate: showHeartRate, showCalories: showCalories,
                                   showTextOutline: showTextOutline)
+        case .runTotals:
+            if let totals = data.runTotals {
+                StampRunTotalsView(totals: totals, fill: fill, outline: outline, scale: scale,
+                                   showTextOutline: showTextOutline)
+            }
         case .distanceHero:
             StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,
                                   showHeartRate: showHeartRate, showCalories: showCalories,
@@ -831,6 +880,45 @@ private struct StampLabeledRowsView: View {
                     .font(.system(size: sz(11, scale), weight: .bold))
                     .baselineOffset(sz(4, scale))
             }
+        }
+    }
+}
+
+// MARK: - Run Totals (이번 주·이번 달·올해·전체 — 라벨 왼쪽, 값 오른쪽 정렬)
+
+private struct StampRunTotalsView: View {
+    let totals: StampRunTotals
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: sz(8, scale), verticalSpacing: sz(3, scale)) {
+            row("THIS WEEK",  totals.weekKm)
+            row("THIS MONTH", totals.monthKm)
+            row("THIS YEAR",  totals.yearKm)
+            row("ALL TIME",   totals.allKm)
+        }
+        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+
+    private func row(_ label: String, _ km: Double) -> some View {
+        GridRow(alignment: .lastTextBaseline) {
+            Text(label)
+                .font(.system(size: sz(8, scale), weight: .bold))
+                .tracking(1.2)
+                .lineLimit(1).fixedSize()
+            HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
+                Text(StampRunTotals.format(km))
+                    .font(.system(size: sz(22, scale), weight: .black).width(.compressed))
+                    .italic()
+                    .lineLimit(1).fixedSize()
+                Text("KM")
+                    .font(.system(size: sz(8, scale), weight: .bold))
+                    .lineLimit(1).fixedSize()
+            }
+            .gridColumnAlignment(.trailing)
         }
     }
 }
