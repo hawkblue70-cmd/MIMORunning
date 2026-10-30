@@ -895,15 +895,16 @@ private struct StampRunTotalsView: View {
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: sz(8, scale), verticalSpacing: sz(3, scale)) {
-            row("THIS WEEK",  totals.weekKm)
-            row("THIS MONTH", totals.monthKm)
-            row("THIS YEAR",  totals.yearKm)
-            row("ALL TIME",   totals.allKm)
+            // 거리 숫자만 기간별 고정색 — 보라 단계(짧은 기간일수록 옅게) + 전체는 볼트(나이키 러닝 계열 형광 연두)
+            row("THIS WEEK",  totals.weekKm,  color: Color(hex: "C9BCFE"))
+            row("THIS MONTH", totals.monthKm, color: Color(hex: "A38BFD"))
+            row("THIS YEAR",  totals.yearKm,  color: Theme.violet)
+            row("ALL TIME",   totals.allKm,   color: Color(hex: "CEFF00"))
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
     }
 
-    private func row(_ label: String, _ km: Double) -> some View {
+    private func row(_ label: String, _ km: Double, color: Color) -> some View {
         GridRow(alignment: .lastTextBaseline) {
             Text(label)
                 .font(.system(size: sz(16, scale), weight: .bold))   // 8 → 16 (실기기에서 작아 두 배, 2026-10-30)
@@ -913,6 +914,7 @@ private struct StampRunTotalsView: View {
                 Text(StampRunTotals.format(km))
                     .font(.system(size: sz(22, scale), weight: .black).width(.compressed))
                     .italic()
+                    .foregroundStyle(color)
                     .lineLimit(1).fixedSize()
                 Text("KM")
                     .font(.system(size: sz(8, scale), weight: .bold))
