@@ -182,7 +182,13 @@ struct MeView: View {
             useMiles: useMiles,
             compDistanceKm: prevDistKm > 0 ? prevDistKm : nil,
             compRunCount: prevRuns.isEmpty ? nil : prevRuns.count,
-            compAvgPaceSecPerKm: prevPaceSec
+            compAvgPaceSecPerKm: prevPaceSec,
+            // 전체 누적 — 그해 말까지(올해는 지금까지). 지난해 카드가 오늘 값으로 바뀌지 않게
+            lifetimeDistanceKm: {
+                let km = runActivities.filter { cal.component(.year, from: $0.date) <= year }
+                    .reduce(0.0) { $0 + $1.distance / 1000 }
+                return km > 0 ? km : nil
+            }()
         )
     }
 

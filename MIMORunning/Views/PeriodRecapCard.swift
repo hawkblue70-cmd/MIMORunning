@@ -113,7 +113,7 @@ struct PeriodRecapAllInOneCard: View {
                     if let km = stats.ytdDistanceKm, km > 0, !recap.isYear {
                         statRow("\(Int(km.rounded()).formatted(.number.grouping(.automatic))) km", L.s("올해 누적", "YTD", ja: "今年の累計"), p.brand)
                     }
-                    if let km = stats.lifetimeDistanceKm, km > 0, !recap.isYear {
+                    if let km = stats.lifetimeDistanceKm, km > 0 {
                         statRow("\(Int(km.rounded()).formatted(.number.grouping(.automatic))) km", L.s("전체 누적", "ALL-TIME", ja: "全期間の累計"), p.brand)
                     }
                 }
