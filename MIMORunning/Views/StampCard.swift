@@ -906,7 +906,7 @@ private struct StampRunTotalsView: View {
     private func row(_ label: String, _ km: Double) -> some View {
         GridRow(alignment: .lastTextBaseline) {
             Text(label)
-                .font(.system(size: sz(8, scale), weight: .bold))
+                .font(.system(size: sz(16, scale), weight: .bold))   // 8 → 16 (실기기에서 작아 두 배, 2026-10-30)
                 .tracking(1.2)
                 .lineLimit(1).fixedSize()
             HStack(alignment: .lastTextBaseline, spacing: sz(2, scale)) {
