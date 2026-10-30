@@ -71,6 +71,7 @@ struct SummaryPeriodStats {
     var compRunCount: Int? = nil
     var compAvgPaceSecPerKm: Double? = nil
     var ytdDistanceKm: Double? = nil
+    var lifetimeDistanceKm: Double? = nil
 
     var runCount: Int { activities.filter { $0.type == .running }.count }
     var totalDistanceKm: Double { activities.reduce(0) { $0 + $1.distance / 1000 } }

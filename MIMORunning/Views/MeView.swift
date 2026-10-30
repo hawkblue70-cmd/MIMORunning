@@ -136,6 +136,12 @@ struct MeView: View {
             }.reduce(0.0) { $0 + $1.distance / 1000 }
             ytdKm = km > 0 ? km : nil
         }
+        // 전체 러닝 누적 — 올해 누적과 같은 이번 달 카드에만(2026-10-30)
+        var lifetimeKm: Double? = nil
+        if monthOffset == 0 {
+            let km = runActivities.reduce(0.0) { $0 + $1.distance / 1000 }
+            lifetimeKm = km > 0 ? km : nil
+        }
 
         return SummaryPeriodStats(
             kind: .monthly(year: year, month: month),
@@ -144,7 +150,8 @@ struct MeView: View {
             compDistanceKm: prevDistKm > 0 ? prevDistKm : nil,
             compRunCount: prevRuns.isEmpty ? nil : prevRuns.count,
             compAvgPaceSecPerKm: prevPaceSec,
-            ytdDistanceKm: ytdKm
+            ytdDistanceKm: ytdKm,
+            lifetimeDistanceKm: lifetimeKm
         )
     }
 

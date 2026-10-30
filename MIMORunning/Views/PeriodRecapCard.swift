@@ -113,6 +113,9 @@ struct PeriodRecapAllInOneCard: View {
                     if let km = stats.ytdDistanceKm, km > 0, !recap.isYear {
                         statRow("\(Int(km.rounded()).formatted(.number.grouping(.automatic))) km", L.s("올해 누적", "YTD", ja: "今年の累計"), p.brand)
                     }
+                    if let km = stats.lifetimeDistanceKm, km > 0, !recap.isYear {
+                        statRow("\(Int(km.rounded()).formatted(.number.grouping(.automatic))) km", L.s("전체 누적", "ALL-TIME", ja: "全期間の累計"), p.brand)
+                    }
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -164,12 +167,12 @@ struct PeriodRecapAllInOneCard: View {
     }
 
     /// 기록·대회가 많으면 4:5 한 장에 맞게 줄인다 — 먼저 막대를 185→110pt까지 낮추고, 그래도 넘치면 줄 글자·간격을 0.5배까지 줄인다.
-    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 192pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
+    /// 막대 + 기록 줄이 함께 쓰는 높이는 약 168pt(카드 480×600 기준 계산값). 줄 하나 = 글자 높이 22 + 간격 8. 0.5배에서도 들어가는 10줄까지, 넘으면 '외 N건'.
     private var recordFit: (barHeight: CGFloat, rows: Int, scale: CGFloat) {
         let total = recap.recordRowCount
         let rows = min(total, 10)
         guard rows > 0 else { return (185, 0, 1) }
-        let shared: CGFloat = 192, barMax: CGFloat = 185, barMin: CGFloat = 110
+        let shared: CGFloat = 168, barMax: CGFloat = 185, barMin: CGFloat = 110
         let need = CGFloat(rows) * 30 - 8
         let room = shared - barMax
         if need <= room { return (barMax, rows, 1) }
