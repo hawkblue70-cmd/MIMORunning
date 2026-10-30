@@ -39,6 +39,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case inlineTriple
     /// 이번 주·이번 달·올해·전체 누적 러닝 거리 (그 러닝 날짜 기준)
     case runTotals
+    /// 그 달 총거리 + 올해·전체 누적 + 날마다 거리 막대 (그 러닝 날짜 기준)
+    case monthRecap
     // 경로 결합
     case routeHero
     case routeSide
@@ -88,6 +90,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .labeledRows:   return L.s("행마다 라벨",     "Row Labels", ja: "行ごとのラベル")
         case .inlineTriple:  return L.s("가로 3열",        "Inline Triple", ja: "横3列")
         case .runTotals:     return L.s("누적 거리",       "Run Totals", ja: "累計距離")
+        case .monthRecap:    return L.s("월 결산",         "Monthly Recap", ja: "月間まとめ")
         case .distanceHero:  return L.s("거리 몰아주기",   "Distance Hero", ja: "距離を主役に")
         case .summaryGrid:   return L.s("요약 그리드",     "Summary Grid", ja: "サマリーグリッド")
         case .summaryGridPace: return L.s("요약 그리드+페이스", "Summary Grid + Pace", ja: "サマリーグリッド+ペース")
@@ -159,7 +162,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .scoreboard:   return (small: 0.27, medium: 0.37, large: 0.49, xlarge: 0.58)   // 심박까지 한 줄, 폭 311. 특대는 좌우 여백에 걸려 0.61 → 0.58
         case .labeledRows:  return (small: 0.60, medium: 0.82, large: 1.08, xlarge: 1.35)
         case .inlineTriple: return (small: 0.28, medium: 0.38, large: 0.50, xlarge: 0.62)
-        case .runTotals:    return (small: 0.43, medium: 0.59, large: 0.77, xlarge: 0.96)   // 라벨+값 4줄. 실기기에서 옛 중(0.96)이 특대로 맞음(2026-10-30) → 소·중·대는 40·55·72·90% 비율로
+        case .runTotals:    return (small: 0.43, medium: 0.59, large: 0.77, xlarge: 0.96)
+        case .monthRecap:   return (small: 0.40, medium: 0.55, large: 0.72, xlarge: 0.90)   // 머리글+총거리+누적 2줄+막대(높이 ≈175 추정, 특대는 높이 상한 기준). 실기기 확인 후 조정   // 라벨+값 4줄. 실기기에서 옛 중(0.96)이 특대로 맞음(2026-10-30) → 소·중·대는 40·55·72·90% 비율로
         case .distanceHero: return (small: 0.56, medium: 0.78, large: 1.02, xlarge: 1.28)
         case .summaryGrid:  return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.84)   // 특대는 높이 상한(158pt)에 걸려 0.85 → 0.84
         case .summaryGridPace: return (small: 0.38, medium: 0.52, large: 0.68, xlarge: 0.68)   // 요약 그리드와 같은 배율. 특대 없음(supportsXLarge) — 차트가 붙어 높이 상한을 넘는다
@@ -217,7 +221,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .summaryGridPace:           return [.splits]
         case .summaryGridHR:             return [.hrSamples]
         case .summaryGridPaceHR:         return [.splits, .hrSamples]
-        case .runTotals:                 return [.runTotals]
+        case .runTotals, .monthRecap:    return [.runTotals]
         default:                         return [.none]
         }
     }

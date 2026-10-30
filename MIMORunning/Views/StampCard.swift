@@ -444,6 +444,10 @@ struct StampRunTotals: Equatable {
     let monthKm: Double
     let yearKm: Double
     let allKm: Double
+    /// 그 달 1일부터 말일까지 날마다 러닝 거리(km) — 월 결산 스탬프 막대. 기준 시각 뒤 날은 0
+    var dailyKm: [Double] = []
+    /// 그 달 첫날 — 월 결산 스탬프 머리글("OCT 2026")
+    var monthStart: Date = .distantPast
 
     static func compute(activities: [Activity], asOf: Date) -> StampRunTotals? {
         var cal = Calendar(identifier: .gregorian)
@@ -452,16 +456,23 @@ struct StampRunTotals: Equatable {
         guard let week  = cal.dateInterval(of: .weekOfYear, for: asOf)?.start,
               let month = cal.dateInterval(of: .month, for: asOf)?.start,
               let year  = cal.dateInterval(of: .year, for: asOf)?.start else { return nil }
+        let days = cal.range(of: .day, in: .month, for: asOf)?.count ?? 31
+        var daily = [Double](repeating: 0, count: days)
         var w = 0.0, m = 0.0, y = 0.0, a = 0.0
         for act in activities where act.type == .running && act.date <= asOf {
             let km = act.distance / 1000
             a += km
             if act.date >= year  { y += km }
-            if act.date >= month { m += km }
+            if act.date >= month {
+                m += km
+                let d = cal.component(.day, from: act.date) - 1
+                if daily.indices.contains(d) { daily[d] += km }
+            }
             if act.date >= week  { w += km }
         }
         guard a > 0 else { return nil }
-        return StampRunTotals(weekKm: w, monthKm: m, yearKm: y, allKm: a)
+        return StampRunTotals(weekKm: w, monthKm: m, yearKm: y, allKm: a,
+                              dailyKm: daily, monthStart: month)
     }
 
     /// 전체 누적 거리 숫자 색 — 나이키 런 클럽 런 레벨(평생 누적 km) 구간을 따른다.
@@ -650,6 +661,11 @@ struct StampCard: View {
             if let totals = data.runTotals {
                 StampRunTotalsView(totals: totals, fill: fill, outline: outline, scale: scale,
                                    showTextOutline: showTextOutline)
+            }
+        case .monthRecap:
+            if let totals = data.runTotals {
+                StampMonthRecapView(totals: totals, fill: fill, outline: outline, scale: scale,
+                                    showTextOutline: showTextOutline)
             }
         case .distanceHero:
             StampDistanceHeroView(data: data, fill: fill, outline: outline, scale: scale,
@@ -902,20 +918,29 @@ private struct StampLabeledRowsView: View {
 // MARK: - Run Totals (이번 주·이번 달·올해·전체 — 라벨 왼쪽, 값 오른쪽 정렬)
 
 private struct StampRunTotalsView: View {
+    enum Period { case week, month, year, all }
+
     let totals: StampRunTotals
     let fill: Color
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
+    /// 그릴 줄 — 누적 거리 스탬프는 넷 다, 월 결산 스탬프는 올해·전체만
+    var periods: [Period] = [.week, .month, .year, .all]
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: sz(8, scale), verticalSpacing: sz(3, scale)) {
             // 이번 주·이번 달·올해는 스탬프 색 그대로, 전체 숫자만 누적 거리의 나이키 런 레벨 색
-            row("THIS WEEK",  totals.weekKm,  color: fill)
-            row("THIS MONTH", totals.monthKm, color: fill)
-            row("THIS YEAR",  totals.yearKm,  color: fill)
-            let level = StampRunTotals.runLevelColor(allKm: totals.allKm)
-            row("ALL TIME",   totals.allKm,   color: level.color, darkNumber: level.isDark)
+            ForEach(periods, id: \.self) { p in
+                switch p {
+                case .week:  row("THIS WEEK",  totals.weekKm,  color: fill)
+                case .month: row("THIS MONTH", totals.monthKm, color: fill)
+                case .year:  row("THIS YEAR",  totals.yearKm,  color: fill)
+                case .all:
+                    let level = StampRunTotals.runLevelColor(allKm: totals.allKm)
+                    row("ALL TIME", totals.allKm, color: level.color, darkNumber: level.isDark)
+                }
+            }
         }
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
     }
@@ -940,6 +965,65 @@ private struct StampRunTotalsView: View {
             }
             .gridColumnAlignment(.trailing)
         }
+    }
+}
+
+// MARK: - Month Recap (월 결산 — 그 달 총거리 · 올해·전체 누적 · 날마다 거리 막대)
+
+private struct StampMonthRecapView: View {
+    let totals: StampRunTotals
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    private var monthLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM yyyy"
+        return f.string(from: totals.monthStart).uppercased()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: sz(6, scale)) {
+            VStack(alignment: .leading, spacing: sz(1, scale)) {
+                Text(monthLabel)
+                    .font(.system(size: sz(10, scale), weight: .bold))
+                    .tracking(1.2)
+                    .lineLimit(1).fixedSize()
+                HStack(alignment: .lastTextBaseline, spacing: sz(3, scale)) {
+                    Text(StampRunTotals.format(totals.monthKm))
+                        .font(.system(size: sz(52, scale), weight: .black).width(.compressed))
+                        .italic()
+                        .tracking(sz(-1, scale))
+                        .lineLimit(1).fixedSize()
+                    Text("KM")
+                        .font(.system(size: sz(10, scale), weight: .bold))
+                        .lineLimit(1).fixedSize()
+                }
+            }
+            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+            StampRunTotalsView(totals: totals, fill: fill, outline: outline, scale: scale,
+                               showTextOutline: showTextOutline, periods: [.year, .all])
+            dailyBars
+                .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+        }
+    }
+
+    /// 1일~말일 막대 — 높이는 그 달 가장 많이 뛴 날 기준. 안 뛴 날은 빈칸
+    private var dailyBars: some View {
+        let days = totals.dailyKm
+        let maxKm = max(days.max() ?? 0, 1)
+        let chartW = sz(150, scale), chartH = sz(34, scale)
+        let gap = max(1, sz(1.5, scale))
+        let barW = max(1, (chartW - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
+        return HStack(alignment: .bottom, spacing: gap) {
+            ForEach(days.indices, id: \.self) { i in
+                Rectangle()
+                    .frame(width: barW, height: days[i] > 0 ? max(sz(2, scale), chartH * days[i] / maxKm) : 0)
+            }
+        }
+        .frame(width: chartW, height: chartH, alignment: .bottomLeading)
     }
 }
 
