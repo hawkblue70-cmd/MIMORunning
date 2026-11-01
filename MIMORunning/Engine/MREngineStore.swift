@@ -435,7 +435,7 @@ final class MREngineStore: ObservableObject {
     // MARK: - 러닝별 최고 심박 보정
 
     /// 러닝 시작(초) → 시계열로 다시 잰 최고 심박. −1 = 잴 수 없음(표본 부족 — 원래 값 유지). 한 번 잰 러닝은 다시 묻지 않는다.
-    private static let robustHRMaxKey = "mimo.robustRunHRMax.v3"   // v3: 첫 3분 제외 → 다시 잼 · v2: 첫 5분
+    private static let robustHRMaxKey = "mimo.robustRunHRMax.v4"   // v4: 러닝 중간 오래 튄 구간(20분 이하) 제외 → 다시 잼 · v3: 첫 3분 제외 · v2: 첫 5분
 
     /// HRmax(상위 5개 중앙값)를 정하는 상위 러닝들만 심박 시계열로 다시 잰다(`mrRobustRunHRMax`).
     /// HealthKit 통계의 최고치는 한두 표본짜리 광학 튐도 그대로라 HRmax를 끌어올렸고, 이지 상한(0.80×HRmax)이
@@ -460,7 +460,7 @@ final class MREngineStore: ObservableObject {
             for w in todo where queried < 24 {
                 queried += 1
                 let samples = await hk.fetchHRSamples(start: w.start, end: w.start.addingTimeInterval(w.durationMin * 60))
-                cache[key(w)] = mrRobustRunHRMax(samples, durationMin: w.durationMin) ?? -1
+                cache[key(w)] = mrRobustRunHRMax(samples, durationMin: w.durationMin, isInterval: w.isInterval) ?? -1
             }
         }
         if queried > 0 { UserDefaults.standard.set(cache, forKey: Self.robustHRMaxKey) }

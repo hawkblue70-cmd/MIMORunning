@@ -32,7 +32,7 @@ enum TabDigestPerformance {
         let leadingNoHR = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }.prefix { $0.avgHeartRate == nil }.count
         guard leadingNoHR < 2 else { return nil }
         // 몸 풀리기 전 구간(웜업 반응 또는 광학 오독)은 뺀다 — Friel도 몸 풀기 뒤로 잰다. 앞 절반 심박이 부풀어 −13%가 나왔다(실제 약 −0.5%, 2026-10-21)
-        let full = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        let full = splitsForHRJudgement(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
         guard full.count >= 6 else { return nil }
         let half = full.count / 2
         func efficiency(_ part: ArraySlice<SplitData>) -> Double? {
@@ -49,7 +49,7 @@ enum TabDigestPerformance {
     /// 디커플링 전반이 후반보다 빨랐나(같은 구간 선택) — "초반이 빨랐을 수" 문장은 이때만. 판단할 수 없으면 nil.
     static func decouplingFirstHalfFaster(splits: [SplitData],
                                           altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Bool? {
-        let full = splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
+        let full = splitsForHRJudgement(splits, altitudeProfile: altitudeProfile).filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }
         guard full.count >= 6 else { return nil }
         let half = full.count / 2
         func pace(_ p: ArraySlice<SplitData>) -> Double {

@@ -113,6 +113,64 @@ func hrWarmupPhaseEndOffset(_ splits: [SplitData],
     return splits.filter { $0.id <= lastBad }.reduce(0) { $0 + $1.duration }
 }
 
+// MARK: - 러닝 중간 km 측정 튐 (km 단위)
+
+/// 러닝 중간 km(1~3km 연속)의 심박이 앞뒤 ±3km 중앙값보다 20bpm 이상 높은데 페이스는 빠르지 않으면 측정 튐으로 본다(km id 목록).
+/// 21.2km 밤 러닝(9°C) 13~14km에 6'37"로 183(Zone 5)이었다가 같은 페이스 15~16km에 139로 떨어졌다 — 기존 중간 튐 규칙(7분 이하·
+/// 갑자기)은 13분 이어진 튐을 못 걸러 "최고 강도까지 올렸습니다"가 나왔다(2026-11-01). 페이스가 빨랐거나(10초/km↑ 빠름) 그 km에
+/// 10m↑ 오르막이면 실제 변화로 둔다. 4km 이상 이어지면(지속 상승) 보지 않는다. 존·차트는 그대로, 판정에서만 뺀다.
+let hrMidSplitSpikeBpm = 20
+func hrMidSplitSpikeKmIDs(_ splits: [SplitData],
+                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [Int] {
+    let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }.sorted { $0.id < $1.id }
+    guard full.count >= 6 else { return [] }
+    func med(_ v: [Double]) -> Double { let s = v.sorted(); let m = s.count / 2; return s.count % 2 == 0 ? (s[m - 1] + s[m]) / 2 : s[m] }
+    func alt(at km: Double) -> Double? {
+        guard !altitudeProfile.isEmpty else { return nil }
+        return altitudeProfile.min { abs($0.distanceKm - km) < abs($1.distanceKm - km) }?.altitude
+    }
+    var flagged: [Int] = []
+    for i in 1..<(full.count - 1) {
+        let lo = max(0, i - 3), hi = min(full.count - 1, i + 3)
+        let window = (lo...hi).filter { $0 != i }
+        let hrBase = med(window.compactMap { full[$0].avgHeartRate.map(Double.init) })
+        let paceBase = med(window.map { full[$0].paceSecPerKm })
+        guard let hr = full[i].avgHeartRate, Double(hr) - hrBase >= Double(hrMidSplitSpikeBpm),
+              full[i].paceSecPerKm >= paceBase - 10 else { continue }
+        if let a0 = alt(at: Double(full[i].id - 1)), let a1 = alt(at: Double(full[i].id)), a1 - a0 >= 10 { continue }
+        flagged.append(full[i].id)
+    }
+    // 연속 4km 이상이면 지속 상승 — 튐이 아니다
+    var out: [Int] = [], run: [Int] = []
+    for id in flagged {
+        if let last = run.last, id != last + 1 { if run.count <= 3 { out += run }; run = [] }
+        run.append(id)
+    }
+    if run.count <= 3 { out += run }
+    return out
+}
+
+/// 심박 판정에 쓸 구간 — 몸 풀리기 전 구간과 중간 km 측정 튐을 뺀 목록.
+func splitsForHRJudgement(_ splits: [SplitData],
+                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [SplitData] {
+    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile))
+    return splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { !spikes.contains($0.id) }
+}
+
+/// 중간 km 측정 튐의 시간 구간(러닝 시작부터 초, 구간 시간 합 기준) — 심박 표본에서 뺀다.
+func hrMidSplitSpikeWindows(_ splits: [SplitData],
+                            altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [ClosedRange<TimeInterval>] {
+    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile))
+    guard !spikes.isEmpty else { return [] }
+    var t: TimeInterval = 0
+    var out: [ClosedRange<TimeInterval>] = []
+    for sp in splits.sorted(by: { $0.id < $1.id }) {
+        if spikes.contains(sp.id) { out.append(t...(t + sp.duration)) }
+        t += sp.duration
+    }
+    return out
+}
+
 /// 리듬 탭 사실 한 줄용 — 몸 풀리기 전 구간 km 수·그 구간 최고 심박·바로 다음 km 심박.
 struct HRWarmupPhase: Equatable { let km: Int; let peakBpm: Int; let settledBpm: Int }
 func hrWarmupPhase(_ splits: [SplitData],
@@ -141,15 +199,41 @@ func avgHRExcludingWarmupPhase(_ splits: [SplitData],
 /// 첫 3분은 아예 보지 않는다(15분 이상 러닝, 2026-10-23 사용자 결정 — 5분에서 3분으로) — 쉬다가 출발해 몇 분 만에 최대심박에 닿지는 않는다. 출발 때 170을 넘기며
 /// 시작하는 광학 튐이 1~3분 이어지면 이동 중앙값(45초)도, 출발 직후 오독 규칙(첫 10% 평균 15bpm↑)도 못 걸렀다(2026-10-23 사용자 경험).
 let hrMaxSkipStartSec: TimeInterval = 180
-func mrRobustRunHRMax(_ samples: [(offset: TimeInterval, bpm: Int)], durationMin: Double) -> Double? {
+func mrRobustRunHRMax(_ samples: [(offset: TimeInterval, bpm: Int)], durationMin: Double, isInterval: Bool = false) -> Double? {
     guard samples.count >= 30, Double(samples.count) >= durationMin * 2 else { return nil }
     let sorted = samples.sorted { $0.offset < $1.offset }
     var trimmed = hrEarlyArtifactCount(sorted).map { Array(sorted.dropFirst($0)) } ?? sorted
     if durationMin >= 15, let t0 = sorted.first?.offset {
         trimmed = trimmed.filter { $0.offset >= t0 + hrMaxSkipStartSec }
     }
+    // 러닝 중간에 오래(20분 이하) 튄 구간도 뺀다 — 13분 이어진 183 튐이 이 러닝을 HRmax 근거 상위로 올릴 뻔했다(2026-11-01).
+    // 인터벌은 회차마다 심박이 주변보다 높은 게 정상이라 보지 않는다.
+    if !isInterval { trimmed = hrSustainedSpikeTrimmed(trimmed) }
     guard trimmed.count >= 9 else { return nil }
     return hrMovingMedian(trimmed.map(\.bpm), window: 9).max()
+}
+
+/// 이동 중앙값(9표본)이 앞뒤 20분 중앙값보다 20bpm 이상 높은 구간 중 — 길이 20분 이하 · 처음·마지막 5분 밖 · 러닝에 1~2개 —
+/// 를 뺀 시계열. 마지막 스퍼트·빌드업 후반(끝까지 이어지는 상승)은 남는다. 30분 미만 러닝은 그대로.
+func hrSustainedSpikeTrimmed(_ s: [(offset: TimeInterval, bpm: Int)]) -> [(offset: TimeInterval, bpm: Int)] {
+    guard s.count >= 30, let t0 = s.first?.offset, let tEnd = s.last?.offset, tEnd - t0 >= 1800 else { return s }
+    let m = hrMovingMedian(s.map(\.bpm), window: 9)
+    let smooth = zip(s, m).map { (offset: $0.0.offset, bpm: Int($0.1.rounded())) }
+    let base = hrRollingMedian(smooth, halfWindow: 1200)
+    var segs: [ClosedRange<Int>] = []
+    var start: Int? = nil
+    for i in s.indices {
+        let high = m[i] - base[i] >= 20
+        if high, start == nil { start = i }
+        if !high, let st = start { segs.append(st...(i - 1)); start = nil }
+    }
+    if let st = start { segs.append(st...(s.count - 1)) }
+    let keep = segs.filter { r in
+        let a = s[r.lowerBound].offset, b = s[r.upperBound].offset
+        return b - a <= 1200 && a >= t0 + 300 && b <= tEnd - 300
+    }
+    guard !keep.isEmpty, keep.count <= 2 else { return s }
+    return s.enumerated().filter { i, _ in !keep.contains { $0.contains(i) } }.map(\.element)
 }
 
 // MARK: - 러닝 중간 광학 심박 튐

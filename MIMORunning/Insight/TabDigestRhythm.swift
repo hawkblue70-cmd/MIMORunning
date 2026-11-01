@@ -102,6 +102,11 @@ enum TabDigestRhythm {
            let t0 = hrSamples.first?.offset {
             base = base.filter { $0.offset >= t0 + end }
         }
+        // 러닝 중간 km 측정 튐(13~14km 183 → 15~16km 139 같은)도 뺀다 — "최고 강도까지 올렸습니다"를 만들어냈다(2026-11-01)
+        let spikeWindows = hrMidSplitSpikeWindows(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? [])
+        if !spikeWindows.isEmpty, let t0 = hrSamples.first?.offset {
+            base = base.filter { s in !spikeWindows.contains { $0.contains(s.offset - t0) } }
+        }
         let samples = hrMidRunSpikeCleaned(base)
         guard samples.count >= 10 else { return nil }
         let n = samples.count

@@ -110,6 +110,38 @@ struct FormTypeCaptionTests {
         #expect(mrRobustRunHRMax(Array(s.prefix(40)), durationMin: 30) == nil)
     }
 
+    @Test("러닝 중간 km 측정 튐 — 앞뒤보다 20bpm↑ 높은데 페이스는 빠르지 않으면 판정에서 뺀다")
+    func midSplitSpike() {
+        func mk(_ h: [Int], pace: [Double]? = nil) -> [SplitData] {
+            h.enumerated().map { i, v in
+                SplitData(id: i + 1, distanceM: 1000, duration: pace?[i] ?? 390, avgHeartRate: v, avgCadence: nil, avgPower: nil,
+                          avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+            }
+        }
+        // 실사용 10/31 21km(2km 단위 → 1km로 펼침): 12km 160 → 13~14km 183 → 15~16km 139
+        let hr = [153, 153, 142, 142, 146, 146, 145, 145, 148, 148, 158, 162, 183, 183, 139, 139, 144, 144, 147, 147, 156]
+        let s = mk(hr)
+        #expect(hrMidSplitSpikeKmIDs(s) == [13, 14])
+        #expect(!splitsForHRJudgement(s).contains { $0.id == 13 || $0.id == 14 })
+        // 그 km가 더 빨랐으면(스퍼트) 실제 변화
+        var pace = Array(repeating: 390.0, count: 21); pace[12] = 360; pace[13] = 360
+        #expect(hrMidSplitSpikeKmIDs(mk(hr, pace: pace)).isEmpty)
+        // 4km 이상 이어진 상승은 튐이 아니다
+        let sustained = [140, 140, 140, 140, 140, 140, 165, 165, 166, 166, 140, 140, 140, 140]
+        #expect(hrMidSplitSpikeKmIDs(mk(sustained)).isEmpty)
+    }
+
+    @Test("HRmax 다시 재기 — 러닝 중간 13분 튐은 빼고 마지막 스퍼트는 남긴다")
+    func sustainedSpikeTrim() {
+        // 60분, 5초 간격: 145 기본, 35~48분 183 튐, 마지막 2분 170 스퍼트
+        var s: [(offset: TimeInterval, bpm: Int)] = (0..<720).map { (offset: Double($0) * 5, bpm: 145) }
+        for i in 420..<576 { s[i].bpm = 183 }
+        for i in 696..<720 { s[i].bpm = 170 }
+        #expect(mrRobustRunHRMax(s, durationMin: 60) == 170)
+        // 인터벌로 저장된 러닝은 그대로
+        #expect(mrRobustRunHRMax(s, durationMin: 60, isInterval: true) == 183)
+    }
+
     @Test("빌드업 디커플링 음수 → '그만큼 오르지 않았습니다'")
     func buildUpNegativeDecoupling() {
         ko {
