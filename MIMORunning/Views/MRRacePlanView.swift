@@ -38,6 +38,7 @@ func localizedBreakdown(_ raw: String) -> String {
             .replacingOccurrences(of: "마지막 ", with: "最後の")
             .replacingOccurrences(of: "분은 ", with: "分は")
             .replacingOccurrences(of: "회", with: "回")
+            .replacingOccurrences(of: "번", with: "回")
     }
     guard AppLanguage.shared.isEnglish else { return s }
     return s
@@ -57,6 +58,7 @@ func localizedBreakdown(_ raw: String) -> String {
         .replacingOccurrences(of: "하프 대회", with: "Half race")
         .replacingOccurrences(of: " 대회", with: " race")
         .replacingOccurrences(of: "회", with: "x")
+        .replacingOccurrences(of: "번", with: "x")
         .replacingOccurrences(of: "× ", with: "× ")   // keep spacing
 }
 

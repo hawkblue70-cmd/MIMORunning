@@ -134,8 +134,7 @@ func mrRaceDayCard(race: MRTargetRace,
         if let w = planWeek, !inPlanTaper {
             // 계획상 아직 테이퍼가 아닌 주(10K 1주 테이퍼의 D-14 주 등) — 계획 값을 그대로 말한다
             headline = L.s("D-\(d) · 마지막 정상 주", "D-\(d) · Last normal week", ja: "D-\(d) · 最後の通常週")
-            let bd = mrBreakdownWithPoint(w)
-            lines.append(L.s("이번 주는 계획대로 — \(bd). 테이퍼는 다음 주부터입니다.", "Stick to the plan this week — \(bd). The taper starts next week.", ja: "今週は計画どおり — \(bd)。テーパーは来週からです。"))
+            lines.append(mrWeekPlanText(w, lead: L.s("이번 주는 계획대로 가세요. 테이퍼는 다음 주부터입니다.", "Stick to the plan this week — the taper starts next week.", ja: "今週は計画どおりに。テーパーは来週からです。")))
             lines.append(L.s("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.", "Adding more now won't show up on race day. What you've built is what you have.", ja: "ここで増やしてもレース当日の体には残りません。これまで積んだものがすべてです。"))
             if let t = base {
                 let pace = t * 60 / (race.distanceM / 1000)
@@ -147,7 +146,7 @@ func mrRaceDayCard(race: MRTargetRace,
             lines.append(L.s("거리는 절반 가까이 줄이시되 **페이스는 그대로** 두세요. 완전히 쉬면 오히려 둔해집니다.", "Cut the distance by nearly half but **keep the pace**. Resting completely leaves you sluggish.", ja: "距離は半分近くまで減らし、**ペースはそのまま**にしてください。完全に休むとかえって体が鈍ります。"))
             lines.append(L.s("여기서 늘려도 대회 날 몸에 남지 않습니다. 지금까지 쌓은 것이 다입니다.", "Adding more now won't show up on race day. What you've built is what you have.", ja: "ここで増やしてもレース当日の体には残りません。これまで積んだものがすべてです。"))
             if let w = planWeek {
-                lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm.rounded()))km — \(mrBreakdownWithPoint(w)).", "This week: \(Int(w.weeklyKm.rounded())) km on plan — \(mrBreakdownWithPoint(w)).", ja: "今週は計画どおり\(Int(w.weeklyKm.rounded()))km — \(mrBreakdownWithPoint(w))。"))
+                lines.append(mrWeekPlanText(w))
             } else {
                 // 계획 없음 — 4주 평균 기준 폴백 (2주 테이퍼 첫 주 ~84%)
                 lines.append(vol4w >= 5
@@ -170,7 +169,7 @@ func mrRaceDayCard(race: MRTargetRace,
             lines.append(L.s("보급은 탄수화물 시간당 \(t >= 150 ? "60~90g" : "30~60g")(젤 1개 ≈ 22~25g) — 젤은 30분마다, 사이사이 음료로 채우세요.", "Fuel: \(t >= 150 ? "60–90 g" : "30–60 g") of carbs per hour (one gel ≈ 22–25 g), a gel every 30 min, topped up with drink in between.", ja: "補給は炭水化物を1時間あたり\(t >= 150 ? "60~90g" : "30~60g")(ジェル1個 ≈ 22~25g) — ジェルは30分ごとに、合間はドリンクで補ってください。"))
         }
         if let w = planWeek {
-            lines.append(L.s("이번 주는 계획대로 \(Int(w.weeklyKm.rounded()))km — \(mrBreakdownWithPoint(w)).", "This week: \(Int(w.weeklyKm.rounded())) km on plan — \(mrBreakdownWithPoint(w)).", ja: "今週は計画どおり\(Int(w.weeklyKm.rounded()))km — \(mrBreakdownWithPoint(w))。"))
+            lines.append(mrWeekPlanText(w))
         } else {
             // 계획 없음 — 4주 평균 기준 폴백 (마지막 주 ~51%)
             lines.append(vol4w >= 5

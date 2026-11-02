@@ -155,8 +155,10 @@ struct MRPlanPointTests {
         let w = MRPlanWeek(idx: 1, monday: mon, phase: "테이퍼", longRunKm: 12, longRunMin: 80, weeklyKm: 22,
                            projectedMin: 110, isNewMax: false, breakdown: "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로", point: pt)
         // 표시 — "· 강도는 그대로" 빼고 "짧게"→"이지", 강도 훈련은 하루 단위·하는 법까지(2026-11-02)
-        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 이지 1.6km × 2회 + 강도 훈련 하루(총 6.8km): 몸 풀기 2km → 대회 페이스 5'12\"로 1km씩 세 번, 사이 1분 조깅 → 마무리 1km")
+        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 이지 1.6km 2번 + 강도 훈련 1번(총 6.8km): 몸 풀기 2km, 대회 페이스(5'12\") 1km 3회 — 사이 조깅 1분 2회, 마무리 이지 1km")
         var noPoint = w; noPoint.point = nil
-        #expect(mrBreakdownWithPoint(noPoint) == "롱런 12km + 이지 1.6km × 2회")
+        #expect(mrBreakdownWithPoint(noPoint) == "롱런 12km + 이지 1.6km 2번")
+        // 대회 카드 — 항목으로 나눠 서술(러닝 수 = 롱런 1 + 이지 2 + 강도 1)
+        #expect(mrWeekPlanText(w) == "이번 주는 계획대로 22km, 러닝 4번입니다.\n· 롱런 12km\n· 이지 1.6km 2번\n· 강도 훈련 1번(총 6.8km): 몸 풀기 2km, 대회 페이스(5'12\") 1km 3회 — 사이 조깅 1분 2회, 마무리 이지 1km")
     }
 }
