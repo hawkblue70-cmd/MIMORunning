@@ -645,6 +645,12 @@ enum RunSummary {
                 return L.s("대회 훈련 계획상 회복 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a recovery week — stick to easy runs.", ja: "レース計画では回復週です。イージーラン中心にしてください。")
             }
             if phase == "테이퍼" {
+                // 계획 강도 훈련을 한 날은 남은 할 일(이지·롱런)까지 — 심박 줄과 같은 문장(맨 위 요약에 이게 나오게, 2026-11-02)
+                if i.isPlanWeekPoint {
+                    return L.s("이번 주 강도 훈련은 했습니다. 남은 날은 이지런과 롱런으로 가세요.",
+                               "This week's hard session is done. Keep the rest of the week to easy runs and the long run.",
+                               ja: "今週の強度練習は済みました。残りの日はイージーランとロング走にしてください。")
+                }
                 return L.s("대회 훈련 계획상 테이퍼 주입니다. 이지런 위주로 가세요.", "Your race plan has this as a taper week — keep it easy.", ja: "レース計画ではテーパー週です。イージーラン中心にしてください。")
             }
         }

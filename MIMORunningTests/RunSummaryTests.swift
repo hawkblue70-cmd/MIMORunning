@@ -815,6 +815,10 @@ struct RunSummaryTests {
         #expect(heart?.state == "테이퍼 주 강도 훈련 · 평균 144")
         #expect(heart?.tone == .good)
         #expect(heart?.next == "이번 주 강도 훈련은 했습니다. 남은 날은 이지런과 롱런으로 가세요.")
+        // 훈련부하 줄(맨 위 요약 후보)도 같은 문장
+        i.acuteChronic = .steady
+        let load = RunSummary.lines(i).first { $0.axis == "훈련부하" }
+        if let load { #expect(load.next == "이번 주 강도 훈련은 했습니다. 남은 날은 이지런과 롱런으로 가세요.") }
         i.isPlanWeekPoint = false
         #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state == "테이퍼 주인데 이지 상한 위 · 평균 144(상한 139)")
     }
