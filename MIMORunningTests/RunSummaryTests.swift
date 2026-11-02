@@ -804,4 +804,18 @@ struct RunSummaryTests {
         #expect(RunDayShareCard.headTitle(label: "롱런 · 빌드업", title: "기록을 쓴 빌드업") == "롱런 · 기록을 쓴 빌드업")
         #expect(RunDayShareCard.headTitle(label: "이지런", title: "끝까지 달린 러닝") == "이지런 · 끝까지 달린 러닝")
     }
+
+    @Test func taperWeekPlannedPointIsNotScolded() {
+        // 테이퍼 주 계획 강도 훈련으로 세어진 템포런 — "테이퍼 주인데 이지 상한 위" 대신 사실(2026-11-02)
+        var i = RunSummaryInput()
+        i.workoutType = .tempo; i.planPhase = "테이퍼"; i.isPlanWeekPoint = true
+        i.zoneFractions = [2: 0.3, 3: 0.64, 4: 0.06]
+        i.avgHeartRate = 144; i.easyCapHR = 139
+        let heart = RunSummary.lines(i).first { $0.axis == "심박" }
+        #expect(heart?.state == "테이퍼 주 강도 훈련 · 평균 144")
+        #expect(heart?.tone == .good)
+        #expect(heart?.next == "이번 주 강도 훈련은 했습니다. 남은 날은 이지런과 롱런으로 가세요.")
+        i.isPlanWeekPoint = false
+        #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state == "테이퍼 주인데 이지 상한 위 · 평균 144(상한 139)")
+    }
 }

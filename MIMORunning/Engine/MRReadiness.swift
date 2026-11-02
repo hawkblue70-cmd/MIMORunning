@@ -175,6 +175,7 @@ func mrHabitualLongRunWeekday(runs: [MRWorkout], asOf: Date, calendar: Calendar 
 /// 강도 OK 우선순위: 롱런(습관 요일·남은 날 ≤2) > 포인트(남은 날 ≥3, 롱런 습관 요일 전날 아님) > 이지. 설계 8절.
 func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs: [MRWorkout],
                          asOf: Date, hardStarts: Set<Date> = [], pointTypes: [Date: WorkoutType] = [:],
+                         planEasy: Bool = false,
                          calendar: Calendar = .current) -> MRSessionSuggestion? {
     let L = AppLanguage.shared
     guard plan.daysToRace > MRPlanWeekContext.raceWeekDays else { return nil }
@@ -252,6 +253,14 @@ func mrSessionSuggestion(level: MRReadiness.Level, plan: MRPlanWeekContext, runs
         // 롱런·이지를 다 했고 포인트만 남았으면 이지를 더 권하지 않는다(오늘은 강도를 못 내는 날)
         if !longLeft && easyDone >= plan.easyRuns {
             return MRSessionSuggestion(session: nil, progress: progress.joined(separator: " · "))
+        }
+        // 계획 때문에 이지인 날(테이퍼·회복 주)은 롱런도 이지 강도라 권한다 — 테이퍼 주에 강도 훈련을 마치면 판정이 매일 이지로
+        // 고정돼 롱런 14km가 오늘 할 러닝으로 한 번도 나오지 않았다(2026-11-02). 몸 상태(HRV·활력 징후·수면)로 이지인 날은 권하지 않는다.
+        if planEasy, longLeft {
+            let habitual = mrHabitualLongRunWeekday(runs: runs, asOf: asOf, calendar: calendar)
+            if habitual == calendar.component(.weekday, from: asOf) || daysLeft <= 2 {
+                return MRSessionSuggestion(session: longText, progress: progress.joined(separator: " · "), isLongRun: true)
+            }
         }
         if longLeft { progress.append(L.s("\(daysLeft)일 남음", "\(daysLeft) days left", ja: "残り\(daysLeft)日")) }
         return MRSessionSuggestion(session: easyText, progress: progress.joined(separator: " · "))
@@ -407,7 +416,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                         "last 7 days: \(g.gray)/\(g.runs) runs in the gray zone (avg HR over \(t.lt1HR))", ja: "直近7日 中途半端に速いラン \(g.gray)/\(g.runs)回(平均心拍 \(t.lt1HR)超え)"))
     }
 
-    func make(_ level: MRReadiness.Level, _ reasons: [String], why: String) -> MRReadiness {
+    func make(_ level: MRReadiness.Level, _ reasons: [String], why: String, planEasy: Bool = false) -> MRReadiness {
         var r = MRReadiness(level: level, reasons: reasons, hrvPending: pending)
         r.why = why
         r.data = data
@@ -415,7 +424,7 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         let s: MRSessionSuggestion? = planWeek != nil
             ? planWeek.flatMap {
                 mrSessionSuggestion(level: level, plan: $0, runs: runs, asOf: asOf,
-                                    hardStarts: hardRunStarts, pointTypes: pointRunTypes, calendar: calendar)
+                                    hardStarts: hardRunStarts, pointTypes: pointRunTypes, planEasy: planEasy, calendar: calendar)
               }
             : rhythm.flatMap {
                 mrRhythmSuggestion(level: level, ctx: $0, runs: runs, hardStarts: hardRunStarts,
@@ -450,7 +459,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if planPhase == "회복" {
         return make(.easy, [L.s("대회 계획 회복 주", "race plan: recovery week", ja: "レース計画: 回復週")],
                     why: L.s("대회 계획상 이번 주는 부하를 낮추는 주입니다. 이지런으로 다리를 아끼세요.",
-                             "Your race plan has this as a recovery week. Keep it easy and save your legs.", ja: "レース計画では今週は負荷を下げる週です。イージーランで脚を温存してください。"))
+                             "Your race plan has this as a recovery week. Keep it easy and save your legs.", ja: "レース計画では今週は負荷を下げる週です。イージーランで脚を温存してください。"),
+                    planEasy: true)
     }
     // 테이퍼 주라도 이번 주 포인트(대회 페이스 짧게)가 남았으면 강도를 막지 않는다 —
     // 테이퍼는 볼륨만 줄이고 강도는 유지한다(Bosquet 2007). 포인트를 했거나 없으면 기존대로 이지.
@@ -469,7 +479,8 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     if planPhase == "테이퍼" && !taperPointLeft {
         return make(.easy, [L.s("대회 계획 테이퍼 주", "race plan: taper week", ja: "レース計画: テーパー週")],
                     why: L.s("대회 계획상 테이퍼 주입니다. 강도보다 신선함이 남는 게 이득입니다.",
-                             "Your race plan has this as a taper week. Freshness beats one more hard session.", ja: "レース計画ではテーパー週です。強度よりも脚の新鮮さを残すほうが得です。"))
+                             "Your race plan has this as a taper week. Freshness beats one more hard session.", ja: "レース計画ではテーパー週です。強度よりも脚の新鮮さを残すほうが得です。"),
+                    planEasy: true)
     }
     // 규칙 2 — 부하 급증 · 장기 연속
     if let r = load.ratio, r > MRReadiness.spikeRatio {

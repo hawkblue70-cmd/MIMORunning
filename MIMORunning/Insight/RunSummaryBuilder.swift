@@ -28,6 +28,8 @@ enum RunSummaryBuilder {
         var planWeekKm: Double? = nil
         /// 그날 아침 제안이 포인트 훈련이었나(InsightMorning.plannedPoint) — 총평 "의도한"은 이때만
         var plannedPointToday: Bool = false
+        /// 이번 주 계획에 강도 훈련이 있나(MRPlanWeek.point)
+        var planWeekHasPoint: Bool = false
     }
 
     /// 총평 줄 — 각 축의 결론은 해당 엔진에서 그대로 받는다. 2줄 미만일 때의 한 줄 칩 폴백은 호출부(카드) 몫.
@@ -309,6 +311,16 @@ enum RunSummaryBuilder {
         input.planPhase = c.workoutType == .race ? nil : postRacePhase(c) ?? c.planPhase
         input.easyPace = c.easyPaceLookup
         input.plannedPointToday = c.plannedPointToday
+        // 이 러닝이 이번 주 계획 강도 훈련으로 세어지는가 — 강도 유형이고, 이번 주(월요일부터) 이 러닝 앞에 강도 유형 러닝이 없다
+        // (주차표 "강도 훈련 ✓"와 같은 기준: 가장 이른 강도 유형 러닝)
+        if c.planWeekHasPoint, MRPlanPoint.pointWorkoutTypes.contains(c.workoutType) {
+            let monday = MRPlanGovernance.weekMonday(of: c.activity.date)
+            let earlier = c.history.contains { a in
+                a.type == .running && a.id != c.activity.id && a.date >= monday && a.date < c.activity.date
+                    && (c.workoutTypeFn?(a.id)).map { MRPlanPoint.pointWorkoutTypes.contains($0) } == true
+            }
+            input.isPlanWeekPoint = !earlier
+        }
         if let r = daysSinceRace(activity: c.activity, history: c.history, workoutTypeFn: c.workoutTypeFn) {
             input.daysSinceRace = r.days
             input.postRaceEasyDays = r.easyDays

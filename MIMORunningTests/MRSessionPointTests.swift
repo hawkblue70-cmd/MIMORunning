@@ -28,6 +28,20 @@ struct MRSessionPointTests {
         return c
     }
 
+    @Test func planEasyDaySuggestsLongRunOnHabitualDay() throws {
+        // 테이퍼 주처럼 계획 때문에 이지인 날 — 습관 롱런 요일(토)이면 롱런을 권한다(2026-11-02).
+        // 몸 상태로 이지인 날(planEasy false)은 그대로 이지.
+        let tempo = run(0, km: 5)   // 월요일 강도 훈련(템포)
+        let runs = (history() + [tempo]).sorted { $0.start < $1.start }
+        let types: [Date: WorkoutType] = [tempo.start: .tempo]
+        let s = try #require(mrSessionSuggestion(level: .easy, plan: plan(point: pt), runs: runs, asOf: day(5),
+                                                 pointTypes: types, planEasy: true))
+        #expect(s.isLongRun)
+        #expect(s.session == "롱런 16km")
+        let body = try #require(mrSessionSuggestion(level: .easy, plan: plan(point: pt), runs: runs, asOf: day(5), pointTypes: types))
+        #expect(!body.isLongRun)
+    }
+
     @Test func goOnThursdaySuggestsPoint() throws {
         let s = try #require(mrSessionSuggestion(level: .go, plan: plan(point: pt), runs: history(), asOf: day(3)))
         #expect(s.isPoint)

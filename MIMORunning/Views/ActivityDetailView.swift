@@ -349,7 +349,8 @@ struct ActivityDetailView: View {
             // 리듬 카드(RunInsightSection hrMax)와 같은 값 — 요약 블록과 카드 심박 캡션이 같은 판정
             hrMax: engine.phys.hrMax?.value,
             planWeekKm: matchedPlanWeek()?.weeklyKm,
-            plannedPointToday: morningPlannedPoint
+            plannedPointToday: morningPlannedPoint,
+            planWeekHasPoint: matchedPlanWeek()?.point != nil
         )
     }
 
@@ -608,6 +609,7 @@ struct ActivityDetailView: View {
                             planPhase: matchedPlanWeek()?.phase,
                             planWeekKm: matchedPlanWeek()?.weeklyKm,
                             plannedPointToday: morningPlannedPoint,
+                            planWeekHasPoint: matchedPlanWeek()?.point != nil,
                             recoveryShape: recoveryShape,
                             recoveryResult: recoveryResult,
                             recoveryBands: recoveryBands,

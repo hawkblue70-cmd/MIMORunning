@@ -83,6 +83,8 @@ struct RunSummaryInput {
     var planPhase: String? = nil
     /// 그날 아침 제안이 포인트 훈련(강도 OK · 빌드업/템포/인터벌/대회 페이스)이었나 — 빌드업·템포·거리주의 "의도한"은 이때만
     var plannedPointToday: Bool = false
+    /// 이 러닝이 이번 주 계획 강도 훈련으로 세어진다(주차표 "강도 훈련 ✓") — 테이퍼 주라도 "상한 위·고강도"로 꾸짖지 않는다
+    var isPlanWeekPoint: Bool = false
     /// 이지 페이스 조회값 — 있을 때만 다음 이지런 페이스를 숫자로 제안
     var easyPace: MRHRPaceLookup? = nil
     var vo2EightWeeksAgo: Double? = nil
@@ -366,6 +368,8 @@ enum RunSummary {
         var isEasyHighBranch = false
         /// 대회 훈련 계획상 강도를 낮추는 주인데 고강도로 뛴 경우 — 그 단계 이름
         var planDeviationPhase: String? = nil
+        /// 이번 주 계획 강도 훈련을 한 러닝(테이퍼 주 등) — 다음 행동만 따로
+        var planPointDone = false
         var line: RunSummaryLine
 
         if frac(2) >= 0.60 {
@@ -379,6 +383,15 @@ enum RunSummary {
                 return (hr, cap)
             }()
             if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac,
+               i.isPlanWeekPoint {
+                // 계획에 있던 강도 훈련을 한 러닝 — 주차표는 "강도 훈련 ✓"인데 총평이 "테이퍼 주인데 이지 상한 위 · 돌아가세요"로
+                // 계획을 어긴 것처럼 말했다(2026-11-02). 사실만: 그 주 강도 훈련 · 평균 심박
+                planPointDone = true
+                let hrPart = i.avgHeartRate.map { L.s(" · 평균 \($0)", " · avg \($0)", ja: " · 平均\($0)") } ?? ""
+                line = RunSummaryLine(axis: axis,
+                                      state: L.s("\(phase) 주 강도 훈련", "This week's planned hard session", ja: "\(phase)週の強度練習") + hrPart,
+                                      tone: .good)
+            } else if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac,
                let u = underCap {
                 line = RunSummaryLine(axis: axis,
                                       state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주 · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) 아래",
@@ -456,7 +469,11 @@ enum RunSummary {
         }
 
         var next: String? = nil
-        if planDeviationPhase == postRacePhase {
+        if planPointDone {
+            next = L.s("이번 주 강도 훈련은 했습니다. 남은 날은 이지런과 롱런으로 가세요.",
+                       "This week's hard session is done. Keep the rest of the week to easy runs and the long run.",
+                       ja: "今週の強度練習は済みました。残りの日はイージーランとロング走にしてください。")
+        } else if planDeviationPhase == postRacePhase {
             next = L.s("대회를 마친 주는 회복하는 기간입니다. 다음 러닝은 이지런으로 돌아가세요.",
                       "The week after a race is for recovery — make your next run an easy one.", ja: "レースを終えた週は回復の期間です。次のランはイージーランに戻してください。")
         } else if let phase = planDeviationPhase {

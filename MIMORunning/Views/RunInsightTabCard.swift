@@ -903,6 +903,8 @@ struct RunInsightTabCard: View {
     var planWeekKm: Double? = nil
     /// 그날 아침 제안이 포인트 훈련(강도 OK + 계획 포인트)이었나 — 총평 "의도한"은 이때만(2026-10-20)
     var plannedPointToday: Bool = false
+    /// 이번 주 계획에 강도 훈련이 있나 — 이 러닝이 그 강도 훈련이면 "테이퍼 주인데 상한 위"로 꾸짖지 않는다(2026-11-02)
+    var planWeekHasPoint: Bool = false
     /// 회복 곡선 한 줄 입력 — 리듬 카드와 내보내기 시트가 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -978,6 +980,7 @@ struct RunInsightTabCard: View {
                 planPhase: planPhase,
                 planWeekKm: planWeekKm,
                 plannedPointToday: plannedPointToday,
+                planWeekHasPoint: planWeekHasPoint,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands
@@ -1098,6 +1101,7 @@ struct RunInsightTabCard: View {
                 planPhase: planPhase,
                 planWeekKm: planWeekKm,
                 plannedPointToday: plannedPointToday,
+                planWeekHasPoint: planWeekHasPoint,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands, shoeName: shoeName
@@ -1622,6 +1626,8 @@ private struct RhythmInsightCard: View {
     var planWeekKm: Double? = nil
     /// 그날 아침 제안이 포인트 훈련(강도 OK + 계획 포인트)이었나 — 총평 "의도한"은 이때만(2026-10-20)
     var plannedPointToday: Bool = false
+    /// 이번 주 계획에 강도 훈련이 있나 — 이 러닝이 그 강도 훈련이면 "테이퍼 주인데 상한 위"로 꾸짖지 않는다(2026-11-02)
+    var planWeekHasPoint: Bool = false
     /// 회복 곡선 한 줄. nil이면 캡션 둘째 줄을 그리지 않는다 — "회복 데이터 없음" 문구는 쓰지 않는다.
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -2553,7 +2559,8 @@ private struct RhythmInsightCard: View {
             age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
             planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
             hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
-            plannedPointToday: plannedPointToday
+            plannedPointToday: plannedPointToday,
+            planWeekHasPoint: planWeekHasPoint
         ))
     }
 
@@ -5526,6 +5533,8 @@ struct InsightExportSheet: View {
     var planWeekKm: Double? = nil
     /// 그날 아침 제안이 포인트 훈련(강도 OK + 계획 포인트)이었나 — 총평 "의도한"은 이때만(2026-10-20)
     var plannedPointToday: Bool = false
+    /// 이번 주 계획에 강도 훈련이 있나 — 이 러닝이 그 강도 훈련이면 "테이퍼 주인데 상한 위"로 꾸짖지 않는다(2026-11-02)
+    var planWeekHasPoint: Bool = false
     /// 회복 곡선 한 줄 입력 — 미리보기 = 출력이므로 리듬 카드와 같은 값을 본다(§5.8).
     var recoveryShape: MRRecoveryShape? = nil
     /// 심박 차트의 회복 낙차용 원자료 — 캡션(τ)과 달리 가드와 무관하게 그린다.
@@ -5729,6 +5738,7 @@ struct InsightExportSheet: View {
                 planPhase: planPhase,
                 planWeekKm: planWeekKm,
                 plannedPointToday: plannedPointToday,
+                planWeekHasPoint: planWeekHasPoint,
                 recoveryShape: recoveryShape,
                 recoveryResult: recoveryResult,
                 recoveryBands: recoveryBands,
