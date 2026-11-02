@@ -18,6 +18,8 @@ enum MRCriticalSpeed {
     static let minTimeSec = 120.0
     static let maxTimeSec = 1200.0
     static let windowWeeks = 8
+    /// 점이 나온 서로 다른 러닝 수 하한 ⚠ 임의로 정함 — 한 러닝이면 그 러닝 페이스일 뿐
+    static let minDistinctRuns = 2
     /// 최대 노력으로 볼 수 있는 저장 유형
     static let hardTypes: Set<WorkoutType> = [.interval, .tempo, .buildUp, .distanceRun, .race]
 
@@ -114,6 +116,8 @@ enum MRCriticalSpeed {
             guard let b = cands.min(by: { $0.t < $1.t }), b.t >= minTimeSec, b.t <= maxTimeSec else { continue }
             pts.append(Point(km: k, timeSec: b.t, date: b.d))
         }
+        // 점이 한 러닝에서만 나오면 CS가 아니라 그 러닝 페이스다 — 10K 대회 앞 1~3km 셋으로 CS = 10K 평균(2026-11-03 실기기)
+        guard Set(pts.map(\.date)).count >= minDistinctRuns else { return nil }
         guard let f = fit(points: pts.map { (distanceM: Double($0.km) * 1000, timeSec: $0.timeSec) }) else { return nil }
         return Estimate(fit: f, points: pts)
     }

@@ -62,6 +62,16 @@ struct MRCriticalSpeedTests {
         #expect(e.fit.csMps > 3.5 && e.fit.csMps < 4.0)
     }
 
+    @Test func pointsFromOneRunAreNotEnough() {
+        // 점이 모두 대회 하나의 앞부분 — 그 대회 페이스를 다시 읽을 뿐이라 CS로 인정하지 않는다(2026-11-03 실기기)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let runs: [MRCriticalSpeed.RunBest] = [
+            .init(date: now.addingTimeInterval(-30 * 86400), type: .race, best: [1: 302, 2: 625, 3: 940]),
+            .init(date: now.addingTimeInterval(-10 * 86400), type: .interval, best: [1: 330, 2: 700]),
+        ]
+        #expect(MRCriticalSpeed.estimate(runs: runs, asOf: now) == nil)
+    }
+
     @Test func paceFromSpeed() {
         #expect(abs(MRCriticalSpeed.paceSecPerKm(csMps: 4) - 250) < 1e-9)
     }

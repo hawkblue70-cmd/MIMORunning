@@ -1021,7 +1021,7 @@ class HealthKitManager {
             print("[CS] 강한 러닝 기준: \(describe(e))")
             MRCriticalSpeedDiag.csPace = e.paceSecPerKm
         } else {
-            print("[CS] 강한 러닝 기준: 추정 불가(2~20분 점 3개 미만)")
+            print("[CS] 강한 러닝 기준: 추정 불가(2~20분 점 3개 미만 또는 점이 한 러닝에서만)")
         }
         if let all = MRCriticalSpeed.estimate(runs: rows, asOf: now, hardOnly: false) {
             print("[CS] 모든 러닝 기준(비교용): \(describe(all))")
