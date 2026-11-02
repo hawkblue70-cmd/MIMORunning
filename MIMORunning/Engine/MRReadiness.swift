@@ -574,9 +574,32 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
     }
     // 규칙 7 — 범위 안 또는 자료 없음: 부하 쪽이 넉넉할 때만 강도 OK
     if let d = hard.lastHardDaysAgo, d < MRReadiness.normalHRVGoMinDays {
+        // 이번 주 계획 강도 훈련이 남았으면 언제부터인지 — 대회 카드 "강도 훈련 대회 페이스 1km × 3회"와 아침 "오늘은 이지런"이
+        // 함께 보여 강도를 넣으라는 건지 말라는 건지 읽히지 않았다(2026-11-02). 대회 주(D-7 이내)·이번 주를 넘기면 말하지 않는다.
+        var hint = ""
+        if let p = planWeek, let pt = p.point {
+            let waitDays = MRReadiness.normalHRVGoMinDays - d
+            let monday = MRPlanGovernance.weekMonday(of: asOf, calendar: calendar)
+            if p.daysToRace - waitDays > MRPlanWeekContext.raceWeekDays,
+               let nextMon = calendar.date(byAdding: .day, value: 7, to: monday),
+               let from = calendar.date(byAdding: .day, value: waitDays, to: today), from < nextMon {
+                let week = runs.filter { $0.start >= monday && $0.start < nextMon }
+                let done = mrPointRun(weekRuns: week, longRunKm: p.longRunKm, hardStarts: hardRunStarts, pointTypes: pointRunTypes) != nil
+                if !done {
+                    let c = calendar.dateComponents([.month, .day, .weekday], from: from)
+                    let wd = (c.weekday ?? 1) - 1
+                    let ko = ["일", "월", "화", "수", "목", "금", "토"][wd], en = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][wd]
+                    let ja = ["日", "月", "火", "水", "木", "金", "土"][wd]
+                    let md = "\(c.month ?? 0)/\(c.day ?? 0)"
+                    hint = " " + L.s("이번 주 강도 훈련(\(pt.text))은 \(md)(\(ko))부터 넣으세요.",
+                                     "Do this week's hard session (\(pt.text)) from \(md) (\(en)).",
+                                     ja: "今週の強度練習(\(pt.text))は\(md)(\(ja))から入れてください。")
+                }
+            }
+        }
         return make(.easy, [L.s("고강도 \(d)일 전", d == 1 ? "hard run 1 day ago" : "hard run \(d) days ago", ja: "高強度は\(d)日前"), L.s("하루 더 여유", "one more easy day", ja: "もう1日あける")],
                     why: L.s("고강도 뒤 사흘은 두는 게 좋습니다. 그 사이 강도를 더하면 회복이 밀립니다.",
-                             "Leave about three days after a hard session. Stacking another one pushes recovery back.", ja: "高強度の後は3日あけるのがよいです。その間に強度を足すと回復が遅れます。"))
+                             "Leave about three days after a hard session. Stacking another one pushes recovery back.", ja: "高強度の後は3日あけるのがよいです。その間に強度を足すと回復が遅れます。") + hint)
     }
     var reasons: [String] = []
     if trend != nil { reasons.append(L.s("HRV 보통", "HRV normal", ja: "HRV普通")) }

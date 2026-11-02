@@ -630,7 +630,7 @@ func mrBuildPlan(raceDate: Date,
             if kind != .racePaceShort { pointSlot += 1 }
             if slotOK, let paces = mrPointPaces(halfEquivMin: halfEquivMin, thresholdPace: thresholdPace) {
                 let ip = mrIntervalPace(history: intervalHistory, fiveKPace: paces.fiveK)
-                let pace: Double
+                var pace: Double
                 switch kind {
                 case .speed: pace = ip.pace
                 case .tempo: pace = paces.tempo
@@ -638,6 +638,13 @@ func mrBuildPlan(raceDate: Date,
                     pace = mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: distanceM,
                                                       weeklyKm: projVol, longestKm: projLong,
                                                       finishes: profile.marathonFinishes) * scale
+                }
+                // 테이퍼 강도 훈련(대회 페이스 1km × 3회)은 대회 날 예상 평균과 같은 숫자 — D-14 카드에 "대회 페이스 5'30""과
+                // "대회 예상 평균 5'24""가 같이 나와 어느 쪽으로 뛸지 알 수 없었다(2026-11-02). projectedFinal과 같은 계산(테이퍼 이득·대회 기온).
+                if kind == .racePaceShort, distanceM > 0 {
+                    var t = pace * (distanceM / 1000) / 60 * (1 - MR_TAPER_GAIN)
+                    if heat.ok { t = heat.fromRef(timeRefMin: t, tempC: raceTempC) }
+                    pace = t * 60 / (distanceM / 1000)
                 }
                 if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
                                              raceDistanceM: distanceM, paceSecPerKm: pace),
