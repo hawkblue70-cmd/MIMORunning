@@ -509,6 +509,18 @@ struct MRWeekTable: View {
                                  longRunKm: live.longRunKm, weeklyKm: live.weeklyKm, breakdown: live.breakdown, point: live.point)
     }
 
+    /// 주차표 구성 줄 — "러닝 5번 — 롱런 14km + 이지 4.5km 3번 + 강도 훈련 1번". 강도 훈련이 이지 한 번을 대신하는
+    /// 별도 러닝이라 몇 번 뛰는지가 안 보였다(2026-11-02 사용자: "롱런 1회 이지 3회 강도 1회 이렇게 5회라는 말인가").
+    private func compositionText(_ raw: String, point: MRPlanPoint?) -> String {
+        let L = AppLanguage.shared
+        let bd = localizedBreakdown(raw)
+        guard !bd.isEmpty else { return bd }
+        let pt = point == nil ? "" : L.s(" + 강도 훈련 1번", " + hard session × 1", ja: " + 強度練習1回")
+        guard let easy = mrParsePlanBreakdown(raw).easyRuns else { return bd + pt }
+        let n = 1 + easy + (point == nil ? 0 : 1)
+        return L.s("러닝 \(n)번 — ", "\(n) runs — ", ja: "ラン\(n)回 — ") + bd + pt
+    }
+
     private func breakdownForSnap(_ snap: MRPlanWeekSummary) -> String {
         // 옛 스냅샷(breakdown 없음)은 라이브 플랜 같은 주로 보완하되,
         // 단계가 다르면 새 문구(대회 페이스 등)가 확정 계획에 새어 들지 않도록 비운다.
@@ -519,7 +531,7 @@ struct MRWeekTable: View {
         } else {
             raw = snap.breakdown
         }
-        return localizedBreakdown(raw)
+        return compositionText(raw, point: snap.point)
     }
 
     /// 그 주에 한 포인트 — 주차표와 아침 제안이 같은 판정(`mrPointRun`)을 쓴다. 미래 주는 nil.
@@ -977,7 +989,7 @@ struct MRWeekTable: View {
                                 }
                                 .font(.system(size: 11, design: .rounded))
                                 if !w.breakdown.isEmpty {
-                                    Text(localizedBreakdown(w.breakdown))
+                                    Text(compositionText(w.breakdown, point: w.point))
                                         .font(.system(size: 11))
                                         .foregroundStyle(.white.opacity(0.72))
                                 }
