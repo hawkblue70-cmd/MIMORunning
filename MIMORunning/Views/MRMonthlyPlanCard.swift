@@ -416,9 +416,14 @@ struct MRMonthlyPlanCard: View {
                        "Last 4 wks \(km(p.baseWeeklyKm))/wk · 12-mo max \(km(p.maxWeeklyKm52w))/wk · \(p.usualRuns) runs/wk",
                        ja: "直近4週 週\(km(p.baseWeeklyKm)) · 12か月最大 週\(km(p.maxWeeklyKm52w)) · 週\(p.usualRuns)回")
         // 롱런 상한의 기준(30일 최장 +10%) — 30일 안 러닝이 없으면 생략
-        guard p.longest30dKm > 0 else { return base }
-        return base + L.s(" · 최근 30일 최장 \(km(p.longest30dKm))", " · 30-day longest \(km(p.longest30dKm))",
-                          ja: " · 直近30日の最長 \(km(p.longest30dKm))")
+        let line = p.longest30dKm > 0
+            ? base + L.s(" · 최근 30일 최장 \(km(p.longest30dKm))", " · 30-day longest \(km(p.longest30dKm))",
+                         ja: " · 直近30日の最長 \(km(p.longest30dKm))")
+            : base
+        // 항목 안 띄어쓰기는 줄바꿈 없는 공백 — " · " 자리에서만 줄이 바뀌게("최근 30일 / 최장 21km" 방지)
+        return line.components(separatedBy: " · ")
+            .map { $0.replacingOccurrences(of: " ", with: "\u{00A0}") }
+            .joined(separator: " · ")
     }
 
     private func limitLines(_ p: MRMonthlyPlan) -> [String] {
