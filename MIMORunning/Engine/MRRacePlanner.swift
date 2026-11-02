@@ -42,6 +42,8 @@ struct MRRacePlan {
     var peakWeeklyKm = 0.0
     /// 최근 12개월 최대 주간 거리 — 참고용, 판단이 아님
     var histMaxWeeklyKm = 0.0
+    /// 이 계획이 올리는 주간 거리 상한(mrWeeklyVolumeTarget) — 기간이 길어도 이 이상은 안 올린다.
+    var weeklyCapKm = 0.0
     var projectedNow = 0.0
     var projectedFinal = 0.0
     /// 대회 거리 직접 예측 ÷ 하프 등가 환산 — 계획의 모든 예상 기록·대회 페이스에 곱한다(1 = 보정 없음).
@@ -731,6 +733,7 @@ func mrBuildPlan(raceDate: Date,
     p.projectionLongKm = max(peakLong, projFloorLong)
     p.projectionWeeklyKm = max(peakVol, projFloorVol)
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
+    p.weeklyCapKm = volCap
 
     // 튠업 고지 — 판단이 아니라 결과 전달
     let halfAbsorbed = tuneUps.filter { t in

@@ -6,15 +6,15 @@ import Foundation
 @Suite("목표 점검·계획 예상 — 같은 기준", .korean)
 struct MRGoalCheckConsistencyTests {
 
-    private func profile() -> MRProfile {
+    private func profile(maxWeekly: Double = 60) -> MRProfile {
         var p = MRProfile()
         p.weeklyKm4w = 35; p.longestRun16wKm = 16
-        p.maxWeeklyKm52w = 60; p.runsPerWeek = 4; p.marathonFinishes = 1
+        p.maxWeeklyKm52w = maxWeekly; p.runsPerWeek = 4; p.marathonFinishes = 1
         return p
     }
 
     private func fullPlan(weeks: Int, prior: (weeksBefore: Int, peakLong: Double, peakVol: Double)? = nil,
-                          nowRefMin: Double? = nil) -> MRRacePlan? {
+                          nowRefMin: Double? = nil, maxWeekly: Double = 60) -> MRRacePlan? {
         let cal = Calendar.current
         let today = Date()
         let race = cal.date(byAdding: .day, value: 7 * weeks, to: today)!
@@ -23,7 +23,7 @@ struct MRGoalCheckConsistencyTests {
              name: "앞대회", distanceM: MRDistance.dH, peakLong: pr.peakLong, peakVol: pr.peakVol)
         }
         return mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today,
-                           profile: profile(), halfEquivMin: 110, easyPaceSecPerKm: 400,
+                           profile: profile(maxWeekly: maxWeekly), halfEquivMin: 110, easyPaceSecPerKm: 400,
                            heat: MRHeatModel(), raceTempC: 15, runsPerWeek: 4,
                            priorRace: priorTuple, nowRefMin: nowRefMin)
     }
@@ -61,5 +61,21 @@ struct MRGoalCheckConsistencyTests {
         #expect(check.levers.allSatisfy { $0.contains("⚠") })
         #expect(!check.verdict.contains("메워집니다"))
         #expect(check.verdict.contains("더 줄일 항목이 없습니다"))
+    }
+
+    /// 풀 계획은 주간 거리를 지난 1년 최고치까지만 올린다 — 그 위의 레버는 기간 탓이 아니다.
+    /// '주 60km → 18주로는 도달 불가'는 틀린 이유였다(지난 1년 최고 아래로 막힌 것).
+    @Test func weeklyLeverAboveYearHighSaysPlanCeilingNotWeeks() throws {
+        let plan = try #require(fullPlan(weeks: 24, maxWeekly: 45))
+        #expect(abs(plan.weeklyCapKm - 45) < 0.5)
+        let goalMin = plan.projectedFinal * 0.95
+        let race = MRTargetRace(date: plan.raceDate, distanceM: MRDistance.dF, name: "테스트")
+        let check = mrCheckGoal(race: race, plan: plan,
+                                goals: MRGoals(fullSec: Int(goalMin * 60)),
+                                profile: profile(maxWeekly: 45), halfEquivMin: 110,
+                                heat: MRHeatModel(), raceTempC: 15)
+        let weekly = check.levers.filter { $0.hasPrefix("주 ") }
+        #expect(!weekly.isEmpty)
+        #expect(weekly.allSatisfy { $0.contains("계획 상한(지난 1년 최고 45km)") && !$0.contains("도달 불가") })
     }
 }

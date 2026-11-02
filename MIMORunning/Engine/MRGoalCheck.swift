@@ -180,7 +180,16 @@ func mrCheckGoal(race: MRTargetRace,
                                       finishes: profile.marathonFinishes).b),
                 suffix: longRunSuffix(lr))
         }
+        // 주간 거리도 롱런처럼 사유를 구별한다 — 풀 계획은 지난 1년 최고치까지만 올리므로
+        //   그 위의 값은 기간이 길어도 안 닿는다. '18주로는 도달 불가'는 틀린 이유였다(2026-11-02).
         func weeklyKmSuffix(_ wk: Double) -> String {
+            if plan.weeklyCapKm > 0 && wk > plan.weeklyCapKm + 0.5 {
+                let cap = Int(plan.weeklyCapKm.rounded())
+                if plan.histMaxWeeklyKm > 0 && abs(plan.weeklyCapKm - plan.histMaxWeeklyKm) < 0.5 {
+                    return " ⚠ \(L.s("계획 상한(지난 1년 최고 \(cap)km)", "Plan ceiling (1-yr high \(cap) km)", ja: "計画の上限(直近1年の最高 \(cap)km)"))"
+                }
+                return " ⚠ \(L.s("계획 상한이 \(cap)km입니다", "Plan ceiling is \(cap) km", ja: "計画の上限は\(cap)kmです"))"
+            }
             var s = " ⚠ \(L.s("\(plan.weeks.count)주로는 도달 불가", "Unreachable in \(plan.weeks.count) weeks", ja: "\(plan.weeks.count)週では到達不可"))"
             if let next = otherPlans
                 .filter({ p in
