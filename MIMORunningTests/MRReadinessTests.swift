@@ -430,6 +430,41 @@ struct MRReadinessTests {
         #expect(s?.progress == "이번 주 롱런 아직 · 이지 2회 · 계획 3회")
     }
 
+    // MARK: 계획 롱런이 최근 30일 최장보다 10% 넘게 길 때 (Frandsen 2025)
+
+    @Test func longRunCappedWhenPlanOutrunsLastThirtyDays() {
+        // 지난 8주 롱런 14km, 계획 19km → 14 × 1.1 = 15.4 → 15km까지
+        let sat = thisWeek(weekday: 7)
+        let s = mrSessionSuggestion(level: .go, plan: plan(longRunKm: 19, weeklyKm: 45), runs: saturdayLongRunHistory(asOf: sat), asOf: sat)
+        #expect(s?.session == "롱런 15km(계획 19km)")
+        #expect(s?.isLongRun == true)
+        #expect(s?.whyNote == "계획 19km는 최근 30일 최장 14km보다 36% 깁니다. 한 번에 10% 넘게 늘리지 않도록 오늘은 15km까지 하세요.")
+    }
+
+    @Test func longRunWithinTenPercentIsUnchanged() {
+        // 계획 15km ≤ 14 × 1.1 = 15.4 → 그대로
+        let sat = thisWeek(weekday: 7)
+        let s = mrSessionSuggestion(level: .go, plan: plan(longRunKm: 15), runs: saturdayLongRunHistory(asOf: sat), asOf: sat)
+        #expect(s?.session == "롱런 15km")
+        #expect(s?.whyNote == nil)
+    }
+
+    @Test func cappedLongRunCountsAsDone() {
+        // 줄인 15km를 뛰었으면 이번 주 롱런 완료 — 계획 19km × 0.8 = 15.2로 세면 '아직'으로 남는다
+        let sun = thisWeek(weekday: 1)
+        var runs = saturdayLongRunHistory(asOf: sun)
+        runs.append(thisWeekRun(dayOffset: 5, km: 15, asOf: sun))
+        let s = mrSessionSuggestion(level: .go, plan: plan(longRunKm: 19, weeklyKm: 45), runs: runs, asOf: sun)
+        #expect(s?.progress.contains("이번 주 롱런 완료") == true)
+    }
+
+    @Test func noRecentRunsKeepsPlanLongRun() {
+        // 30일 안 러닝이 없으면 기준이 없다 — 계획 그대로
+        let sat = thisWeek(weekday: 7)
+        let s = mrSessionSuggestion(level: .go, plan: plan(longRunKm: 19, weeklyKm: 45), runs: [], asOf: sat)
+        #expect(s?.session == "롱런 19km")
+    }
+
     @Test func goOnOtherDayKeepsEasyAndNotesLongRunPending() {
         let wed = thisWeek(weekday: 4)
         var runs = saturdayLongRunHistory(asOf: wed)
