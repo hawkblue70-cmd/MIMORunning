@@ -412,9 +412,13 @@ struct MRMonthlyPlanCard: View {
 
     private func basisLine(_ p: MRMonthlyPlan) -> String {
         let L = AppLanguage.shared
-        return L.s("최근 4주 주 \(km(p.baseWeeklyKm)) · 12개월 최대 주 \(km(p.maxWeeklyKm52w)) · 주 \(p.usualRuns)회",
-                   "Last 4 wks \(km(p.baseWeeklyKm))/wk · 12-mo max \(km(p.maxWeeklyKm52w))/wk · \(p.usualRuns) runs/wk",
-                   ja: "直近4週 週\(km(p.baseWeeklyKm)) · 12か月最大 週\(km(p.maxWeeklyKm52w)) · 週\(p.usualRuns)回")
+        let base = L.s("최근 4주 주 \(km(p.baseWeeklyKm)) · 12개월 최대 주 \(km(p.maxWeeklyKm52w)) · 주 \(p.usualRuns)회",
+                       "Last 4 wks \(km(p.baseWeeklyKm))/wk · 12-mo max \(km(p.maxWeeklyKm52w))/wk · \(p.usualRuns) runs/wk",
+                       ja: "直近4週 週\(km(p.baseWeeklyKm)) · 12か月最大 週\(km(p.maxWeeklyKm52w)) · 週\(p.usualRuns)回")
+        // 롱런 상한의 기준(30일 최장 +10%) — 30일 안 러닝이 없으면 생략
+        guard p.longest30dKm > 0 else { return base }
+        return base + L.s(" · 최근 30일 최장 \(km(p.longest30dKm))", " · 30-day longest \(km(p.longest30dKm))",
+                          ja: " · 直近30日の最長 \(km(p.longest30dKm))")
     }
 
     private func limitLines(_ p: MRMonthlyPlan) -> [String] {

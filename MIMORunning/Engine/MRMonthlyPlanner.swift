@@ -98,6 +98,8 @@ struct MRMonthlyPlan: Equatable {
     let maxRuns52w: Int
     let easyCapKm: Double
     let longest16wKm: Double
+    /// 최근 30일 최장 러닝 — 롱런 상한의 기준(기준 줄에도 표시)
+    let longest30dKm: Double
     var weeks: [MRMonthlyWeek] = []
     /// 이번 달 예상 합 — 지난 주 실제 + 계획(이번 달 날짜 비율)
     var projectedMonthKm = 0.0
@@ -118,6 +120,8 @@ struct MRMonthlyBasis: Equatable {
     let maxRuns52w: Int
     let easyCapKm: Double
     let longest16wKm: Double
+    /// 최근 30일 최장 러닝(오늘 포함)
+    let longest30dKm: Double
     /// 최근 12주 중 러닝 있는 주 수
     let activeWeeks12: Int
 }
@@ -165,6 +169,8 @@ enum MRMonthlyPlanner {
 
         let longest16 = runs.filter { let d = daysAgo($0.start); return d >= 0 && d < 112 }
             .compactMap(\.distanceKm).max() ?? 0
+        let longest30 = runs.filter { let d = daysAgo($0.start); return d >= 0 && d < 30 }
+            .compactMap(\.distanceKm).max() ?? 0
 
         // 이지 1회 상한 — 최근 12주, 각 주 최장 러닝을 뺀 러닝 거리의 90번째 백분위
         let from84 = cal.date(byAdding: .day, value: -84, to: thisMonday) ?? thisMonday
@@ -183,7 +189,7 @@ enum MRMonthlyPlanner {
         }
         return MRMonthlyBasis(baseWeeklyKm: base, usualRuns: usual, maxWeeklyKm52w: max52,
                               maxRuns52w: max(maxRuns, usual), easyCapKm: easyCap,
-                              longest16wKm: longest16, activeWeeks12: recentWeeks.count)
+                              longest16wKm: longest16, longest30dKm: longest30, activeWeeks12: recentWeeks.count)
     }
 
     /// 강도 훈련 입력 — 없으면 강도 훈련 칸 없이 거리만.
@@ -245,6 +251,19 @@ enum MRMonthlyPlanner {
                                       actualKm: a.km, actualRuns: a.n)
                 guard mon >= thisMonday else { sim.weeks.append(w); continue }
 
+                // 롱런 상한 — 이번 주는 오늘까지 30일 최장, 다음 주부터는 그 월요일 앞 30일 실제 + 앞 4주 계획 롱런
+                let ref30: Double
+                if mon == thisMonday {
+                    ref30 = b.longest30dKm
+                } else {
+                    let from = cal.date(byAdding: .day, value: -30, to: mon) ?? mon
+                    let fromPlan = cal.date(byAdding: .day, value: -28, to: mon) ?? mon
+                    let real = runs.filter { $0.start >= from && $0.start < mon }.compactMap(\.distanceKm).max() ?? 0
+                    let planned = sim.weeks.filter { $0.plannedKm != nil && $0.monday >= fromPlan }.map(\.longRunKm).max() ?? 0
+                    ref30 = max(real, planned)
+                }
+                let lc = longCap(reference30dKm: ref30, longest16wKm: b.longest16wKm)
+
                 let step = prev < b.maxWeeklyKm52w ? stepReturn : stepNew
                 var cap = prev * (1 + step)
                 if prev < b.maxWeeklyKm52w && cap > b.maxWeeklyKm52w {
@@ -263,7 +282,7 @@ enum MRMonthlyPlanner {
                    let paces = point.paces {
                     let every = target > prev * growthWeekRatio ? min(base + 1, 3) : base
                     if lastPointIdx.map({ k - $0 >= every }) ?? true {
-                        let longGuess = min(target * longShare(runs: b.usualRuns), longCap(b, k))
+                        let longGuess = min(target * longShare(runs: b.usualRuns), lc)
                         pt = makePoint(nextKind, weekly: target, long: longGuess, paces: paces, history: point.intervalHistory)
                             ?? makePoint(.tempo, weekly: target, long: longGuess, paces: paces, history: point.intervalHistory)
                     }
@@ -271,14 +290,14 @@ enum MRMonthlyPlanner {
 
                 // 횟수 — 이지 1회가 상한을 넘으면 한 번 더(횟수 천장까지), 천장에서도 넘으면 주간을 낮춘다
                 var n = b.usualRuns
-                var split = splitWeek(target, runs: n, longCap: longCap(b, k), easyCap: b.easyCapKm, point: pt)
+                var split = splitWeek(target, runs: n, longCap: lc, easyCap: b.easyCapKm, point: pt)
                 while split.easy > b.easyCapKm + 0.05 && n < b.maxRuns52w {
                     n += 1
-                    split = splitWeek(target, runs: n, longCap: longCap(b, k), easyCap: b.easyCapKm, point: pt)
+                    split = splitWeek(target, runs: n, longCap: lc, easyCap: b.easyCapKm, point: pt)
                 }
                 // 강도 훈련 칸 때문에 주간을 낮춰야 하면 이번 주는 칸을 빼고 다음 주로 미룬다
                 if split.easy > b.easyCapKm + 0.05, pt != nil {
-                    let without = splitWeek(target, runs: n, longCap: longCap(b, k), easyCap: b.easyCapKm, point: nil)
+                    let without = splitWeek(target, runs: n, longCap: lc, easyCap: b.easyCapKm, point: nil)
                     if without.easy <= b.easyCapKm + 0.05 { pt = nil; split = without }
                 }
                 if split.easy > b.easyCapKm + 0.05 {
@@ -291,12 +310,12 @@ enum MRMonthlyPlanner {
                         }
                     }
                     target = lowered
-                    split = splitWeek(target, runs: n, longCap: longCap(b, k), easyCap: b.easyCapKm, point: pt)
+                    split = splitWeek(target, runs: n, longCap: lc, easyCap: b.easyCapKm, point: pt)
                 }
                 // 이지가 너무 짧아지면 강도 훈련 칸을 뺀다
                 if pt != nil, split.easyRuns < 1 || split.easy < minEasyKm {
                     pt = nil
-                    split = splitWeek(target, runs: n, longCap: longCap(b, k), easyCap: b.easyCapKm, point: nil)
+                    split = splitWeek(target, runs: n, longCap: lc, easyCap: b.easyCapKm, point: nil)
                 }
                 if let p = pt {
                     lastPointIdx = k
@@ -344,7 +363,7 @@ enum MRMonthlyPlanner {
         var plan = MRMonthlyPlan(monthStart: monthStart, daysInMonth: days, goalKm: goal,
                                  baseWeeklyKm: b.baseWeeklyKm, maxWeeklyKm52w: b.maxWeeklyKm52w,
                                  usualRuns: b.usualRuns, maxRuns52w: b.maxRuns52w, easyCapKm: b.easyCapKm,
-                                 longest16wKm: b.longest16wKm)
+                                 longest16wKm: b.longest16wKm, longest30dKm: b.longest30dKm)
         plan.weeks = main.weeks
         plan.limits = main.limits
         plan.projectedMonthKm = monthSum(main.weeks)
@@ -383,9 +402,13 @@ enum MRMonthlyPlanner {
 
     static func r1(_ x: Double) -> Double { (x * 10).rounded() / 10 }
 
-    /// 롱런 상한 — 최근 16주 최장에서 주 +10%. 기록 없으면 제한 없음.
-    static func longCap(_ b: MRMonthlyBasis, _ k: Int) -> Double {
-        b.longest16wKm > 0 ? b.longest16wKm * pow(1 + stepNew, Double(k + 1)) : .infinity
+    /// 롱런 상한 — 그 주 직전 30일 최장(실제 + 앞 주차 계획 롱런)의 +10%.
+    /// Frandsen 2025 (BJSM 59(17):1203–1210, n=5,205): 한 번 러닝 ÷ 최근 30일 최장이 ≤10%인 참조 밴드.
+    /// 대회 계획(`MRRacePlanner` 롱런 스텝)·조언 `spike`와 같은 기준. 30일 안 러닝이 없으면 16주 최장 그대로(늘리지 않음),
+    /// 기록이 없으면 제한 없음.
+    static func longCap(reference30dKm: Double, longest16wKm: Double) -> Double {
+        if reference30dKm > 0 { return reference30dKm * (1 + stepNew) }
+        return longest16wKm > 0 ? longest16wKm : .infinity
     }
 
     /// 주간을 롱런 + 강도 훈련 + 이지 × N으로. 롱런은 정수 km, 이지는 표시값 기준으로 역산(합 일치).

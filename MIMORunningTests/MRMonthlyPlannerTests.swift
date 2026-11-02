@@ -42,6 +42,51 @@ struct MRMonthlyPlannerTests {
         #expect(b.maxRuns52w == 3)
         #expect(b.easyCapKm == 8)
         #expect(b.longest16wKm == 16)
+        #expect(b.longest30dKm == 16)
+    }
+
+    // MARK: 롱런 상한 — 최근 30일 최장 +10% (Frandsen 2025, 대회 계획·조언과 같은 기준)
+
+    @Test func longCapFromThirtyDayLongest() {
+        #expect(abs(MRMonthlyPlanner.longCap(reference30dKm: 16, longest16wKm: 20) - 17.6) < 0.001)
+        // 30일 안 러닝이 없으면 16주 최장 그대로(늘리지 않음)
+        #expect(MRMonthlyPlanner.longCap(reference30dKm: 0, longest16wKm: 20) == 20)
+        // 기록이 없으면 제한 없음
+        #expect(MRMonthlyPlanner.longCap(reference30dKm: 0, longest16wKm: 0) == .infinity)
+    }
+
+    @Test func steadyRunnerKeepsSameLongRuns() throws {
+        // 매주 토 16km — 30일 최장 = 16주 최장
+        let plan = try #require(MRMonthlyPlanner.build(goalKm: nil, runs: history(weeks: 52, pattern: three), asOf: today))
+        let first = try #require(plan.weeks.first { $0.isCurrent })
+        #expect(first.longRunKm <= 17)
+        #expect(plan.longest30dKm == 16)
+    }
+
+    /// 16주 안(8주 전)에 20km, 최근 4주는 화 6 · 목 6 · 토 8
+    private var returning: [MRWorkout] {
+        let old = (5...12).flatMap { w in
+            [(1, 8.0), (3, 8.0), (5, w == 8 ? 20.0 : 12.0)].map { run(-7 * w + $0.0, km: $0.1) }
+        }
+        return (old + history(weeks: 4, pattern: [(1, 6), (3, 6), (5, 8)])).sorted { $0.start < $1.start }
+    }
+
+    @Test func returningRunnerLongRunStartsFromLastThirtyDays() throws {
+        let plan = try #require(MRMonthlyPlanner.build(goalKm: nil, runs: returning, asOf: today))
+        #expect(plan.longest16wKm == 20)
+        #expect(plan.longest30dKm == 8)
+        let first = try #require(plan.weeks.first { $0.isCurrent })
+        #expect(first.longRunKm <= 8.8)
+    }
+
+    @Test func nextWeekCapFollowsPlannedLongRun() throws {
+        // 상한은 계획한 롱런을 따라 커진다 — 각 주 롱런 ≤ (앞선 실제·계획 롱런 최장) × 1.1
+        let plan = try #require(MRMonthlyPlanner.build(goalKm: nil, runs: returning, asOf: today))
+        var ref = plan.longest30dKm
+        for w in plan.weeks where w.plannedKm != nil {
+            #expect(w.longRunKm <= ref * 1.1 + 0.001)
+            ref = max(ref, w.longRunKm)
+        }
     }
 
     @Test func tooFewWeeksGivesNoPlan() {
