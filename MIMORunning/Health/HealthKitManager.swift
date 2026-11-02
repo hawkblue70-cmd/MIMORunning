@@ -417,6 +417,7 @@ class HealthKitManager {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(10))
                 await self?.fillBestKmAndLogCriticalSpeed()
+                await self?.fillKmPaceHRAndLogTempoEfficiency()
             }
             #endif
         }
@@ -978,6 +979,60 @@ class HealthKitManager {
         UserDefaults.standard.set(dict, forKey: Self.bestKmKey)
     }
 
+    nonisolated static let kmPaceHRKey = "mimo.kmPaceHR.v1"
+    @ObservationIgnored private var tempoEfficiencyDiagRan = false
+
+    /// 스플릿을 받은 김에 CS 구간 기록과 템포 효율 km 기록을 함께 저장한다(같은 스플릿을 두 번 조회하지 않게).
+    private func noteSplits(_ splitsByID: [UUID: [SplitData]]) {
+        noteBestKm(splitsByID)
+        noteKmPaceHR(splitsByID)
+    }
+
+    /// 러닝별 km 3~10의 [km, 페이스(초/km), 심박]을 평평하게 저장한다. 스플릿이 비면 빈 배열('훑음').
+    private func noteKmPaceHR(_ splitsByID: [UUID: [SplitData]]) {
+        guard !splitsByID.isEmpty else { return }
+        var dict = UserDefaults.standard.dictionary(forKey: Self.kmPaceHRKey) as? [String: [Double]] ?? [:]
+        for (id, splits) in splitsByID {
+            dict[id.uuidString] = MRTempoEfficiency.kmRows(splits: splits).flatMap { [Double($0.km), $0.paceSec, $0.hr] }
+        }
+        UserDefaults.standard.set(dict, forKey: Self.kmPaceHRKey)
+    }
+
+    /// 최근 26주 러닝 중 km 기록이 없는 것만 스플릿을 받아(상세 캐시 우선) 저장하고, 템포 효율 진단에 넘긴다.
+    /// 화면에는 쓰지 않는다. 실행당 한 번, 최대 80건 — 남은 건 다음 실행에서.
+    func fillKmPaceHRAndLogTempoEfficiency() async {
+        guard !tempoEfficiencyDiagRan else { return }
+        tempoEfficiencyDiagRan = true
+        let cutoff = Date().addingTimeInterval(-26 * 7 * 86400)
+        let runsInWindow = activities.filter { $0.type == .running && $0.date >= cutoff }
+        let known = UserDefaults.standard.dictionary(forKey: Self.kmPaceHRKey) as? [String: [Double]] ?? [:]
+        var fresh: [UUID: [SplitData]] = [:]
+        for a in runsInWindow.filter({ known[$0.id.uuidString] == nil }).prefix(80) {
+            if Task.isCancelled { break }
+            if let det = detailFromCache(a.id), !det.splits.isEmpty {
+                fresh[a.id] = det.splits
+            } else {
+                fresh[a.id] = await fetchSplitsAndSegmentsForBackfill(activity: a).splits
+            }
+            await Task.yield()
+        }
+        noteSplits(fresh)
+        #if DEBUG
+        let dict = UserDefaults.standard.dictionary(forKey: Self.kmPaceHRKey) as? [String: [Double]] ?? [:]
+        let typeOf = workoutTypeLookup()
+        let rows: [MRTempoEfficiency.RunRow] = runsInWindow.compactMap { a in
+            guard let v = dict[a.id.uuidString], v.count >= 3 else { return nil }
+            let kms = stride(from: 0, to: v.count - 2, by: 3).map {
+                MRTempoEfficiency.KmRow(km: Int(v[$0]), paceSec: v[$0 + 1], hr: v[$0 + 2])
+            }
+            return MRTempoEfficiency.RunRow(date: a.date, type: typeOf(a.id), tempC: a.temperatureC, kms: kms)
+        }
+        let missingLeft = runsInWindow.filter { dict[$0.id.uuidString] == nil }.count
+        print("[템포효율] 26주 러닝 \(runsInWindow.count)건 · km 기록 \(runsInWindow.count - missingLeft)건(이번에 받음 \(fresh.count), 남음 \(missingLeft))")
+        MRTempoEfficiencyDiag.rows = rows
+        #endif
+    }
+
     /// 최근 9주 러닝 중 구간 기록이 없는 것만 스플릿을 받아(상세 캐시 우선) 저장하고, CS를 계산해 `[CS]` 로그로 남긴다.
     /// 화면에는 쓰지 않는다. 실행당 한 번, 최대 60건.
     func fillBestKmAndLogCriticalSpeed() async {
@@ -997,7 +1052,7 @@ class HealthKitManager {
             }
             await Task.yield()
         }
-        noteBestKm(fresh)
+        noteSplits(fresh)
 
         let dict = UserDefaults.standard.dictionary(forKey: Self.bestKmKey) as? [String: [Double]] ?? [:]
         let typeOf = workoutTypeLookup()
@@ -1407,7 +1462,7 @@ class HealthKitManager {
                 )
                 #endif
                 persistWorkoutType(type, splits: actSplits, for: act.id)
-                if !actSplits.isEmpty { noteBestKm([act.id: actSplits]) }
+                if !actSplits.isEmpty { noteSplits([act.id: actSplits]) }
                 if actSplits.isEmpty { provisionalCount += 1 } else { confirmedCount += 1 }
                 #if DEBUG
                 let distKm  = String(format: "%.1f", act.distance / 1000)

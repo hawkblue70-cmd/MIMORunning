@@ -1,0 +1,64 @@
+import Testing
+import Foundation
+@testable import MIMORunning
+
+@Suite("템포 구간 효율 — 같은 페이스 km의 심박", .korean)
+struct MRTempoEfficiencyTests {
+
+    private func split(_ id: Int, pace: Double, hr: Int?, m: Double = 1000) -> SplitData {
+        SplitData(id: id, distanceM: m, duration: pace * m / 1000, avgHeartRate: hr, avgCadence: nil, avgPower: nil,
+                  avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+    }
+    private typealias T = MRTempoEfficiency
+
+    @Test func kmRowsSkipWarmupLateKmPartialAndNoHR() {
+        let s = (1...12).map { split($0, pace: 330, hr: 150 + $0) }
+            + [split(13, pace: 330, hr: 170, m: 500)]
+        var rows = T.kmRows(splits: s)
+        #expect(rows.map(\.km) == Array(3...10))
+        rows = T.kmRows(splits: [split(3, pace: 330, hr: nil), split(4, pace: 330, hr: 160)])
+        #expect(rows.map(\.km) == [4])
+    }
+
+    @Test func runValueUsesBandAroundThresholdAndNeedsTwoKm() throws {
+        // 역치 5'18"(318) → 띠 323~343. 330·340만 들어간다. 300(빠름)·360(느림)은 빠진다.
+        let kms = [T.KmRow(km: 3, paceSec: 300, hr: 170), T.KmRow(km: 4, paceSec: 330, hr: 160),
+                   T.KmRow(km: 5, paceSec: 340, hr: 164), T.KmRow(km: 6, paceSec: 360, hr: 150)]
+        let r = T.RunRow(date: Date(), type: .tempo, tempC: nil, kms: kms)
+        let v = try #require(T.runValue(r, thresholdPace: 318, heat: MRHeatHRModel()))
+        #expect(v.kmCount == 2)
+        #expect(v.hr == 162)
+        #expect(v.paceSec == 335)
+        // 한 km뿐이면 없음
+        let one = T.RunRow(date: Date(), type: .tempo, tempC: nil, kms: [kms[1], kms[3]])
+        #expect(T.runValue(one, thresholdPace: 318, heat: MRHeatHRModel()) == nil)
+    }
+
+    @Test func runValueHeatAdjustedAndIntervalExcluded() throws {
+        let kms = [T.KmRow(km: 3, paceSec: 330, hr: 170), T.KmRow(km: 4, paceSec: 332, hr: 172)]
+        // 25°C · 문헌 0.8bpm/°C → 8bpm 빼서 15°C 기준
+        let hot = T.RunRow(date: Date(), type: .race, tempC: 25, kms: kms)
+        let v = try #require(T.runValue(hot, thresholdPace: 318, heat: .fallback()))
+        #expect(abs(v.hr - 163) < 1e-9)
+        #expect(v.rawHR == 171)
+        // 인터벌은 회복 구간이 섞인 km라 쓰지 않는다
+        let iv = T.RunRow(date: Date(), type: .interval, tempC: nil, kms: kms)
+        #expect(T.runValue(iv, thresholdPace: 318, heat: MRHeatHRModel()) == nil)
+    }
+
+    @Test func monthlyMediansGroupByCalendarMonth() {
+        let cal = Calendar(identifier: .gregorian)
+        func d(_ m: Int, _ day: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: day, hour: 7))! }
+        func row(_ date: Date, _ hr: Double) -> T.RunRow {
+            T.RunRow(date: date, type: .tempo, tempC: nil,
+                     kms: [.init(km: 3, paceSec: 330, hr: hr), .init(km: 4, paceSec: 330, hr: hr)])
+        }
+        let months = T.monthly([row(d(9, 3), 160), row(d(9, 20), 164), row(d(9, 25), 170), row(d(10, 2), 158)],
+                               thresholdPace: 318, heat: MRHeatHRModel(), calendar: cal)
+        #expect(months.count == 2)
+        #expect(months[0].runs == 3)
+        #expect(months[0].kmCount == 6)
+        #expect(months[0].hr == 164)
+        #expect(months[1].hr == 158)
+    }
+}
