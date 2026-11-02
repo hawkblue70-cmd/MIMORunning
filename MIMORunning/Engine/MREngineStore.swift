@@ -1413,7 +1413,7 @@ final class MREngineStore: ObservableObject {
         let isRacePace = week.phase == "대회 페이스"
         let pace: Double? = isRacePace
             ? mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: plan.distanceM,
-                                         weeklyKm: plan.peakWeeklyKm, longestKm: plan.reachableLongKm,
+                                         weeklyKm: plan.projectionWeeklyKm, longestKm: plan.projectionLongKm,
                                          finishes: profile.marathonFinishes) * plan.projectionScale
             : nil
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: plan.raceDate)).day ?? 999

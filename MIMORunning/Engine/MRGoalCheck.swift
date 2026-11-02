@@ -87,7 +87,7 @@ func mrCheckGoal(race: MRTargetRace,
     let pct = gap / goal * 100
 
     // ⚠ 판정이 아니라 거리감이다. "못 한다"고 쓰지 않는다.
-    let verdict: String
+    var verdict: String
     if gap <= 0 {
         verdict = L.s("계획대로면 목표 안쪽입니다", "On track for the goal", ja: "計画どおりなら目標圏内です")
     } else if pct <= 3 {
@@ -115,7 +115,7 @@ func mrCheckGoal(race: MRTargetRace,
     if farOff && race.distanceM >= MRDistance.dF {
         // 지수를 이론상 최대(1.03)까지 끌어올려도 나오는 값
         // ⚠ projectedFinal과 같은 기온 조건이어야 한다
-        var bestPossible = halfEquivMin * pow(2.0, 1.03) * (1 - MR_TAPER_GAIN)
+        var bestPossible = halfEquivMin * pow(2.0, 1.03) * plan.projectionScale * (1 - MR_TAPER_GAIN)
         if heat.ok { bestPossible = heat.fromRef(timeRefMin: bestPossible, tempC: raceTempC) }
         let needHalf = goal / pow(2.0, 1.13)      // 준비된 아마추어 기준
         levers = [
@@ -126,11 +126,15 @@ func mrCheckGoal(race: MRTargetRace,
         let needHalf = goal / pow(race.distanceM / MRDistance.dH, 1.06)
         levers = [L.s("이 목표는 하프 등가 \(mrFormatDisplay(needHalf))를 요구합니다 (지금 \(mrFormatDisplay(halfEquivMin)))", "This goal requires a half equivalent of \(mrFormatDisplay(needHalf)) (current: \(mrFormatDisplay(halfEquivMin)))", ja: "この目標にはハーフ換算\(mrFormatDisplay(needHalf))が必要です(現在 \(mrFormatDisplay(halfEquivMin)))")]
     } else if gap > 0 && race.distanceM >= MRDistance.dF {
-        let volPeak = plan.peakWeeklyKm
+        // 계획후(projectedFinal)와 같은 입력 — 앞 대회 뒤 '축적된 상태' 바닥이 들어간 값. 계획 밖에서 만든 plan은 정점으로.
+        let volPeak = plan.projectionWeeklyKm > 0 ? plan.projectionWeeklyKm : plan.peakWeeklyKm
+        let longBase = plan.projectionLongKm > 0 ? plan.projectionLongKm : plan.reachableLongKm
 
-        // 계획후와 동일하게: 테이퍼 이득 + 레이스 기온 환산
+        // 계획후와 동일하게: 보정 배율 + 테이퍼 이득 + 레이스 기온 환산
+        // ⚠ 보정 배율(projectionScale)을 빼면 레버가 계획후보다 그만큼 빨라 보인다 —
+        //   롱런 효과는 28km에서 끝나는데 "롱런 32km → 4:08:18"(계획후 4:17:59)이 나왔다(2026-11-02).
         func finish(_ b: Double) -> Double {
-            var t = halfEquivMin * pow(2.0, b) * (1 - MR_TAPER_GAIN)
+            var t = halfEquivMin * pow(2.0, b) * plan.projectionScale * (1 - MR_TAPER_GAIN)
             if heat.ok { t = heat.fromRef(timeRefMin: t, tempC: raceTempC) }
             return t
         }
@@ -139,11 +143,14 @@ func mrCheckGoal(race: MRTargetRace,
         //   거기까지다) 28km와 32km는 **같은 값이 나오는 게 정상**이다.
         //   그런데 나란히 보여주면 버그처럼 보인다. 같은 값은 하나만 남긴다.
         var seen = Set<Int>()
+        // 판정 문장이 레버와 맞아야 한다 — 이 계획 안에서 할 수 있는(⚠ 없는) 레버가 목표에 닿는가
+        var reachableClosesGap = false
         func add(_ text: String, _ t: Double, suffix: String = "") {
             let key = Int(t.rounded())
             guard !seen.contains(key), t < plan.projectedFinal - 0.2 else { return }
             seen.insert(key)
             levers.append("\(text) → \(mrFormatDisplay(t))\(suffix)")
+            if suffix.isEmpty && t <= goal { reachableClosesGap = true }
         }
 
         // 도달 불가 레버: 사유를 구별한다
@@ -169,7 +176,7 @@ func mrCheckGoal(race: MRTargetRace,
 
         for lr in [25.0, 28.0, 32.0] where lr > plan.reachableLongKm {
             add(L.s("롱런 \(Int(lr))km", "Long run \(Int(lr)) km", ja: "ロング走 \(Int(lr))km"),
-                finish(bMarathonModel(weeklyKm: volPeak, longestKm: lr,
+                finish(bMarathonModel(weeklyKm: volPeak, longestKm: max(lr, longBase),
                                       finishes: profile.marathonFinishes).b),
                 suffix: longRunSuffix(lr))
         }
@@ -189,9 +196,15 @@ func mrCheckGoal(race: MRTargetRace,
 
         for wk in [40.0, 50.0, 60.0] where wk > volPeak {
             add(L.s("주 \(Int(wk))km", "Weekly \(Int(wk)) km", ja: "週\(Int(wk))km"),
-                finish(bMarathonModel(weeklyKm: wk, longestKm: plan.reachableLongKm,
+                finish(bMarathonModel(weeklyKm: wk, longestKm: longBase,
                                       finishes: profile.marathonFinishes).b),
                 suffix: weeklyKmSuffix(wk))
+        }
+
+        // "아래를 바꾸면 메워집니다"는 이 계획 안에서 할 수 있는 레버가 목표에 닿을 때만.
+        //   레버가 전부 ⚠(상한·기간 밖)인데 '메워집니다'라고 쓰면 거짓이 된다(2027 서울마라톤, 2026-11-02).
+        if pct > 3 && pct <= 8 && !reachableClosesGap {
+            verdict = L.s("조금 모자랍니다. 이번 계획 기간 안에서는 더 줄일 항목이 없습니다", "Slightly short. Nothing left to adjust within this plan's timeframe", ja: "少し足りません。今回の計画期間内では、これ以上縮められる項目がありません")
         }
     } else if gap > 0 && pct > 3 {
         // ⚠ 사정권(3% 이내)에는 레버를 붙이지 않는다.

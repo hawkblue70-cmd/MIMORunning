@@ -46,6 +46,10 @@ struct MRRacePlan {
     var projectedFinal = 0.0
     /// 대회 거리 직접 예측 ÷ 하프 등가 환산 — 계획의 모든 예상 기록·대회 페이스에 곱한다(1 = 보정 없음).
     var projectionScale = 1.0
+    /// 예상 기록·대회 페이스에 넣는 롱런·주간 거리 — 계획 정점과 '축적된 상태' 바닥 중 큰 값.
+    /// 앞 대회 뒤 재시작은 처방만 60·70%로 낮춘 것이라 몸 상태는 앞 대회 정점에서 본다.
+    var projectionLongKm = 0.0
+    var projectionWeeklyKm = 0.0
     /// 불확실성 하한 (마라톤 전용, 0이면 미계산)
     var projectedFinalLo = 0.0
     /// 불확실성 상한 (마라톤 전용, 0이면 미계산)
@@ -427,6 +431,11 @@ func mrBuildPlan(raceDate: Date,
 
     var peakLong = planStartLong
     var peakVol = planStartVol           // 누적 최대 주간거리 — 회복주/테이퍼 주가 낮추면 안 된다
+    // ⚠ 예상 기록의 바닥 — 앞 대회 뒤 계획은 롱런 60%·주간 70%로 다시 시작하지만 그건 처방이지 몸의 후퇴가 아니다.
+    //   peakLong·peakVol을 그대로 예측에 넣으면 '늘리기' 주 예상이 회복 주(=지금)보다 느려졌다
+    //   (2027 서울마라톤: 회복 4:36:40 → 늘리기 4:37:58, 2026-11-02). 예측은 앞 대회 정점에서 본다.
+    let projFloorLong = recoveryWeekCount > 0 ? recoveryPriorLong : planStartLong
+    let projFloorVol  = recoveryWeekCount > 0 ? recoveryPriorVol  : planStartVol
     var currentBuildVol = planStartVol   // 매 빌드주 +5%로 유기적 증가
     var longNow = peakLong
     var seenVolRecord = false            // 12개월 최대 주간거리를 처음 넘는 주 — 한 번만 표시
@@ -573,10 +582,11 @@ func mrBuildPlan(raceDate: Date,
         // ⚠ 그 주의 볼륨을 예측에 넣으면 **회복주와 테이퍼 주에 예측이 후퇴한다.**
         //   회복주는 후퇴가 아니다 — 몸이 좋아지는 것은 뛸 때가 아니라 쉴 때다.
         //   그날 몸에 남아 있는 것은 **축적된 상태**이지 그 주에 뛴 양이 아니다.
-        let projVol = peakVol
+        let projVol = max(peakVol, projFloorVol)
+        let projLong = max(peakLong, projFloorLong)
         // 풀은 durability 지수, 하프 이하는 등가에서 직접 — mrProjectedRefMin 한 곳에서 계산
         var proj = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
-                                     weeklyKm: projVol, longestKm: peakLong,
+                                     weeklyKm: projVol, longestKm: projLong,
                                      finishes: profile.marathonFinishes) * scale
         if phase == "테이퍼" {
             let k = Double(i - buildWeeks)
@@ -624,7 +634,7 @@ func mrBuildPlan(raceDate: Date,
                 case .tempo: pace = paces.tempo
                 case .buildUp, .racePaceShort:
                     pace = mrTrainingRacePaceSecPerKm(halfEquivMin: halfEquivMin, distanceM: distanceM,
-                                                      weeklyKm: projVol, longestKm: peakLong,
+                                                      weeklyKm: projVol, longestKm: projLong,
                                                       finishes: profile.marathonFinishes) * scale
                 }
                 if let pt = MRPlanPoint.make(kind: kind, weeklyKm: wkDisplay, longRunKm: lrDisplay,
@@ -659,7 +669,7 @@ func mrBuildPlan(raceDate: Date,
             // ⚠ 페이스는 기온·테이퍼 보정 전 예측값. 훈련은 대회 기온에서 하지 않는다.
             let racePace = mrTrainingRacePaceSecPerKm(
                 halfEquivMin: halfEquivMin, distanceM: distanceM,
-                weeklyKm: projVol, longestKm: peakLong, finishes: profile.marathonFinishes) * scale
+                weeklyKm: projVol, longestKm: projLong, finishes: profile.marathonFinishes) * scale
             let seg = mrRacePaceSegmentMinutes(longRunMin: mins.rounded())   // 저장값(longRunMin)과 동일 기준
             let paceStr = mrFormatPace(racePace) + "/km"
             breakdown = each >= 1.5
@@ -718,6 +728,8 @@ func mrBuildPlan(raceDate: Date,
 
     p.reachableLongKm = peakLong
     p.peakWeeklyKm = peakVol
+    p.projectionLongKm = max(peakLong, projFloorLong)
+    p.projectionWeeklyKm = max(peakVol, projFloorVol)
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
 
     // 튠업 고지 — 판단이 아니라 결과 전달
@@ -747,10 +759,10 @@ func mrBuildPlan(raceDate: Date,
                              profile.maxWeeklyKm52w))
     }
     if distanceM >= MRDistance.dF {
-        let bResult = bMarathonModel(weeklyKm: peakVol, longestKm: peakLong,
+        let bResult = bMarathonModel(weeklyKm: p.projectionWeeklyKm, longestKm: p.projectionLongKm,
                                      finishes: profile.marathonFinishes)
         var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
-                                         weeklyKm: peakVol, longestKm: peakLong,
+                                         weeklyKm: p.projectionWeeklyKm, longestKm: p.projectionLongKm,
                                          finishes: profile.marathonFinishes) * scale * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
@@ -790,7 +802,7 @@ func mrBuildPlan(raceDate: Date,
         }
     } else {
         var finalRef = mrProjectedRefMin(halfEquivMin: halfEquivMin, distanceM: distanceM,
-                                         weeklyKm: peakVol, longestKm: peakLong,
+                                         weeklyKm: p.projectionWeeklyKm, longestKm: p.projectionLongKm,
                                          finishes: profile.marathonFinishes) * scale * (1 - MR_TAPER_GAIN)
         if heat.ok { finalRef = heat.fromRef(timeRefMin: finalRef, tempC: raceTempC) }
         p.projectedFinal = finalRef
