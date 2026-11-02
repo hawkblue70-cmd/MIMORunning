@@ -76,6 +76,8 @@ class HealthKitManager {
     @ObservationIgnored private var lateRunMemo: (key: String, value: [LateRunPoint])? = nil
     /// 후반 기록용 상세 받아오기 — 앱 실행당 한 번(받아오기 실패한 러닝을 매번 다시 조회하지 않게)
     @ObservationIgnored private var lateRunDetailsFilled = false
+    /// CS 진단(1단계) — 앱 실행당 한 번
+    @ObservationIgnored private var criticalSpeedDiagRan = false
 
     // Codable proxies for disk serialization of time-series tuples
     private struct HRPoint: Codable { var offset: Double; var bpm: Int }
@@ -410,6 +412,13 @@ class HealthKitManager {
                     self?.fillFastFinishFlagsIfNeeded()
                 }
             }
+            #if DEBUG
+            // 임계 속도(CS) 1단계 — 진단 로그만. 첫 화면·유형 백필 뒤로 미룬다.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(10))
+                await self?.fillBestKmAndLogCriticalSpeed()
+            }
+            #endif
         }
 
         // 5분 이내 early return은 위에서 이미 처리됨.
@@ -954,6 +963,72 @@ class HealthKitManager {
         #endif
     }
 
+    // MARK: - 임계 속도(CS) 진단 — 러닝별 최고 연속 km 구간 (1단계: 로그만, 설계 docs/research/2026-11-03 6절)
+
+    nonisolated static let bestKmKey = "mimo.bestKm.v1"
+
+    /// 러닝별 최고 연속 1~4km 시간(초, 없으면 0)을 저장한다. 스플릿이 비면 빈 배열 — '훑음'으로 남겨 다시 조회하지 않는다.
+    private func noteBestKm(_ splitsByID: [UUID: [SplitData]]) {
+        guard !splitsByID.isEmpty else { return }
+        var dict = UserDefaults.standard.dictionary(forKey: Self.bestKmKey) as? [String: [Double]] ?? [:]
+        for (id, splits) in splitsByID {
+            let b = MRCriticalSpeed.bestKmTimes(splits: splits)
+            dict[id.uuidString] = splits.isEmpty ? [] : (1...MRCriticalSpeed.maxWindowKm).map { b[$0] ?? 0 }
+        }
+        UserDefaults.standard.set(dict, forKey: Self.bestKmKey)
+    }
+
+    /// 최근 9주 러닝 중 구간 기록이 없는 것만 스플릿을 받아(상세 캐시 우선) 저장하고, CS를 계산해 `[CS]` 로그로 남긴다.
+    /// 화면에는 쓰지 않는다. 실행당 한 번, 최대 60건.
+    func fillBestKmAndLogCriticalSpeed() async {
+        guard !criticalSpeedDiagRan else { return }
+        criticalSpeedDiagRan = true
+        let now = Date()
+        let cutoff = now.addingTimeInterval(-Double((MRCriticalSpeed.windowWeeks + 1) * 7) * 86400)
+        let runsInWindow = activities.filter { $0.type == .running && $0.date >= cutoff }
+        let known = UserDefaults.standard.dictionary(forKey: Self.bestKmKey) as? [String: [Double]] ?? [:]
+        var fresh: [UUID: [SplitData]] = [:]
+        for a in runsInWindow.filter({ known[$0.id.uuidString] == nil }).prefix(60) {
+            if Task.isCancelled { break }
+            if let det = detailFromCache(a.id), !det.splits.isEmpty {
+                fresh[a.id] = det.splits
+            } else {
+                fresh[a.id] = await fetchSplitsAndSegmentsForBackfill(activity: a).splits
+            }
+            await Task.yield()
+        }
+        noteBestKm(fresh)
+
+        let dict = UserDefaults.standard.dictionary(forKey: Self.bestKmKey) as? [String: [Double]] ?? [:]
+        let typeOf = workoutTypeLookup()
+        let rows: [MRCriticalSpeed.RunBest] = runsInWindow.compactMap { a in
+            guard let v = dict[a.id.uuidString], !v.isEmpty else { return nil }
+            var best: [Int: Double] = [:]
+            for (i, t) in v.enumerated() where t > 0 { best[i + 1] = t }
+            return MRCriticalSpeed.RunBest(date: a.date, type: typeOf(a.id), best: best)
+        }
+        #if DEBUG
+        let df = DateFormatter(); df.dateFormat = "M/d"
+        let hardCount = rows.filter { $0.type.map { MRCriticalSpeed.hardTypes.contains($0) } ?? false }.count
+        print("[CS] 최근 \(MRCriticalSpeed.windowWeeks)주 러닝 \(runsInWindow.count)건 · 구간 기록 \(rows.count)건(이번에 받음 \(fresh.count)) · 강한 러닝 \(hardCount)건")
+        func describe(_ e: MRCriticalSpeed.Estimate) -> String {
+            let pts = e.points.map { p in
+                "\(p.km)km \(Int(p.timeSec) / 60):\(String(format: "%02d", Int(p.timeSec) % 60))(\(mrFormatPace(p.timeSec / Double(p.km))) · \(df.string(from: p.date)) \(rows.first { $0.date == p.date }?.type?.koreanLabel ?? "?"))"
+            }.joined(separator: " / ")
+            return "CS \(mrFormatPace(e.paceSecPerKm)) (\(String(format: "%.2f", e.fit.csMps)) m/s) · D′ \(Int(e.fit.dPrimeM.rounded()))m(참고만) · R² \(String(format: "%.3f", e.fit.r2)) · 점 \(pts)"
+        }
+        if let e = MRCriticalSpeed.estimate(runs: rows, asOf: now) {
+            print("[CS] 강한 러닝 기준: \(describe(e))")
+            MRCriticalSpeedDiag.csPace = e.paceSecPerKm
+        } else {
+            print("[CS] 강한 러닝 기준: 추정 불가(2~20분 점 3개 미만)")
+        }
+        if let all = MRCriticalSpeed.estimate(runs: rows, asOf: now, hardOnly: false) {
+            print("[CS] 모든 러닝 기준(비교용): \(describe(all))")
+        }
+        #endif
+    }
+
     /// 엔진이 학습한 페이스 더위 모델을 분류기에 연결한다.
     /// 모델이 처음 준비되거나 계수가 실질적으로 바뀌면 8주를 재분류한다 — 그전에 분류된 러닝은 원본 페이스 기준이라
     /// 더운 날 러닝이 이지런·LSD로, 선선한 날 러닝이 거리주로 잘못 잡혀 있을 수 있다.
@@ -1332,6 +1407,7 @@ class HealthKitManager {
                 )
                 #endif
                 persistWorkoutType(type, splits: actSplits, for: act.id)
+                if !actSplits.isEmpty { noteBestKm([act.id: actSplits]) }
                 if actSplits.isEmpty { provisionalCount += 1 } else { confirmedCount += 1 }
                 #if DEBUG
                 let distKm  = String(format: "%.1f", act.distance / 1000)
