@@ -822,4 +822,12 @@ struct RunSummaryTests {
         i.isPlanWeekPoint = false
         #expect(RunSummary.lines(i).first { $0.axis == "심박" }?.state == "테이퍼 주인데 이지 상한 위 · 평균 144(상한 139)")
     }
+
+    @Test func koreanParticlesForLabels() {
+        #expect(KoreanParticle.instrumental(after: "빌드업") == "으로")
+        #expect(KoreanParticle.instrumental(after: "거리주") == "로")
+        #expect(KoreanParticle.instrumental(after: "인터벌") == "로")   // ㄹ 받침
+        #expect(KoreanParticle.and(after: "템포런") == "과")
+        #expect(KoreanParticle.and(after: "거리주") == "와")
+    }
 }

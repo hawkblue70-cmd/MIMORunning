@@ -71,7 +71,7 @@ enum EffortRules {
                                  "Effort \(e) · usual \(b) — an easier-than-usual \(label.lowercased()).", ja: "体感\(e) · 普段\(b) — 普段より楽に走れた\(label)です。"),
                     highlights: ["\(e)"]))
             } else if let b = i.baseline, cInsight == nil {
-                out.append(matched(e, b))
+                out.append(matched(e, b, label: label))
             }
         } else if hardTypes.contains(i.type), let b = i.baseline {
             if e <= b - 2 {
@@ -81,10 +81,10 @@ enum EffortRules {
                                  "Effort \(e), below your usual \(b) for this workout — a comfortable day.", ja: "体感\(e)で、普段の同じ練習(\(b))より低かったです。余裕をもってこなした日。"),
                     highlights: ["\(e)"]))
             } else {
-                out.append(matched(e, b))
+                out.append(matched(e, b, label: label))
             }
         } else if let b = i.baseline {
-            out.append(matched(e, b))
+            out.append(matched(e, b, label: label))
         }
 
         // ── B: 더위·습도 (기준선 필요) ──
@@ -119,11 +119,14 @@ enum EffortRules {
         return EffortRuleOutput(insights: out, replacesEnvironment: replacesEnv)
     }
 
-    private static func matched(_ e: Int, _ b: Int) -> RunInsight {
+    /// 그 유형의 평소 체감과 비슷 — "훈련 의도와 맞았습니다"는 아침에 이지를 권한 날 빌드업으로 뛴 러닝에도 붙어
+    /// 아침 제안을 따른 것처럼 읽혔다(2026-11-03). 무엇과 비교했는지(평소 그 유형)만 밝힌다.
+    private static func matched(_ e: Int, _ b: Int, label: String) -> RunInsight {
         let L = AppLanguage.shared
-        return RunInsight(category: .intensity, tone: .good, badge: L.s("의도에 맞는 강도", "On-Target Effort", ja: "意図どおりの強度"),
-                          message: L.s("체감 \(e) · 평소 \(b) — 훈련 의도와 맞았습니다.",
-                                       "Effort \(e) · usual \(b) — matched the session's intent.", ja: "体感\(e) · 普段\(b) — 練習の意図と合っていました。"),
+        return RunInsight(category: .intensity, tone: .good, badge: L.s("평소 체감", "Usual Effort", ja: "普段どおりの体感"),
+                          message: L.s("체감 \(e) · 평소 \(label) \(b) — 평소 \(label)\(KoreanParticle.and(after: label)) 비슷한 체감이었습니다.",
+                                       "Effort \(e) · usual \(label.lowercased()) \(b) — about the same as your usual \(label.lowercased()).",
+                                       ja: "体感\(e) · 普段の\(label) \(b) — 普段の\(label)と同じくらいの体感でした。"),
                           highlights: ["\(e)"])
     }
 

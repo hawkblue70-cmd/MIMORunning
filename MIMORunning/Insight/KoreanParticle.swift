@@ -15,4 +15,20 @@ enum KoreanParticle {
         default:         return "은"
         }
     }
+
+    /// 낱말 마지막 한글 글자의 받침 — 한글이 아니면 nil.
+    private static func jongseong(_ word: String) -> Int? {
+        guard let c = word.unicodeScalars.last(where: { !CharacterSet.whitespaces.contains($0) }),
+              (0xAC00...0xD7A3).contains(c.value) else { return nil }
+        return Int((c.value - 0xAC00) % 28)
+    }
+
+    /// "과/와" — 받침 있으면 "과", 없거나 한글이 아니면 "와"
+    static func and(after word: String) -> String { (jongseong(word) ?? 0) == 0 ? "와" : "과" }
+
+    /// "으로/로" — 받침 없음·ㄹ 받침(8)이면 "로", 그 밖 받침이면 "으로"
+    static func instrumental(after word: String) -> String {
+        guard let j = jongseong(word), j != 0, j != 8 else { return "로" }
+        return "으로"
+    }
 }

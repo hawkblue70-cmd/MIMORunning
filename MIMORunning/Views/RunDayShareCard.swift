@@ -454,6 +454,8 @@ struct RunDayShareCard: View {
     var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
     /// km 구간 — 포인트 날 "→ 실제"의 마지막 구간 페이스(빌드업)
     var splits: [SplitData] = []
+    /// 이 러닝의 저장 유형 — 이지를 권한 날 강도 유형으로 뛰었으면 평균 대신 후반을 적는다
+    var actualType: WorkoutType? = nil
 
     private var divider: some View {
         Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
@@ -499,6 +501,19 @@ struct RunDayShareCard: View {
         if e.level == "go", e.sessionIsPoint, let session = InsightMorning.sessionText(line: e.line) {
             return pointActual(session: session)
         }
+        // 이지를 권한 날 강도 유형(빌드업·템포·인터벌·거리주)으로 뛰었으면 평균 대신 후반 — 7'20"대 출발이 평균을 늦춰
+        // "6'57"로 페이스는 지켰고, 심박만 1 높았다"로 읽혔지만 실제로는 6'29"·심박 179까지 올린 빌드업이었다(2026-11-03)
+        // 이지를 권한 날만(판정 이지런, 또는 강도 OK인데 오늘 세션이 이지라 이지 상한을 적은 날) — 강도 OK 날 빌드업은 해당 없음
+        let easyAdvised = e.level == "easy" || e.easyCapHR != nil
+        if easyAdvised, let t = actualType, t != .race, MRPlanPoint.pointWorkoutTypes.contains(t), let late = lateTwoKm() {
+            let label = t.koreanLabel
+            let capS = (e.easyCapHR).map { L.s("(제안 \($0) 아래)", " (guide: under \($0))", ja: "(提案\($0)未満)") } ?? ""
+            let hrS = late.hrLo == late.hrHi ? "\(late.hrHi)" : "\(late.hrLo)~\(late.hrHi)"
+            return L.s("→ 실제: 이지 대신 \(label)\(KoreanParticle.instrumental(after: label)) 달렸습니다 · 마지막 2km \(mrFormatPace(late.pace)) · 심박 \(hrS)\(capS)",
+                       "→ Actual: ran a \(label.lowercased()) instead of easy · last 2 km \(mrFormatPace(late.pace)) · HR \(hrS)\(capS)",
+                       ja: "→ 実際: イージーの代わりに\(label)で走りました · 最後の2km \(mrFormatPace(late.pace)) · 心拍\(hrS)\(capS)")
+                .keepingNumberUnitsTogether
+        }
         guard let hr = hrValue, let hrS = hrStr else { return nil }
         let text = e.why + " " + e.data
         func firstMatch(_ patterns: [String]) -> String? {
@@ -543,6 +558,16 @@ struct RunDayShareCard: View {
                        "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hrS) stayed under \(cap)",
                        ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hrS)で\(cap)未満でした")
         }
+    }
+
+    /// 마지막 2km(풀 구간 둘)의 시간 가중 페이스와 심박 범위 — 구간이 모자라면 nil
+    private func lateTwoKm() -> (pace: Double, hrLo: Int, hrHi: Int)? {
+        let full = splits.filter { $0.distanceM >= 900 }.sorted { $0.id < $1.id }.suffix(2)
+        guard full.count == 2 else { return nil }
+        let d = full.reduce(0.0) { $0 + $1.distanceM }, t = full.reduce(0.0) { $0 + $1.duration }
+        let hrs = full.compactMap(\.avgHeartRate)
+        guard d > 0, let lo = hrs.min(), let hi = hrs.max() else { return nil }
+        return (t / (d / 1000), lo, hi)
     }
 
     /// "유형 · 제목" — 제목에 이미 들어 있는 유형 이름은 빼고 잇는다("롱런 · 기록을 쓴 롱런" → "기록을 쓴 롱런",
@@ -676,6 +701,7 @@ struct RunDayShareSheet: View {
     var monthKm: Double? = nil
     var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
     var splits: [SplitData] = []
+    var actualType: WorkoutType? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -697,7 +723,7 @@ struct RunDayShareSheet: View {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
                         weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight,
-                        comparisonHR: comparisonHR, splits: splits)
+                        comparisonHR: comparisonHR, splits: splits, actualType: actualType)
     }
 
     var body: some View {

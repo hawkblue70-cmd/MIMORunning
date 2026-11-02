@@ -50,6 +50,8 @@ struct EffortRulesTests {
         let matched = EffortRules.evaluate(input(effort: 7, type: .tempo, baseline: 7))
         #expect(matched.insights.count == 1)
         #expect(matched.insights[0].tone == .good)
+        // "의도"라는 말 대신 무엇과 비교했는지(2026-11-03)
+        #expect(matched.insights[0].message == "체감 7 · 평소 템포런 7 — 평소 템포런과 비슷한 체감이었습니다.")
         let general = EffortRules.evaluate(input(effort: 5, type: .general, baseline: 5))
         #expect(general.insights.count == 1)
         #expect(general.insights[0].tone == .good)
@@ -139,8 +141,8 @@ struct EffortRulesTests {
 
     @Test func badgeTable() {
         let cases: [(WorkoutType, Int, Int?, String?)] = [
-            (.easy, 7, 5, "체감 강도"), (.easy, 5, 5, "의도에 맞는 강도"), (.tempo, 5, 7, "강도 메모"),
-            (.tempo, 7, 7, "의도에 맞는 강도"), (.general, 6, 6, "의도에 맞는 강도"), (.easy, 6, nil, nil),
+            (.easy, 7, 5, "체감 강도"), (.easy, 5, 5, "평소 체감"), (.tempo, 5, 7, "강도 메모"),
+            (.tempo, 7, 7, "평소 체감"), (.general, 6, 6, "평소 체감"), (.easy, 6, nil, nil),
         ]
         for (t, e, b, badge) in cases {
             let o = EffortRules.evaluate(input(effort: e, type: t, baseline: b))
@@ -158,7 +160,7 @@ struct EffortRulesTests {
         #expect(o.insights[0].tone == .good)
         #expect(o.insights[0].badge == "편한 날")
         #expect(o.insights[0].message.contains("편하게"))
-        // b−1은 여전히 "의도에 맞는 강도"
-        #expect(EffortRules.evaluate(input(effort: 5, type: .easy, baseline: 6)).insights[0].badge == "의도에 맞는 강도")
+        // b−1은 여전히 "평소 체감"
+        #expect(EffortRules.evaluate(input(effort: 5, type: .easy, baseline: 6)).insights[0].badge == "평소 체감")
     }
 }
