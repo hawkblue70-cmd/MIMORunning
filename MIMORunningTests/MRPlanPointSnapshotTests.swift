@@ -57,6 +57,19 @@ struct MRPlanPointSnapshotTests {
                           breakdown: breakdown, point: point)
     }
 
+    @Test func taperRacePacePointFollowsLivePaceThisWeek() {
+        // 저장된 이번 주 테이퍼 강도 훈련 5'30" — 라이브(대회 예상 평균) 5'24"로 페이스만 바뀐다(2026-11-02)
+        let stored = MRPlanPoint(kind: .racePaceShort, totalKm: 6.3, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 330)
+        let live = MRPlanPoint(kind: .racePaceShort, totalKm: 6.3, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 324)
+        let snap = snapWeek(0, phase: "테이퍼", point: stored, breakdown: "롱런 14km + 짧게 4.5km × 3회 · 강도는 그대로")
+        let lw = liveWeek(0, phase: "테이퍼", point: live)
+        let r = mrFillSnapshotPoints(snapshot: [snap], live: [lw], thisMonday: wk(0), raceDistanceM: MRDistance.dH)
+        #expect(r.filled == 1)
+        #expect(r.weeks[0].point?.paceSecPerKm == 324)
+        #expect(r.weeks[0].breakdown == snap.breakdown)
+        #expect(MRPlanGovernance.applyingSnapshot([lw], snapshot: [snap], easyPaceSecPerKm: 400)[0].point?.paceSecPerKm == 324)
+    }
+
     @Test func fillsOnlyFutureWeeksWithSamePhase() {
         let thisMon = wk(0)
         let r = mrFillSnapshotPoints(

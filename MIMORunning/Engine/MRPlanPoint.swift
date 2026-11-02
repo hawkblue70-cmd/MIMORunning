@@ -347,6 +347,16 @@ func mrFillSnapshotPoints(snapshot: [MRPlanWeekSummary], live: [MRPlanWeek], thi
     var filled = 0
     let weeks = snapshot.map { s -> MRPlanWeekSummary in
         let mon = calendar.startOfDay(for: s.monday)
+        // 테이퍼 강도 훈련(대회 페이스 1km × 3회)의 페이스는 이번 주도 라이브 값으로 — 대회 예상 평균과 같은 숫자로 바꾼 뒤(120abd7)
+        // 이미 저장된 이번 주가 옛 5'30"으로 남아 같은 카드의 "대회 예상 평균 5'24""와 갈렸다(2026-11-02). 거리·횟수는 그대로.
+        if let sp = s.point, sp.kind == .racePaceShort, mon >= thisMon,
+           let lp = liveByMonday[mon]?.point, lp.kind == .racePaceShort, abs(lp.paceSecPerKm - sp.paceSecPerKm) >= 0.5 {
+            var out = s
+            out.point = MRPlanPoint(kind: sp.kind, totalKm: sp.totalKm, reps: sp.reps, repKm: sp.repKm,
+                                    sustainedKm: sp.sustainedKm, paceSecPerKm: lp.paceSecPerKm)
+            filled += 1
+            return out
+        }
         // 이미 채운 미래 주 — 같은 단계 라이브 주를 따른다(빈도 습관·인터벌 페이스 근거·종류 규칙이 바뀌면 반영).
         // 라이브에 없으면 빼고 이지 한 번으로 되돌린다. 페이스만 5초/km 안쪽 차이면 그대로(스냅샷을 자꾸 다시 쓰지 않게).
         if let sp = s.point {

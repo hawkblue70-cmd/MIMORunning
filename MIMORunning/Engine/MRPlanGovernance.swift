@@ -47,12 +47,19 @@ enum MRPlanGovernance {
             guard let s = byMonday[calendar.startOfDay(for: w.monday)] else { return w }
             let mins = s.longRunKm * (easyPaceSecPerKm ?? 420) / 60.0
             // 포인트도 스냅샷 값 — 옛 스냅샷의 이번 주(nil)에 라이브 포인트가 새어 들지 않게(설계 6절 "이번 주 공백")
+            // 단 테이퍼 강도 훈련의 페이스만은 라이브(대회 예상 평균과 같은 숫자, 2026-11-02) — 저장값 갱신 전에도 화면이 맞게
+            var point = s.point
+            if let sp = s.point, sp.kind == .racePaceShort, let lp = w.point, lp.kind == .racePaceShort,
+               abs(lp.paceSecPerKm - sp.paceSecPerKm) >= 0.5 {
+                point = MRPlanPoint(kind: sp.kind, totalKm: sp.totalKm, reps: sp.reps, repKm: sp.repKm,
+                                    sustainedKm: sp.sustainedKm, paceSecPerKm: lp.paceSecPerKm)
+            }
             return MRPlanWeek(idx: w.idx, monday: w.monday, phase: s.phase,
                               longRunKm: s.longRunKm, longRunMin: mins.rounded(),
                               weeklyKm: s.weeklyKm, projectedMin: w.projectedMin,
                               isNewMax: w.isNewMax, isVolRecord: w.isVolRecord,
                               breakdown: s.breakdown.isEmpty ? w.breakdown : s.breakdown,
-                              point: s.point)
+                              point: point)
         }
     }
 
