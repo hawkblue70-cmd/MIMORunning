@@ -17,7 +17,8 @@ private let mrWarn   = Color(red: 0.95, green: 0.68, blue: 0.25)
 /// 플랜 빌드 시점에 한국어로 생성된 breakdown 문자열을 표시 시점에 번역.
 /// 캐시된 플랜에도 적용되도록 view layer에서 처리한다.
 /// 훈련일지 카드의 예정 주 문구도 같이 쓴다(2026-10-07).
-func localizedBreakdown(_ s: String) -> String {
+func localizedBreakdown(_ raw: String) -> String {
+    let s = mrBreakdownDisplay(raw)
     if AppLanguage.shared.isJapanese {
         // 긴 구절부터 — "롱런"·"대회"를 먼저 바꾸면 구절이 안 맞는다
         return s
@@ -602,7 +603,7 @@ struct MRWeekTable: View {
     private func pointLines(_ pt: MRPlanPoint, monday: Date, longRunKm: Double) -> some View {
         let L = AppLanguage.shared
         // 포인트는 이지에 섞는 게 아니라 이지 한 번을 대신하는 별도 러닝 — 문구로 드러낸다
-        Text(L.s("강도 훈련(이지 1회 대신) · \(pt.text) · \(pt.howTo)", "Hard session (replaces one easy run) · \(pt.text) · \(pt.howTo)", ja: "強度練習(イージー1回の代わり) · \(pt.text) · \(pt.howTo)"))
+        Text(pt.dayText + L.s(" · 이지 한 번 대신", " · replaces one easy run", ja: " · イージー1回の代わり"))
             .font(.system(size: 11))
             .foregroundStyle(.white.opacity(0.72))
         if let done = pointRunIn(week: monday, longRunKm: longRunKm) {

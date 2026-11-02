@@ -154,8 +154,9 @@ struct MRPlanPointTests {
         let pt = MRPlanPoint(kind: .racePaceShort, totalKm: 6.8, reps: 3, repKm: 1, sustainedKm: nil, paceSecPerKm: 312)
         let w = MRPlanWeek(idx: 1, monday: mon, phase: "테이퍼", longRunKm: 12, longRunMin: 80, weeklyKm: 22,
                            projectedMin: 110, isNewMax: false, breakdown: "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로", point: pt)
-        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 짧게 1.6km × 2회 · 강도는 그대로 + 강도 훈련 대회 페이스 1km × 3회 5'12\"")
+        // 표시 — "· 강도는 그대로" 빼고 "짧게"→"이지", 강도 훈련은 하루 단위·하는 법까지(2026-11-02)
+        #expect(mrBreakdownWithPoint(w) == "롱런 12km + 이지 1.6km × 2회 + 강도 훈련 하루(총 6.8km): 몸 풀기 2km → 대회 페이스 5'12\"로 1km씩 세 번, 사이 1분 조깅 → 마무리 1km")
         var noPoint = w; noPoint.point = nil
-        #expect(mrBreakdownWithPoint(noPoint) == noPoint.breakdown)
+        #expect(mrBreakdownWithPoint(noPoint) == "롱런 12km + 이지 1.6km × 2회")
     }
 }

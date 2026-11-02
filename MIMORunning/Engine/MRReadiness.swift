@@ -591,9 +591,9 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
                     let ko = ["일", "월", "화", "수", "목", "금", "토"][wd], en = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][wd]
                     let ja = ["日", "月", "火", "水", "木", "金", "土"][wd]
                     let md = "\(c.month ?? 0)/\(c.day ?? 0)"
-                    hint = " " + L.s("이번 주 강도 훈련(\(pt.text))은 \(md)(\(ko))부터 넣으세요.",
-                                     "Do this week's hard session (\(pt.text)) from \(md) (\(en)).",
-                                     ja: "今週の強度練習(\(pt.text))は\(md)(\(ja))から入れてください。")
+                    hint = " " + L.s("이번 주 강도 훈련(\(pt.core))은 \(md)(\(ko))부터 넣으세요.",
+                                     "Do this week's hard session (\(pt.core)) from \(md) (\(en)).",
+                                     ja: "今週の強度練習(\(pt.core))は\(md)(\(ja))から入れてください。")
                 }
             }
         }

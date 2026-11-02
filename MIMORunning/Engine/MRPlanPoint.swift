@@ -125,6 +125,54 @@ struct MRPlanPoint: Codable, Equatable, Sendable {
 }
 
 extension MRPlanPoint {
+    /// 하는 법까지 담은 한 줄 — "대회 페이스 5'24"로 1km씩 세 번, 사이 1분 조깅". 러닝 단위("하루")와 반복 단위("세 번")를
+    /// 다른 말로 쓴다 — "강도 훈련 1회 · 1km × 3회"가 4.5km 이지 안에 섞어 뛰라는 뜻으로 읽혔다(2026-11-02 사용자).
+    /// 빠르게 뛰는 부분만 — 아침 제안 "이번 주 강도 훈련(…)은 화요일부터"처럼 짧게 말할 때
+    var core: String {
+        let L = AppLanguage.shared
+        let pace = mrFormatPace(paceSecPerKm)
+        func times(_ n: Int) -> String {
+            let ko = [1: "한 번", 2: "두 번", 3: "세 번", 4: "네 번", 5: "다섯 번", 6: "여섯 번", 7: "일곱 번", 8: "여덟 번"][n] ?? "\(n)번"
+            return L.s(ko, "× \(n)", ja: "\(n)本")
+        }
+        switch kind {
+        case .speed:
+            let rep = mrRepDistanceString(repKm ?? 1), n = reps ?? 0
+            return L.s("\(rep)씩 \(times(n)) \(pace), 사이 \(Self.intervalJogMin)분 조깅",
+                       "\(rep) \(times(n)) at \(pace), \(Self.intervalJogMin)-min jog between",
+                       ja: "\(rep)を\(times(n)) \(pace)、間は\(Self.intervalJogMin)分ジョグ")
+        case .tempo:
+            let t = mrPointKmString(sustainedKm ?? 0)
+            return L.s("템포 \(t)km 지속 \(pace)", "tempo \(t) km steady at \(pace)", ja: "テンポ\(t)km一定 \(pace)")
+        case .buildUp:
+            let s = mrPointKmString(sustainedKm ?? 0)
+            return L.s("편하게 시작해 점점 올려 마지막 \(s)km \(pace)", "start easy, build to \(pace) for the last \(s) km",
+                       ja: "楽に入って徐々に上げ、最後の\(s)kmを\(pace)")
+        case .racePaceShort:
+            let n = reps ?? 0
+            return L.s("대회 페이스 \(pace)로 1km씩 \(times(n)), 사이 \(Self.racePaceJogMin)분 조깅",
+                       "race pace \(pace) for 1 km \(times(n)), \(Self.racePaceJogMin)-min jog between",
+                       ja: "レースペース\(pace)で1kmを\(times(n))、間は\(Self.racePaceJogMin)分ジョグ")
+        }
+    }
+
+    /// 그날 러닝 전체 — 몸 풀기·마무리까지. 총거리(6.3km) 안에 빠른 3km가 들어 있다는 게 보이게
+    /// ("총 6.3km + 1km씩 세 번"이 따로 더해지는 것처럼 읽혔다, 2026-11-02). 빌드업은 그 자체가 한 흐름이라 그대로.
+    var detail: String {
+        guard kind != .buildUp else { return core }
+        let L = AppLanguage.shared
+        let w = mrPointKmString(Self.warmupKm), c = mrPointKmString(Self.cooldownKm)
+        return L.s("몸 풀기 \(w)km → \(core) → 마무리 \(c)km", "\(w) km warm-up → \(core) → \(c) km cool-down",
+                   ja: "ウォームアップ\(w)km → \(core) → クールダウン\(c)km")
+    }
+
+    /// 주간 구성 줄에 붙는 강도 훈련 — "강도 훈련 하루(총 6.3km): 몸 풀기 2km → 대회 페이스 5'24"로 1km씩 세 번, 사이 1분 조깅 → 마무리 1km"
+    var dayText: String {
+        let total = mrPointKmString(totalKm)
+        return AppLanguage.shared.s("강도 훈련 하루(총 \(total)km): ", "Hard session day (\(total) km total): ",
+                                    ja: "強度練習の日(計\(total)km): ") + detail
+    }
+
     /// 어떻게 뛰는지 — 주차표에서 `text` 뒤에 붙인다. "1km × 4회"만으로는 이지에 섞는 건지, 따로 뛰는 건지 알 수 없었다.
     var howTo: String {
         let L = AppLanguage.shared
@@ -568,6 +616,19 @@ func mrRhythmSuggestion(level: MRReadiness.Level, ctx: MRRhythmContext, runs: [M
 /// 계획 문구 + 포인트 — D-day 카드처럼 이번 주 계획을 한 줄로 말하는 곳. 포인트가 없으면 문구 그대로.
 /// (안내 문구는 포인트가 있으면 이지 횟수가 하나 줄어 있어, 포인트를 빼고 말하면 합이 주간 km와 안 맞는다)
 func mrBreakdownWithPoint(_ w: MRPlanWeek) -> String {
-    guard let pt = w.point else { return w.breakdown }
-    return w.breakdown + AppLanguage.shared.s(" + 강도 훈련 ", " + hard session: ", ja: " + 強度練習 ") + pt.text
+    let bd = mrBreakdownDisplay(w.breakdown)
+    guard let pt = w.point else { return bd }
+    return bd + " + " + pt.dayText
+}
+
+/// 주간 구성 문구 표시용 — 테이퍼의 "· 강도는 그대로"는 빼고(카드 위 "페이스는 그대로"가 이미 원칙을 말한다) "짧게"는 "이지"로.
+/// "짧게 4.5km × 3회 · 강도는 그대로"가 이지 세 번도 대회 페이스로 뛰라는 뜻으로 읽혔다(2026-11-02 사용자).
+/// 저장된 문구(스냅샷)는 그대로 두고 보여 줄 때만 바꾼다 — 문구 파서(`mrParsePlanBreakdown`)는 둘 다 읽는다.
+func mrBreakdownDisplay(_ s: String) -> String {
+    s.replacingOccurrences(of: " · 강도는 그대로", with: "")
+        .replacingOccurrences(of: " · Keep the intensity", with: "")
+        .replacingOccurrences(of: " · 強度はそのまま", with: "")
+        .replacingOccurrences(of: "짧게 ", with: "이지 ")
+        .replacingOccurrences(of: "Short ", with: "Easy ")
+        .replacingOccurrences(of: "短め ", with: "イージー ")
 }
