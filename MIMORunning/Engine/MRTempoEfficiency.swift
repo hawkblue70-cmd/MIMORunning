@@ -103,6 +103,26 @@ enum MRTempoEfficiency {
         monthly(runs, band: tempoBand(thresholdPace: thresholdPace), heat: heat, calendar: cal)
     }
 
+    /// 성장 탭 '같은 페이스 심박' 카드 값 — 평소 페이스 띠 · 월 5회↑ 달 · 그런 달이 3개↑일 때만.
+    struct UsualTrend: Equatable {
+        let band: ClosedRange<Double>
+        /// 환산 기준 페이스(띠 가운데)
+        let centerPace: Double
+        let months: [Month]
+        var first: Month { months[0] }
+        var latest: Month { months[months.count - 1] }
+    }
+
+    static let minTrendMonths = 3
+
+    static func usualTrend(_ runs: [RunRow], heat: MRHeatHRModel, bpmPerMetersPerMin: Double?,
+                           calendar cal: Calendar = .current) -> UsualTrend? {
+        guard let band = usualBand(runs) else { return nil }
+        let months = trend(runs, band: band, heat: heat, bpmPerMetersPerMin: bpmPerMetersPerMin, calendar: cal)
+        guard months.count >= minTrendMonths else { return nil }
+        return UsualTrend(band: band, centerPace: (band.lowerBound + band.upperBound) / 2, months: months)
+    }
+
     /// 화면용 추세 — 월 5회 이상인 달만.
     static func trend(_ runs: [RunRow], band: ClosedRange<Double>, heat: MRHeatHRModel,
                       bpmPerMetersPerMin: Double?, calendar cal: Calendar = .current) -> [Month] {

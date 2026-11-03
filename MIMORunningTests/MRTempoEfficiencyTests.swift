@@ -95,6 +95,29 @@ struct MRTempoEfficiencyTests {
         #expect(t.map(\.runs) == [5])
     }
 
+    // MARK: 성장 탭 카드 — 월 5회↑ 달 3개↑일 때만
+
+    private func monthRuns(_ cal: Calendar, month: Int, count: Int, pace: Double, hr: Double) -> [T.RunRow] {
+        (1...count).map { day in
+            T.RunRow(date: cal.date(from: DateComponents(year: 2026, month: month, day: day, hour: 7))!, type: .easy, tempC: nil,
+                     kms: [.init(km: 3, paceSec: pace, hr: hr), .init(km: 4, paceSec: pace, hr: hr)])
+        }
+    }
+
+    @Test func usualTrendNeedsThreeQualifiedMonths() throws {
+        let cal = Calendar(identifier: .gregorian)
+        let two = monthRuns(cal, month: 6, count: 5, pace: 375, hr: 141) + monthRuns(cal, month: 7, count: 5, pace: 375, hr: 147)
+        #expect(T.usualTrend(two, heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal) == nil)
+        let three = two + monthRuns(cal, month: 10, count: 6, pace: 375, hr: 142)
+            + monthRuns(cal, month: 5, count: 4, pace: 375, hr: 149)      // 4회 달은 빠진다
+        let t = try #require(T.usualTrend(three, heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal))
+        #expect(t.months.map(\.runs) == [5, 5, 6])
+        #expect(t.first.hr == 141)
+        #expect(t.latest.hr == 142)
+        #expect(t.centerPace == 375)
+        #expect(t.band == 365...385)
+    }
+
     @Test func monthlyMediansGroupByCalendarMonth() {
         let cal = Calendar(identifier: .gregorian)
         func d(_ m: Int, _ day: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: day, hour: 7))! }

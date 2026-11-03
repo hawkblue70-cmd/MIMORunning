@@ -256,6 +256,10 @@ struct GrowthView: View {
                             if manager.userLevel.bucket >= .intermediate, let t = engine.thresholdTrend, t.points.count >= 3 {
                                 ThresholdTrendCard(trend: t)
                             }
+                            // 같은 페이스 심박 — 평소 페이스 km의 월별 심박(2026-11-03). 월 5회↑ 달 3개↑일 때만.
+                            if let u = usualPaceHRTrend {
+                                UsualPaceHRCard(trend: u)
+                            }
                             metricTrendsSection
                             // 안정시 심박 추세 — 러닝 습관 위(2026-10-02 사용자 지정). 워치 표본 부족이면 nil로 빠진다.
                             if let rhr = engine.restingHRTrend {
@@ -393,6 +397,12 @@ struct GrowthView: View {
     }
 
     // MARK: - Helpers
+
+    /// '같은 페이스 심박' 카드 값 — km 기록(HealthKitManager) + 기온·심박-페이스 모델(엔진). 표본 부족이면 nil.
+    private var usualPaceHRTrend: MRTempoEfficiency.UsualTrend? {
+        let slope = engine.hrPace.ok && engine.hrPace.bSpeed > 0 ? engine.hrPace.bSpeed : nil
+        return MRTempoEfficiency.usualTrend(manager.kmPaceHRRows, heat: engine.heatHR, bpmPerMetersPerMin: slope)
+    }
 
     private var userAge: Int? {
         guard let comps = manager.userDateOfBirth,

@@ -412,14 +412,15 @@ class HealthKitManager {
                     self?.fillFastFinishFlagsIfNeeded()
                 }
             }
-            #if DEBUG
-            // 임계 속도(CS) 1단계 — 진단 로그만. 첫 화면·유형 백필 뒤로 미룬다.
+            // km 기록 채우기 — 성장 탭 '같은 페이스 심박' 카드(실제 빌드 포함) · CS 진단 로그(DEBUG만).
+            // 첫 화면·유형 백필 뒤로 미룬다.
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(10))
+                #if DEBUG
                 await self?.fillBestKmAndLogCriticalSpeed()
+                #endif
                 await self?.fillKmPaceHRAndLogTempoEfficiency()
             }
-            #endif
         }
 
         // 5분 이내 early return은 위에서 이미 처리됨.
@@ -981,6 +982,8 @@ class HealthKitManager {
 
     nonisolated static let kmPaceHRKey = "mimo.kmPaceHR.v1"
     @ObservationIgnored private var tempoEfficiencyDiagRan = false
+    /// 최근 26주 러닝별 km 3~10 페이스·심박 — 성장 탭 '같은 페이스 심박' 카드 입력. 실행당 한 번 채운다.
+    private(set) var kmPaceHRRows: [MRTempoEfficiency.RunRow] = []
 
     /// 스플릿을 받은 김에 CS 구간 기록과 템포 효율 km 기록을 함께 저장한다(같은 스플릿을 두 번 조회하지 않게).
     private func noteSplits(_ splitsByID: [UUID: [SplitData]]) {
@@ -998,8 +1001,8 @@ class HealthKitManager {
         UserDefaults.standard.set(dict, forKey: Self.kmPaceHRKey)
     }
 
-    /// 최근 26주 러닝 중 km 기록이 없는 것만 스플릿을 받아(상세 캐시 우선) 저장하고, 템포 효율 진단에 넘긴다.
-    /// 화면에는 쓰지 않는다. 실행당 한 번, 최대 80건 — 남은 건 다음 실행에서.
+    /// 최근 26주 러닝 중 km 기록이 없는 것만 스플릿을 받아(상세 캐시 우선) 저장하고 `kmPaceHRRows`를 채운다
+    /// (성장 탭 카드). DEBUG에선 템포 효율 진단 로그에도 넘긴다. 실행당 한 번, 최대 80건 — 남은 건 다음 실행에서.
     func fillKmPaceHRAndLogTempoEfficiency() async {
         guard !tempoEfficiencyDiagRan else { return }
         tempoEfficiencyDiagRan = true
@@ -1017,7 +1020,6 @@ class HealthKitManager {
             await Task.yield()
         }
         noteSplits(fresh)
-        #if DEBUG
         let dict = UserDefaults.standard.dictionary(forKey: Self.kmPaceHRKey) as? [String: [Double]] ?? [:]
         let typeOf = workoutTypeLookup()
         let rows: [MRTempoEfficiency.RunRow] = runsInWindow.compactMap { a in
@@ -1027,6 +1029,8 @@ class HealthKitManager {
             }
             return MRTempoEfficiency.RunRow(date: a.date, type: typeOf(a.id), tempC: a.temperatureC, kms: kms)
         }
+        kmPaceHRRows = rows
+        #if DEBUG
         let missingLeft = runsInWindow.filter { dict[$0.id.uuidString] == nil }.count
         print("[템포효율] 26주 러닝 \(runsInWindow.count)건 · km 기록 \(runsInWindow.count - missingLeft)건(이번에 받음 \(fresh.count), 남음 \(missingLeft))")
         MRTempoEfficiencyDiag.rows = rows
