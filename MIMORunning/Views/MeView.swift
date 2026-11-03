@@ -298,6 +298,8 @@ struct MeView: View {
                         statsSection
                         shoesSection
                         crewNicknameSection
+                        // 근거 문헌 — 조언·판정이 기대는 연구를 기능별로(기본 접힘, 2026-11-03)
+                        EvidenceLibrarySection()
                         settingsSection
                         Spacer(minLength: 32)
                     }
