@@ -708,6 +708,7 @@ final class MREngineStore: ObservableObject {
             let hrStr = last.hr.map { "심박 \(Int($0.rounded()))(\(last.hrConfidence.label))" } ?? "심박 없음"
             print("[역치] 현재 \(mrFormatPace(last.paceSecPerKm)) · \(hrStr) · 강한 러닝 \(t.points.count)점 · 문장 \(t.sentence ?? "없음")")
             MRCriticalSpeedDiag.thresholdPace = last.paceSecPerKm
+            MRTempoEfficiencyDiag.paceSlope = hrPace.ok && hrPace.bSpeed > 0 ? hrPace.bSpeed : nil
             MRTempoEfficiencyDiag.heat = heatHR
             MRTempoEfficiencyDiag.thresholdPace = last.paceSecPerKm
         } else {

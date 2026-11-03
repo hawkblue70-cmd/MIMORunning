@@ -73,6 +73,28 @@ struct MRTempoEfficiencyTests {
         #expect(v.hr == 142)
     }
 
+    @Test func paceCorrectedToBandCenter() throws {
+        // 띠 350~370 가운데 360. 370으로 뛴 러닝은 느린 만큼 심박이 낮다 — 본인 기울기 0.5bpm/(m/min)로 360 기준 환산
+        let r = T.RunRow(date: Date(), type: .easy, tempC: nil,
+                         kms: [.init(km: 3, paceSec: 370, hr: 140), .init(km: 4, paceSec: 370, hr: 140)])
+        let v = try #require(T.runValue(r, band: 350...370, heat: MRHeatHRModel(), bpmPerMetersPerMin: 0.5))
+        let expected = 140 + 0.5 * (60_000.0 / 360 - 60_000.0 / 370)
+        #expect(abs(v.hr - expected) < 1e-9)
+        #expect(v.rawHR == 140)
+    }
+
+    @Test func trendKeepsMonthsWithFiveRuns() {
+        let cal = Calendar(identifier: .gregorian)
+        func d(_ m: Int, _ day: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: day, hour: 7))! }
+        func row(_ date: Date) -> T.RunRow {
+            T.RunRow(date: date, type: .easy, tempC: nil,
+                     kms: [.init(km: 3, paceSec: 360, hr: 145), .init(km: 4, paceSec: 360, hr: 145)])
+        }
+        let may = (1...4).map { row(d(5, $0)) }, june = (1...5).map { row(d(6, $0)) }
+        let t = T.trend(may + june, band: 350...370, heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal)
+        #expect(t.map(\.runs) == [5])
+    }
+
     @Test func monthlyMediansGroupByCalendarMonth() {
         let cal = Calendar(identifier: .gregorian)
         func d(_ m: Int, _ day: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: day, hour: 7))! }

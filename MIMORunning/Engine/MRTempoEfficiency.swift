@@ -22,6 +22,8 @@ enum MRTempoEfficiency {
     static let usualHalfWidthSec = 10.0
     /// 효율 비교에서 빼는 유형 — 인터벌(회복이 섞인 km)·대회(범위에 드는 km는 후반에 지쳐 느려진 km, 실기기 10/4 169bpm)
     static let excludedTypes: Set<WorkoutType> = [.interval, .race]
+    /// 추세에 쓰는 달의 최소 러닝 수 ⚠ 임의로 정함 — 실기기 5월 4회(9km)만 튀었다(2026-11-03)
+    static let minRunsPerMonth = 5
 
     struct KmRow: Equatable {
         let km: Int
@@ -81,13 +83,19 @@ enum MRTempoEfficiency {
         runValue(r, band: tempoBand(thresholdPace: thresholdPace), heat: heat)
     }
 
-    static func runValue(_ r: RunRow, band: ClosedRange<Double>, heat: MRHeatHRModel) -> RunValue? {
+    /// `bpmPerMetersPerMin`(본인 심박-페이스 회귀 기울기, `MRHRPaceModel.bSpeed`)가 있으면 띠 가운데 페이스로 환산한다 —
+    /// 띠(20초) 안에서도 느리게 뛴 달은 심박이 낮게 나온다(실기기 10월 6'21" vs 다른 달 6'15").
+    static func runValue(_ r: RunRow, band: ClosedRange<Double>, heat: MRHeatHRModel,
+                         bpmPerMetersPerMin: Double? = nil) -> RunValue? {
         guard !isExcluded(r) else { return nil }
         let inBand = r.kms.filter { band.contains($0.paceSec) }
         guard inBand.count >= minKmPerRun else { return nil }
         let raw = mrMedian(inBand.map(\.hr))
-        return RunValue(date: r.date, hr: heat.toRef(raw, tempC: r.tempC), rawHR: raw,
-                        paceSec: mrMedian(inBand.map(\.paceSec)), kmCount: inBand.count)
+        let pace = mrMedian(inBand.map(\.paceSec))
+        let center = (band.lowerBound + band.upperBound) / 2
+        let paceAdj = bpmPerMetersPerMin.map { $0 * (60_000 / center - 60_000 / pace) } ?? 0
+        return RunValue(date: r.date, hr: heat.toRef(raw, tempC: r.tempC) + paceAdj, rawHR: raw,
+                        paceSec: pace, kmCount: inBand.count)
     }
 
     static func monthly(_ runs: [RunRow], thresholdPace: Double, heat: MRHeatHRModel,
@@ -95,9 +103,16 @@ enum MRTempoEfficiency {
         monthly(runs, band: tempoBand(thresholdPace: thresholdPace), heat: heat, calendar: cal)
     }
 
+    /// 화면용 추세 — 월 5회 이상인 달만.
+    static func trend(_ runs: [RunRow], band: ClosedRange<Double>, heat: MRHeatHRModel,
+                      bpmPerMetersPerMin: Double?, calendar cal: Calendar = .current) -> [Month] {
+        monthly(runs, band: band, heat: heat, bpmPerMetersPerMin: bpmPerMetersPerMin, calendar: cal)
+            .filter { $0.runs >= minRunsPerMonth }
+    }
+
     static func monthly(_ runs: [RunRow], band: ClosedRange<Double>, heat: MRHeatHRModel,
-                        calendar cal: Calendar = .current) -> [Month] {
-        let values = runs.compactMap { runValue($0, band: band, heat: heat) }
+                        bpmPerMetersPerMin: Double? = nil, calendar cal: Calendar = .current) -> [Month] {
+        let values = runs.compactMap { runValue($0, band: band, heat: heat, bpmPerMetersPerMin: bpmPerMetersPerMin) }
         let groups = Dictionary(grouping: values) { cal.dateInterval(of: .month, for: $0.date)?.start ?? $0.date }
         return groups.keys.sorted().map { k in
             let g = groups[k]!
@@ -112,6 +127,8 @@ enum MRTempoEfficiency {
 @MainActor enum MRTempoEfficiencyDiag {
     static var thresholdPace: Double? { didSet { log() } }
     static var heat: MRHeatHRModel? { didSet { log() } }
+    /// 본인 심박-페이스 기울기(bpm per m/min) — 엔진 `hrPace.bSpeed`, 모델 불가면 nil(보정 없이)
+    static var paceSlope: Double?
     static var rows: [MRTempoEfficiency.RunRow]? { didSet { log() } }
     private static var logged = false
 
@@ -125,6 +142,16 @@ enum MRTempoEfficiency {
         if let u = MRTempoEfficiency.usualBand(rows) {
             print("[평소효율] 평소 페이스 띠 \(mrFormatPace(u.lowerBound))~\(mrFormatPace(u.upperBound))(본인 km 페이스 중앙값 ±\(Int(MRTempoEfficiency.usualHalfWidthSec))초, 인터벌·대회 제외)")
             section("평소효율", band: u, rows: rows, heat: h, listRuns: false)
+            if let k = paceSlope {
+                print("[평소효율:보정] 페이스 보정 \(String(format: "%.2f", k))bpm/(m/min) → 띠 가운데 \(mrFormatPace((u.lowerBound + u.upperBound) / 2)) 기준 · 월 \(MRTempoEfficiency.minRunsPerMonth)회↑만")
+                let mf = DateFormatter(); mf.dateFormat = "yy.MM"
+                let t = MRTempoEfficiency.trend(rows, band: u, heat: h, bpmPerMetersPerMin: k)
+                print("[평소효율:보정] " + (t.isEmpty ? "월 5회 이상인 달 없음" : t.map {
+                    "\(mf.string(from: $0.monthStart)) \($0.runs)회·\(mrFormatPace($0.paceSec))·\(Int($0.hr.rounded()))bpm"
+                }.joined(separator: " / ")))
+            } else {
+                print("[평소효율:보정] 심박-페이스 모델 없음 — 페이스 보정 생략")
+            }
         }
     }
 
