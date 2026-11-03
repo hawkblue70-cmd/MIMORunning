@@ -107,10 +107,11 @@ struct UsualPaceHRCard: View {
                 }
             }
         }
-        .chartXScale(range: .plotDimension(padding: 14))
+        .chartXScale(range: .plotDimension(padding: 20))
         .chartXAxis {
+            // 라벨을 눈금 가운데에 — 오른쪽으로 펼치면(centered: false) 마지막 달 라벨이 차트 끝을 넘어 빠졌다(2026-11-03 실기기)
             AxisMarks(values: trend.months.map(\.monthStart)) { v in
-                AxisValueLabel(centered: false) {
+                AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
                     if let d = v.as(Date.self) {
                         Text(Self.monthLabel.string(from: d))
                             .font(.system(size: 9))
