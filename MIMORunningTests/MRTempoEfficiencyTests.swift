@@ -37,13 +37,40 @@ struct MRTempoEfficiencyTests {
     @Test func runValueHeatAdjustedAndIntervalExcluded() throws {
         let kms = [T.KmRow(km: 3, paceSec: 330, hr: 170), T.KmRow(km: 4, paceSec: 332, hr: 172)]
         // 25°C · 문헌 0.8bpm/°C → 8bpm 빼서 15°C 기준
-        let hot = T.RunRow(date: Date(), type: .race, tempC: 25, kms: kms)
+        let hot = T.RunRow(date: Date(), type: .tempo, tempC: 25, kms: kms)
         let v = try #require(T.runValue(hot, thresholdPace: 318, heat: .fallback()))
         #expect(abs(v.hr - 163) < 1e-9)
         #expect(v.rawHR == 171)
         // 인터벌은 회복 구간이 섞인 km라 쓰지 않는다
         let iv = T.RunRow(date: Date(), type: .interval, tempC: nil, kms: kms)
         #expect(T.runValue(iv, thresholdPace: 318, heat: MRHeatHRModel()) == nil)
+        // 대회도 제외 — 범위에 드는 대회 km는 후반에 지쳐 느려진 km라 심박이 높다(2026-11-03 실기기 10/4 169bpm)
+        let race = T.RunRow(date: Date(), type: .race, tempC: nil, kms: kms)
+        #expect(T.runValue(race, thresholdPace: 318, heat: MRHeatHRModel()) == nil)
+    }
+
+    // MARK: 평소 페이스 띠 — 본인 km 페이스 중앙값 ±10초 (표본 확보용)
+
+    @Test func usualBandIsMedianKmPaceOfEligibleRuns() throws {
+        let easy = T.RunRow(date: Date(), type: .easy, tempC: nil,
+                            kms: [.init(km: 3, paceSec: 355, hr: 140), .init(km: 4, paceSec: 360, hr: 141),
+                                  .init(km: 5, paceSec: 365, hr: 142)])
+        // 대회·인터벌 km는 중앙값에 넣지 않는다
+        let race = T.RunRow(date: Date(), type: .race, tempC: nil,
+                            kms: [.init(km: 3, paceSec: 300, hr: 170), .init(km: 4, paceSec: 300, hr: 170),
+                                  .init(km: 5, paceSec: 300, hr: 170), .init(km: 6, paceSec: 300, hr: 170)])
+        let b = try #require(T.usualBand([easy, race]))
+        #expect(b.lowerBound == 350)
+        #expect(b.upperBound == 370)
+    }
+
+    @Test func runValueInUsualBand() throws {
+        let r = T.RunRow(date: Date(), type: .easy, tempC: nil,
+                         kms: [.init(km: 3, paceSec: 355, hr: 140), .init(km: 4, paceSec: 362, hr: 144),
+                               .init(km: 5, paceSec: 330, hr: 160)])
+        let v = try #require(T.runValue(r, band: 350...370, heat: MRHeatHRModel()))
+        #expect(v.kmCount == 2)
+        #expect(v.hr == 142)
     }
 
     @Test func monthlyMediansGroupByCalendarMonth() {

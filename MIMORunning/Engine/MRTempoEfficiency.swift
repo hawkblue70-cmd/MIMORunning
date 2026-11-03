@@ -18,6 +18,10 @@ enum MRTempoEfficiency {
     static let firstKm = 3
     static let lastKm = 10
     static let minKmPerRun = 2
+    /// 평소 페이스 띠 반폭(초/km) ⚠ 임의로 정함 — 템포 띠만으론 월 1~2회라(2026-11-03 실기기) 표본 확보용
+    static let usualHalfWidthSec = 10.0
+    /// 효율 비교에서 빼는 유형 — 인터벌(회복이 섞인 km)·대회(범위에 드는 km는 후반에 지쳐 느려진 km, 실기기 10/4 169bpm)
+    static let excludedTypes: Set<WorkoutType> = [.interval, .race]
 
     struct KmRow: Equatable {
         let km: Int
@@ -59,10 +63,27 @@ enum MRTempoEfficiency {
         }
     }
 
+    static func tempoBand(thresholdPace: Double) -> ClosedRange<Double> {
+        (thresholdPace + bandLoSec)...(thresholdPace + bandHiSec)
+    }
+
+    /// 평소 페이스 띠 — 비교 대상 러닝(인터벌·대회 제외)의 km 페이스 중앙값 ±10초. km가 없으면 nil.
+    static func usualBand(_ runs: [RunRow]) -> ClosedRange<Double>? {
+        let paces = runs.filter { !isExcluded($0) }.flatMap { $0.kms.map(\.paceSec) }
+        guard !paces.isEmpty else { return nil }
+        let m = mrMedian(paces)
+        return (m - usualHalfWidthSec)...(m + usualHalfWidthSec)
+    }
+
+    static func isExcluded(_ r: RunRow) -> Bool { r.type.map { excludedTypes.contains($0) } ?? false }
+
     static func runValue(_ r: RunRow, thresholdPace: Double, heat: MRHeatHRModel) -> RunValue? {
-        guard r.type != .interval else { return nil }
-        let lo = thresholdPace + bandLoSec, hi = thresholdPace + bandHiSec
-        let inBand = r.kms.filter { $0.paceSec >= lo && $0.paceSec <= hi }
+        runValue(r, band: tempoBand(thresholdPace: thresholdPace), heat: heat)
+    }
+
+    static func runValue(_ r: RunRow, band: ClosedRange<Double>, heat: MRHeatHRModel) -> RunValue? {
+        guard !isExcluded(r) else { return nil }
+        let inBand = r.kms.filter { band.contains($0.paceSec) }
         guard inBand.count >= minKmPerRun else { return nil }
         let raw = mrMedian(inBand.map(\.hr))
         return RunValue(date: r.date, hr: heat.toRef(raw, tempC: r.tempC), rawHR: raw,
@@ -71,7 +92,12 @@ enum MRTempoEfficiency {
 
     static func monthly(_ runs: [RunRow], thresholdPace: Double, heat: MRHeatHRModel,
                         calendar cal: Calendar = .current) -> [Month] {
-        let values = runs.compactMap { runValue($0, thresholdPace: thresholdPace, heat: heat) }
+        monthly(runs, band: tempoBand(thresholdPace: thresholdPace), heat: heat, calendar: cal)
+    }
+
+    static func monthly(_ runs: [RunRow], band: ClosedRange<Double>, heat: MRHeatHRModel,
+                        calendar cal: Calendar = .current) -> [Month] {
+        let values = runs.compactMap { runValue($0, band: band, heat: heat) }
         let groups = Dictionary(grouping: values) { cal.dateInterval(of: .month, for: $0.date)?.start ?? $0.date }
         return groups.keys.sorted().map { k in
             let g = groups[k]!
@@ -95,19 +121,29 @@ enum MRTempoEfficiency {
         let lo = mrFormatPace(t + MRTempoEfficiency.bandLoSec), hi = mrFormatPace(t + MRTempoEfficiency.bandHiSec)
         let kmTotal = rows.map(\.kms.count).reduce(0, +)
         print("[템포효율] 역치 \(mrFormatPace(t)) → 띠 \(lo)~\(hi) · 러닝 \(rows.count)건(km3~10 심박 있는 km \(kmTotal)) · 기온 보정 \(h.ok ? String(format: "%.2fbpm/°C%@", h.bpmPerC, h.isFallback ? "(문헌)" : "") : "없음")")
+        section("템포효율", band: MRTempoEfficiency.tempoBand(thresholdPace: t), rows: rows, heat: h, listRuns: true)
+        if let u = MRTempoEfficiency.usualBand(rows) {
+            print("[평소효율] 평소 페이스 띠 \(mrFormatPace(u.lowerBound))~\(mrFormatPace(u.upperBound))(본인 km 페이스 중앙값 ±\(Int(MRTempoEfficiency.usualHalfWidthSec))초, 인터벌·대회 제외)")
+            section("평소효율", band: u, rows: rows, heat: h, listRuns: false)
+        }
+    }
+
+    private static func section(_ tag: String, band: ClosedRange<Double>, rows: [MRTempoEfficiency.RunRow],
+                                heat h: MRHeatHRModel, listRuns: Bool) {
         let df = DateFormatter(); df.dateFormat = "M/d"
-        let values = rows.compactMap { MRTempoEfficiency.runValue($0, thresholdPace: t, heat: h) }
-        for v in values {
-            let type = rows.first { $0.date == v.date }?.type?.koreanLabel ?? "?"
-            print("[템포효율:러닝] \(df.string(from: v.date)) \(type) · km \(v.kmCount)개 \(mrFormatPace(v.paceSec)) · 심박 \(Int(v.rawHR.rounded())) → 15°C \(Int(v.hr.rounded()))")
+        if listRuns {
+            for v in rows.compactMap({ MRTempoEfficiency.runValue($0, band: band, heat: h) }) {
+                let type = rows.first { $0.date == v.date }?.type?.koreanLabel ?? "?"
+                print("[\(tag):러닝] \(df.string(from: v.date)) \(type) · km \(v.kmCount)개 \(mrFormatPace(v.paceSec)) · 심박 \(Int(v.rawHR.rounded())) → 15°C \(Int(v.hr.rounded()))")
+            }
         }
         let mf = DateFormatter(); mf.dateFormat = "yy.MM"
-        let months = MRTempoEfficiency.monthly(rows, thresholdPace: t, heat: h)
-        let line = months.map { "\(mf.string(from: $0.monthStart)) \($0.runs)회·\($0.kmCount)km·\(Int($0.hr.rounded()))bpm" }
+        let months = MRTempoEfficiency.monthly(rows, band: band, heat: h)
+        let line = months.map { "\(mf.string(from: $0.monthStart)) \($0.runs)회·\($0.kmCount)km·\(mrFormatPace($0.paceSec))·\(Int($0.hr.rounded()))bpm" }
             .joined(separator: " / ")
-        print("[템포효율:월] \(line.isEmpty ? "띠 안 러닝 없음" : line)")
+        print("[\(tag):월] \(line.isEmpty ? "띠 안 러닝 없음" : line)")
         if let f = months.first, let l = months.last, months.count >= 2 {
-            print("[템포효율:월] 처음→마지막 \(String(format: "%+.0f", l.hr - f.hr))bpm (판정 없음, 표본 확인용)")
+            print("[\(tag):월] 처음→마지막 \(String(format: "%+.0f", l.hr - f.hr))bpm (판정 없음, 표본 확인용)")
         }
     }
 }
