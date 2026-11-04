@@ -22,11 +22,12 @@ struct MRTodayCardView: View {
     private func distanceParts(km: Double) -> (number: String, unit: String) {
         let v = useMiles ? km * 0.621371 : km
         let unit = useMiles ? "mi" : "km"
-        if v < 100 { return (String(format: "%.1f", v), unit) }
+        if v < 100 { return (mrTotalKm(v), unit) }
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.maximumFractionDigits = 0
-        return (f.string(from: NSNumber(value: v)) ?? String(Int(v)), unit)
+        let down = mrTotalKmFloor(v, digits: 0)   // 합계는 버림 — 실제보다 크게 보이지 않게
+        return (f.string(from: NSNumber(value: down)) ?? String(Int(down)), unit)
     }
 
     /// 아침 제안 색 — `MRReadiness.Level.displayColor`(인사이트 내보내기 아침 제안과 같은 색).

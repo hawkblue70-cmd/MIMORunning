@@ -31,7 +31,7 @@ struct AthleticCard: View {
 
     private var distanceValue: String {
         let km = activity.distance / 1000
-        return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        return mrRunKm(km)
     }
 
     private var startDateTimeString: String { activity.date.cardDateTimeString }

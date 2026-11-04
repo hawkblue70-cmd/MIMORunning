@@ -701,7 +701,7 @@ enum RunSummary {
             if jumped, todayEasy, i.easySinceSpike, let d = i.spikeDaysAgo, d >= 3, let date = i.spikeRunDate,
                i.hrvTrend?.isSuppressed != true, !lastNightLow(i) {   // HRV가 낮으면 누그러뜨리지 않는다
                 let df = DateFormatter(); df.dateFormat = "M/d"
-                let km = i.spikeRunKm.map { " " + (abs($0 - $0.rounded()) < 0.05 ? String(format: "%.0fkm", $0) : String(format: "%.1fkm", $0)) } ?? ""
+                let km = i.spikeRunKm.map { " " + mrRunKmInText($0) + "km" } ?? ""
                 return L.s("큰 부하 날(\(df.string(from: date))\(km))의 영향이 아직 남아 있습니다. 오늘 같은 쉬운 러닝은 괜찮습니다.",
                            "The big day (\(df.string(from: date))\(km)) is still showing in your load. Easy runs like today's are fine.",
                            ja: "負荷の大きかった日(\(df.string(from: date))\(km))の影響がまだ残っています。今日のような楽なランは大丈夫です。")

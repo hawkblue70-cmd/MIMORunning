@@ -38,6 +38,21 @@ struct RunChartDataTests {
         #expect(g(1000) == 1000)
     }
 
+    @Test func distanceFormatNeverRoundsUpPastActual() {
+        // 러닝 한 번 — 항상 둘째 자리(10.96이 11.0으로 보이지 않게, 2026-11-04 앱스토어 리뷰)
+        #expect(mrRunKm(2.15) == "2.15")
+        #expect(mrRunKm(10.96) == "10.96")
+        #expect(mrRunKmInText(16) == "16")
+        #expect(mrRunKmInText(19.6) == "19.6")
+        #expect(mrRunKmInText(13.62) == "13.62")
+        // 합계 — 첫째 자리 버림(실제보다 크게 보이지 않게), 부동소수 합도 안전하게
+        #expect(mrTotalKm(2.15) == "2.1")
+        #expect(mrTotalKm(10.96) == "10.9")
+        #expect(mrTotalKm(0.1 + 0.2) == "0.3")
+        #expect(mrTotalKm(5.0) == "5.0")
+        #expect(mrTotalKmFloor(1303.9, digits: 0) == 1303)
+    }
+
     @Test func tileOrderFollowsMetricGrid() {
         // 타일 순서 = 러닝 상세 데이터 격자 순서. 페이스는 타일이 없다.
         let tiles = RunChartLayer.allCases.filter(\.hasTile)

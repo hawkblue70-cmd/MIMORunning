@@ -236,7 +236,7 @@ struct ShareCardScreen: View {
     var oneLinerAvailableMetrics: [MetricItem] {
         var m: [MetricItem] = []
         let km = activity.distance / 1000
-        let distVal = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let distVal = mrRunKm(km)
         m.append(MetricItem(id: "distance", value: distVal, label: "km",
                             color: Theme.violet, uiColor: UIColor(red: 0x7C/255, green: 0x5C/255,
                                                                    blue: 0xFC/255, alpha: 1)))
@@ -423,7 +423,7 @@ struct ShareCardScreen: View {
 
     private var distanceKmString: String {
         let km = activity.distance / 1000
-        return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        return mrRunKm(km)
     }
     private var insightTitle: String { insight?.title ?? AppLanguage.shared.s("오늘의 러닝", "Today's Run", ja: "今日のラン") }
     private var storyHasContent: Bool { story?.hasContent == true }
@@ -2816,7 +2816,7 @@ struct ShareCardScreen: View {
         let exportH: CGFloat = 384
         let exportInset = exportH * 0.05
         let km = activity.distance / 1000
-        let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let distStr = mrRunKm(km)
         let overlayView = VideoOverlayCard(
             distanceKm: distStr,
             date: activity.date,
@@ -3238,7 +3238,7 @@ struct ShareCardScreen: View {
     @ViewBuilder
     private var videoPreviewCard: some View {
         let km = activity.distance / 1000
-        let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let distStr = mrRunKm(km)
 
         // OneLiner: 카드 1(oneLinerCardPreview)이 contentLayer를 독점 소유.
         // 카드 2는 항상 정적 미리보기 + ▶ 버튼만 표시 → contentLayer 충돌(검은 화면) 방지.
@@ -4000,7 +4000,7 @@ struct ShareCardScreen: View {
         // ── Athletic 멀티 클립 합성 (athleticVM.athleticClipRecipes 기반) ──────────────
         if !isOneLiner, !isStamp, !isOverlay, template == .video, !athleticVM.athleticClipRecipes.isEmpty {
             let km = activity.distance / 1000
-            let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+            let distStr = mrRunKm(km)
             // 미리보기와 동일한 9:16 비율(216×384pt)로 오버레이 렌더링
             // topInset/bottomInset = 5% (384 * 0.05 = 19.2pt) → 미리보기(375 * 0.05 = 18.75pt)와 동일 비율
             let exportH: CGFloat = 384
@@ -4078,7 +4078,7 @@ struct ShareCardScreen: View {
         // ── Athletic 슬라이드 (사진 → 영상) ────────────────────────────────────
         if !isOneLiner, !isStamp, !isOverlay, template == .slide, !storyPhotos.isEmpty {
             let km = activity.distance / 1000
-            let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+            let distStr = mrRunKm(km)
             let exportH: CGFloat = 384
             let exportInset: CGFloat = exportH * 0.05
             let overlayView = VideoOverlayCard(
@@ -4283,7 +4283,7 @@ struct ShareCardScreen: View {
 
 
         let km = activity.distance / 1000
-        let distStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let distStr = mrRunKm(km)
 
         let overlayView = VideoOverlayCard(
             distanceKm: distStr,

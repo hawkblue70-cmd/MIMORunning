@@ -314,7 +314,7 @@ struct DetailPanelShareCard: View {
         if let p = routeProgress {
             let km = p.distanceM / 1000
             return StampData(
-                distance: km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km),
+                distance: mrRunKm(km),
                 distanceUnit: "KM",
                 pace: km > 0.02 ? paceText(p.elapsed / km) : "--'--\"",
                 time: durationText(p.elapsed),
@@ -410,7 +410,7 @@ struct DetailPanelShareCard: View {
 
     private var distanceValue: String {
         let km = activity.distance / 1000
-        return km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        return mrRunKm(km)
     }
 
     private var heroTempText: String? {

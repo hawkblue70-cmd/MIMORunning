@@ -823,7 +823,7 @@ private struct HeroSideBlockView: View {
             Text(label)
                 .font(.system(size: 9.5))
                 .foregroundStyle(ink.fg(0.70))
-            Text(String(format: "%.1f", km))
+            Text(mrTotalKm(km))
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(ink.primary)
                 .monospacedDigit()
@@ -1778,7 +1778,7 @@ private struct RhythmInsightCard: View {
 
     private var heroSection: some View {
         let km = activity.distance / 1000
-        let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let kmStr = mrRunKm(km)
         let coords = detail?.routeCoordinates ?? []
         let hasRoute = coords.count >= 2
         return HStack(alignment: .top, spacing: 12) {
@@ -2889,7 +2889,7 @@ private struct PerformanceInsightCard: View {
 
     private var heroSection: some View {
         let km = activity.distance / 1000
-        let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let kmStr = mrRunKm(km)
         let coords = detail?.routeCoordinates ?? []
         let hasRoute = coords.count >= 2
 
@@ -3247,8 +3247,8 @@ private struct PerformanceInsightCard: View {
     private func metricsSection(base: RunBaseline) -> some View {
         let L = AppLanguage.shared
         let prevCtx: String? = base.prevWeeklyLoadKm > 0
-            ? L.s("지난주 \(String(format: "%.1f", base.prevWeeklyLoadKm))km",
-                  "Last wk \(String(format: "%.1f", base.prevWeeklyLoadKm))km", ja: "先週 \(String(format: "%.1f", base.prevWeeklyLoadKm))km")
+            ? L.s("지난주 \(mrTotalKm(base.prevWeeklyLoadKm))km",
+                  "Last wk \(mrTotalKm(base.prevWeeklyLoadKm))km", ja: "先週 \(mrTotalKm(base.prevWeeklyLoadKm))km")
             : nil
         return MetricRow(label: L.s("이번 주 훈련량", "Weekly Load", ja: "今週の練習量"),
                          value: String(format: "%.1fkm", base.weeklyLoadKm),

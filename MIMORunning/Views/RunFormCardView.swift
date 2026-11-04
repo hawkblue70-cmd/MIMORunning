@@ -623,7 +623,7 @@ struct RunFormCardView: View {
         // 후반 변화가 있을 때만 그 한 줄을 보이고, 페이스는 위 지표와 같은 표기(formattedPace)를 쓴다(6'25" vs 6'26" 어긋남).
         if items.isEmpty {
             let distKm  = activity.distance / 1000
-            let distStr = String(format: "%.1f", distKm)
+            let distStr = mrRunKmInText(distKm)
             var text: String
             if let pStr = activity.formattedPace {
                 text = L.s("\(distStr)km를 \(pStr) 페이스로 달렸습니다.",
@@ -838,7 +838,7 @@ struct RunFormCardView: View {
 
     private var topSummary: some View {
         let km = activity.distance / 1000
-        let kmStr = km >= 10 ? String(format: "%.1f", km) : String(format: "%.2f", km)
+        let kmStr = mrRunKm(km)
         return VStack(alignment: .leading, spacing: compact ? 5 : 10) {
             HStack(alignment: .top, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {

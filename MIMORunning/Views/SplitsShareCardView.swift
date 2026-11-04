@@ -344,7 +344,7 @@ struct SplitsShareCardView: View {
                             footerStat(value: formatPace(best), label: AppLanguage.shared.s("최고 구간", "BEST", ja: "最速区間"), color: pal.footerBest)
                             Spacer()
                         }
-                        footerStat(value: String(format: "%.1fkm", totalDistanceKm), label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"), color: pal.footerTotal)
+                        footerStat(value: mrRunKm(totalDistanceKm) + "km", label: AppLanguage.shared.s("총 거리", "TOTAL", ja: "総距離"), color: pal.footerTotal)
                     }
 
                     // 하단 섹션 — 막대차트 아래에 심박 영역 또는 러닝 데이터

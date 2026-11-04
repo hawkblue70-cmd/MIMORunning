@@ -813,7 +813,7 @@ struct GrowthView: View {
             } else {
                 HStack(spacing: 8) {
                     WeekStatTile(
-                        value: String(format: km >= 10 ? "%.1f km" : "%.2f km", km),
+                        value: mrRunKm(km) + " km",
                         label: L.s("거리", "Distance", ja: "距離")
                     )
                     WeekStatTile(

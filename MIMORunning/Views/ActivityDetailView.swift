@@ -3914,9 +3914,7 @@ private struct ManualRaceSheet: View {
     @State private var raceName = ""
 
     private var formattedDistance: String {
-        distanceKm >= 10
-            ? String(format: "%.1f km", distanceKm)
-            : String(format: "%.2f km", distanceKm)
+        mrRunKm(distanceKm) + " km"
     }
 
     var body: some View {

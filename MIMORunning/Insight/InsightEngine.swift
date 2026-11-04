@@ -776,7 +776,7 @@ struct InsightEngine {
         let distStr = String(format: "%.1fkm", a.distance / 1000)
         print("[DetailInsight] hrElevated 발화: bandN=\(bandHRs.count) avgBand=\(Int(avgBandHR))bpm cur=\(Int(currentHR))bpm excess=\(excess)bpm dist=\(distStr)")
         #endif
-        let distLabel = String(format: "%.1fkm", a.distance / 1000)
+        let distLabel = mrRunKmInText(a.distance / 1000) + "km"
         let heatSuffix = (comparable && heatHR.explains(tempC: a.temperatureC))
             ? L.s(" (기온 감안)", " (heat-adjusted)", ja: " (気温を考慮)")
             : ""

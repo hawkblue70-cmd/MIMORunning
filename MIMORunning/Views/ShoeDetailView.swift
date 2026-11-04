@@ -148,7 +148,7 @@ struct ShoeDetailView: View {
     private var headline: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(String(format: totalKm >= 100 ? "%.0f" : "%.1f", totalKm))
+                Text(totalKm >= 100 ? String(format: "%.0f", mrTotalKmFloor(totalKm, digits: 0)) : mrTotalKm(totalKm))
                     .font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.white)
                 Text("km").font(.system(size: 14)).foregroundStyle(.secondary)
                 Text(L.s("· 러닝 \(shoeDistances.count)회", "· \(shoeDistances.count) runs", ja: "· ラン\(shoeDistances.count)回"))

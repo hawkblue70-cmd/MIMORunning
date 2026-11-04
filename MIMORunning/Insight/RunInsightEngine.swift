@@ -1083,7 +1083,7 @@ enum RunInsightEngine {
         let suffix = L.s(" 당일 컨디션이나 날씨 영향일 수도 있습니다.",
                          " Day-of conditions or weather may also have played a role.", ja: " 当日のコンディションや天候の影響かもしれません。")
         let fkmStr     = fa.fadeStartKm.map { String(format: "%.1f", $0) + "km" }
-        let recentStr  = String(format: "%.1f", fa.recentLongRunKm) + "km"
+        let recentStr  = mrRunKmInText(fa.recentLongRunKm) + "km"
 
         let tone: InsightTone; let badge: String; let msg: String; var highlights: [String] = []
 
@@ -1589,7 +1589,7 @@ enum RunInsightEngine {
         guard baseline.weeklyLoadKm > 0 else { return nil }
         let L = AppLanguage.shared
         let badge = L.s("주간 거리", "Weekly Load", ja: "週間距離")
-        let thisStr = String(format: "%.1f", baseline.weeklyLoadKm)
+        let thisStr = mrTotalKm(baseline.weeklyLoadKm)
         let wd = baseline.weekDayIndex
         let dayNames = ["", "월", "화", "수", "목", "금", "토", "일"]
 
@@ -1681,7 +1681,7 @@ enum RunInsightEngine {
                               message: msg, highlights: [thisStr + "km", targetStr + "km"])
         }
         if baseline.prevSameDayKm > 0 {
-            let prevStr = String(format: "%.1f", baseline.prevSameDayKm)
+            let prevStr = mrTotalKm(baseline.prevSameDayKm)
             let msg = L.s("이번 주 \(wd)일째 \(thisStr)km — 지난주 같은 시점엔 \(prevStr)km였습니다.",
                            "Day \(wd) this week: \(thisStr) km — same point last week: \(prevStr) km.", ja: "今週\(wd)日目で\(thisStr)km — 先週の同じ時点では\(prevStr)kmでした。")
             #if DEBUG

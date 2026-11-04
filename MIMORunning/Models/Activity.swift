@@ -23,6 +23,26 @@ enum ActivityType: String {
     }
 }
 
+/// 러닝 한 번의 거리 — 거리와 상관없이 소수 둘째 자리(애플 피트니스와 같은 표기). 10.96km가 "11.0km"로 뛰지 않은 거리까지
+/// 올라가 보이던 것(2026-11-04 앱스토어 리뷰 "소수점 올리지 말고 멈춘 그대로"). km 값을 받아 숫자만 돌려준다.
+func mrRunKm(_ km: Double) -> String { String(format: "%.2f", km) }
+
+/// 문장 속 러닝 거리 — 소수 둘째 자리에서 끝의 0만 뺀다(16.00 → "16", 19.60 → "19.6", 13.62 → "13.62"). 카드 숫자와 같은 값.
+func mrRunKmInText(_ km: Double) -> String {
+    var s = mrRunKm(km)
+    while s.hasSuffix("0") { s.removeLast() }
+    if s.hasSuffix(".") { s.removeLast() }
+    return s
+}
+
+/// 합계(이번 주·이번 달·올해·누적·신발) — 소수 첫째 자리 **버림**. 실제로 뛴 거리보다 크게 보이지 않게(2.15 → 2.1).
+/// 부동소수 합이 2.0999…로 떨어져도 2.1이 되게 작은 여유를 둔다. 100 이상 정수 표기는 `mrTotalKmFloor`로 내린 값을 쓴다.
+func mrTotalKm(_ km: Double) -> String { String(format: "%.1f", mrTotalKmFloor(km, digits: 1)) }
+func mrTotalKmFloor(_ km: Double, digits: Int) -> Double {
+    let m = pow(10.0, Double(digits))
+    return floor(km * m + 1e-6) / m
+}
+
 struct Activity: Identifiable, Hashable {
     let id: UUID
     let type: ActivityType
@@ -58,12 +78,7 @@ struct Activity: Identifiable, Hashable {
         }
     }
 
-    var formattedDistance: String {
-        let km = distance / 1000
-        return km >= 10
-            ? String(format: "%.1f km", km)
-            : String(format: "%.2f km", km)
-    }
+    var formattedDistance: String { mrRunKm(distance / 1000) + " km" }
 
     var formattedDuration: String {
         let h = Int(duration) / 3600

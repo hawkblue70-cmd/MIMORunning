@@ -115,7 +115,7 @@ struct SummaryPeriodStats {
         guard let km = longestRunKm, km > 0.1 else { return nil }
         return useMiles
             ? String(format: "%.1f mi", km * 0.621371)
-            : String(format: "%.1f km", km)
+            : mrRunKm(km) + " km"
     }
 
     var distanceDeltaIsUp: Bool {

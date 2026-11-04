@@ -470,8 +470,8 @@ struct RunDayShareCard: View {
     private var distanceLine: String? {
         let L = AppLanguage.shared
         var parts: [String] = []
-        if let w = weekKm { parts.append(L.s("이번 주 ", "This week ", ja: "今週 ") + String(format: "%.1fkm", w)) }
-        if let m = monthKm { parts.append(L.s("이번 달 ", "This month ", ja: "今月 ") + String(format: "%.1fkm", m)) }
+        if let w = weekKm { parts.append(L.s("이번 주 ", "This week ", ja: "今週 ") + mrTotalKm(w) + "km") }
+        if let m = monthKm { parts.append(L.s("이번 달 ", "This month ", ja: "今月 ") + mrTotalKm(m) + "km") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -493,7 +493,7 @@ struct RunDayShareCard: View {
         // 휴식 제안 날 달렸으면 그 사실만(2026-10-20) — "제안대로"·"높았다"를 따지지 않는다
         if e.level == "rest" {
             let d = activity.distance / 1000
-            let km = abs(d - d.rounded()) < 0.05 ? String(format: "%.0f", d) : String(format: "%.1f", d)
+            let km = mrRunKmInText(d)
             let hrPart = hrStr.map { L.s(" · 평균 심박 \($0)", " · avg HR \($0)", ja: " · 平均心拍\($0)") } ?? ""
             return L.s("→ 실제: 쉬라는 날 \(km)km를 달렸습니다", "→ Actual: ran \(km) km on a suggested rest day", ja: "→ 実際: 休養の提案の日に\(km)km走りました") + hrPart
         }
@@ -581,7 +581,7 @@ struct RunDayShareCard: View {
     private func pointActual(session: String) -> String {
         let L = AppLanguage.shared
         let d = activity.distance / 1000
-        let kmStr = String(format: "%.1fkm", d)
+        let kmStr = mrRunKm(d) + "km"
         var actual = kmStr
         // 빌드업 "마지막 2.7km" → 끝에서부터 그 거리 이상(올림 km)의 실제 페이스
         let lastPatterns = [#"마지막 ([0-9.]+)km"#, #"last ([0-9.]+)km"#, #"最後の([0-9.]+)km"#]

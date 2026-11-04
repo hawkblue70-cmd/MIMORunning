@@ -492,10 +492,11 @@ struct StampRunTotals: Equatable {
 
     /// 100km 미만은 소수 한 자리, 이상은 정수 + 천 단위 쉼표 (예: 32.4 · 1,204)
     static func format(_ km: Double) -> String {
-        if km < 100 { return String(format: "%.1f", km) }
+        if km < 100 { return mrTotalKm(km) }
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.maximumFractionDigits = 0
+        let km = mrTotalKmFloor(km, digits: 0)   // 합계는 버림
         f.locale = Locale(identifier: "en_US_POSIX")
         f.usesGroupingSeparator = true
         f.groupingSeparator = ","
