@@ -49,6 +49,9 @@ struct RunChartDataTests {
         #expect(mrTotalKm(2.15) == "2.15")
         #expect(mrTotalKm(203.14) == "203.14")
         #expect(mrTotalKm(5052.37) == "5,052.37")
+        // 홈의 올해·누적 — 소수점 없이, 올림 없음
+        #expect(mrWholeKm(2.97) == "2")
+        #expect(mrWholeKm(5052.97) == "5,052")
     }
 
     @Test func tileOrderFollowsMetricGrid() {

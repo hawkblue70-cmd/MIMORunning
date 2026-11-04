@@ -578,8 +578,8 @@ struct MRWeekTable: View {
                     Text(runDayFmt.string(from: r.start))
                         .frame(width: 64, alignment: .leading)
                         .foregroundStyle(.white.opacity(0.72))
-                    Text(r.distanceKm.map { String(format: "%.1fkm", $0) } ?? "—")
-                        .frame(width: 48, alignment: .trailing)
+                    Text(r.distanceKm.map { mrRunKm($0) + "km" } ?? "—")
+                        .frame(width: 56, alignment: .trailing)
                         .foregroundStyle(Color.yellow)
                     Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
                         .foregroundStyle(.white.opacity(0.72))
@@ -841,7 +841,7 @@ struct MRWeekTable: View {
                                     HStack(spacing: 3) {
                                         Text(L.s("롱런", "Long", ja: "ロング走")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
-                                            Text(String(format: "%.1f", a.long))
+                                            Text(mrRunKm(a.long))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
                                             if longOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
@@ -853,7 +853,7 @@ struct MRWeekTable: View {
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly", ja: "週間")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
-                                            Text(String(format: "%.1f", a.weekly))
+                                            Text(mrTotalKm(a.weekly))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)
                                             if weeklyOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
@@ -958,7 +958,7 @@ struct MRWeekTable: View {
                                     HStack(spacing: 3) {
                                         Text(L.s("롱런", "Long", ja: "ロング走")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
-                                            Text(String(format: "%.1f", a.long))
+                                            Text(mrRunKm(a.long))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)   // 노랑 = 실제로 한 것
                                             if longOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {
@@ -970,7 +970,7 @@ struct MRWeekTable: View {
                                     HStack(spacing: 3) {
                                         Text(L.s("주간", "Weekly", ja: "週間")).foregroundStyle(.white.opacity(0.72))
                                         if let a = actual {
-                                            Text(String(format: "%.1f", a.weekly))
+                                            Text(mrTotalKm(a.weekly))
                                                 .fontWeight(.bold).foregroundStyle(Color.yellow)
                                             if weeklyOver { Text(symbolOver).foregroundStyle(.white.opacity(0.85)) }
                                         } else {

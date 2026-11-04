@@ -270,9 +270,9 @@ struct MRRaceJourneyShareCard: View {
         var out: [(label: String, value: String)] = []
         out.append((j.month != nil || j.progress != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
                     L.s("\(doneWeeks)주 · \(j.runCount)회 · ", "\(doneWeeks) wks · \(j.runCount) runs · ",
-                        ja: "\(doneWeeks)週 · \(j.runCount)回 · ") + String(format: "%.0fkm", j.totalKm)))
+                        ja: "\(doneWeeks)週 · \(j.runCount)回 · ") + mrTotalKm(j.totalKm) + "km"))
         var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))
-            + String(format: "%.1fkm", j.longestKm)
+            + mrRunKm(j.longestKm) + "km"
         if j.hardPlanned > 0 {
             t += " · " + L.s("강도 훈련 \(j.hardDone)/\(j.hardPlanned)회", "Hard \(j.hardDone)/\(j.hardPlanned)",
                              ja: "強度練習 \(j.hardDone)/\(j.hardPlanned)回")
@@ -348,9 +348,9 @@ private struct MRRaceJourneyWeekRows: View {
                         }
                         .frame(height: Self.barH + 4)
                         // 예정 주 — 실제 칸은 "—", 계획 km만
-                        Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : String(format: "%.0f/%.0f", w.totalKm, w.plannedKm))
+                        Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
                             .foregroundStyle(w.isFuture ? palette.sub : palette.text)
-                            .frame(width: 38, alignment: .trailing)
+                            .frame(width: 46, alignment: .trailing)
                     }
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .monospacedDigit()

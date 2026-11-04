@@ -19,10 +19,10 @@ struct MRTodayCardView: View {
 
     /// 숫자와 단위를 따로 — 단위는 작고 흐리게 붙여 숫자가 또렷하게.
     /// 100 미만은 소수 1자리(주간에서 의미 있음), 그 이상은 정수 + 천 단위 콤마.
-    private func distanceParts(km: Double) -> (number: String, unit: String) {
-        let v = useMiles ? km * 0.621371 : km
+    private func distanceParts(_ cell: MRTodayCard.DistanceCell) -> (number: String, unit: String) {
+        let v = useMiles ? cell.km * 0.621371 : cell.km
         let unit = useMiles ? "mi" : "km"
-        return (mrTotalKm(v), unit)
+        return (cell.isWholeNumber ? mrWholeKm(v) : mrTotalKm(v), unit)
     }
 
     /// 아침 제안 색 — `MRReadiness.Level.displayColor`(인사이트 내보내기 아침 제안과 같은 색).
@@ -77,7 +77,7 @@ struct MRTodayCardView: View {
                 //   단위(km·mi)는 11pt·0.45로 낮춰 숫자가 또렷하게.
                 HStack(alignment: .top, spacing: 8) {
                     ForEach(Array(c.distanceCells.enumerated()), id: \.offset) { idx, cell in
-                        let parts = distanceParts(km: cell.km)
+                        let parts = distanceParts(cell)
                         DistanceCellView(label: cell.label, number: parts.number, unit: parts.unit,
                                          isTotal: idx == c.distanceCells.count - 1)
                     }
@@ -154,7 +154,7 @@ private struct DistanceCellView: View {
                     .foregroundStyle(Color.mrInk3)
             }
             .lineLimit(1)
-            .minimumScaleFactor(0.65)   // "5,052.37km"가 네 칸 안에 들어가게(둘째 자리 표기, 2026-11-04)
+            .minimumScaleFactor(0.65)   // "203.14km"가 네 칸 안에 들어가게(둘째 자리 표기, 2026-11-04)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

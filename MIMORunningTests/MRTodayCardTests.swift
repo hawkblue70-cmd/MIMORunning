@@ -39,6 +39,7 @@ final class MRTodayCardTests: XCTestCase {
         ]
         let c = try XCTUnwrap(card(runs: runs, asOf: date("2026-09-15 09:00")))
         XCTAssertEqual(c.distanceCells.map(\.km), [5, 11, 19, 29])
+        XCTAssertEqual(c.distanceCells.map(\.isWholeNumber), [false, false, true, true])
         XCTAssertEqual(c.distanceCells.map(\.label), [L("이번 주", "This week"), L("이번 달", "This month"), L("올해", "This year"), L("누적", "Total")])
     }
 

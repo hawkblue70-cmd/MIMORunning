@@ -14,6 +14,8 @@ struct MRTodayCard {
     struct DistanceCell: Equatable {
         let label: String
         let km: Double
+        /// 소수점 없이 표시 — 올해·누적 칸(2026-11-04)
+        var isWholeNumber = false
     }
 
     let streakLine: String           // ①
@@ -97,8 +99,8 @@ func mrDistanceCells(runs: [MRWorkout], asOf: Date) -> [MRTodayCard.DistanceCell
         if lastWeek > 0 { cells.append(.init(label: L.s("지난 주", "Last week", ja: "先週"), km: lastWeek)) }
     }
     if month > 0 { cells.append(.init(label: L.s("이번 달", "This month", ja: "今月"), km: month)) }
-    if year  > 0 { cells.append(.init(label: L.s("올해",   "This year", ja: "今年"),  km: year)) }
-    cells.append(.init(label: L.s("누적", "Total", ja: "累計"), km: total))
+    if year  > 0 { cells.append(.init(label: L.s("올해",   "This year", ja: "今年"),  km: year, isWholeNumber: true)) }
+    cells.append(.init(label: L.s("누적", "Total", ja: "累計"), km: total, isWholeNumber: true))
     return cells
 }
 
