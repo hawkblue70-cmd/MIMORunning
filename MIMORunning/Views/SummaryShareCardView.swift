@@ -91,8 +91,10 @@ struct SummaryPeriodStats {
     }
 
     var distanceStr: String {
-        // 올림 없이 소수 둘째 자리 — 월말·연말 결산 총 거리(2026-11-04). 올해·전체 누적은 카드에서 정수 유지
-        mrTotalKm(useMiles ? totalDistanceKm * 0.621371 : totalDistanceKm)
+        // 올림 없이 — 월말은 소수 둘째 자리, 연말은 소수점 없이(2026-11-04)
+        let v = useMiles ? totalDistanceKm * 0.621371 : totalDistanceKm
+        if case .yearly = kind { return mrWholeKm(v) }
+        return mrTotalKm(v)
     }
 
     var distanceUnit: String { useMiles ? "mi" : "km" }
