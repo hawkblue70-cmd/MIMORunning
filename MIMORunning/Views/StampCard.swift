@@ -94,6 +94,8 @@ struct StampData {
     var raceName: String?        = nil
     /// 심박 곡선(bpm) — 다듬고 줄인 값(`StampHRChart.prepare`). 요약 그리드+심박. 부족하면 그 스탬프를 고를 수 없다
     var hrSamples: [Double]?     = nil
+    /// 심박 존별 시간 — 요약 그리드+심박 영역. 없으면 그 스탬프를 고를 수 없다
+    var hrZoneRows: [StampHRZoneRow]? = nil
     /// 기간별 누적 러닝 거리 — 누적 거리 스탬프. 없으면 그 스탬프를 고를 수 없다
     var runTotals: StampRunTotals? = nil
 
@@ -628,6 +630,14 @@ struct StampCard: View {
     }
 
     @ViewBuilder
+    private func hrZoneRowsPart(fill: Color, outline: Color, scale: CGFloat) -> some View {
+        if let zones = data.hrZoneRows {
+            StampHRZoneRowsView(rows: zones, fill: fill, outline: outline, scale: scale,
+                                showTextOutline: showTextOutline)
+        }
+    }
+
+    @ViewBuilder
     private func stampContent(fill: Color, outline: Color, scale: CGFloat, topClearance: CGFloat = 0) -> some View {
         switch template {
         case .passportStamp:
@@ -693,6 +703,36 @@ struct StampCard: View {
                     StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
                                      scale: scale, showTextOutline: showTextOutline)
                 }
+            }
+        case .summaryGridZones:
+            // 요약 그리드 + 심박 영역(Z1~Z5 시간·비율)
+            VStack(alignment: .leading, spacing: sz(10, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                hrZoneRowsPart(fill: fill, outline: outline, scale: scale)
+            }
+        case .summaryGridHRZones:
+            // 요약 그리드 + 심박 곡선 + 심박 영역 — 같은 부품을 그대로 쌓는다
+            VStack(alignment: .leading, spacing: sz(10, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                if let hr = data.hrSamples, hr.count >= StampHRChart.minSamples {
+                    StampHRChartView(samples: hr, timeText: data.time, fill: fill, outline: outline,
+                                     scale: scale, showTextOutline: showTextOutline)
+                }
+                hrZoneRowsPart(fill: fill, outline: outline, scale: scale)
+            }
+        case .summaryGridPaceZones:
+            // 요약 그리드 + 구간 목록(15·30km 묶음) + 심박 영역
+            VStack(alignment: .leading, spacing: sz(10, scale)) {
+                StampSummaryGridView(data: data, fill: fill, outline: outline, scale: scale,
+                                     showTextOutline: showTextOutline)
+                if let splits = data.splits, splits.count >= 2 {
+                    StampSplitRowsView(rows: StampSplit.rows(splits, bucket: StampSplit.compactBucketKm(totalKm:)),
+                                       fill: fill, outline: outline,
+                                       scale: scale, showTextOutline: showTextOutline)
+                }
+                hrZoneRowsPart(fill: fill, outline: outline, scale: scale)
             }
         case .summaryGridHR:
             // 요약 그리드 그대로 + 아래에 심박 곡선(최저·평균·최고 라벨, 평균 점선)
@@ -1413,6 +1453,101 @@ private struct StampSplitRowsView: View {
             .tracking(0.9)
             .lineLimit(1)
             .foregroundStyle(labelColor)
+        }
+        .frame(width: width, alignment: .leading)
+        .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+    }
+}
+
+// MARK: - HR Zone Rows (요약 그리드+심박 영역 — 존마다 한 줄: 존 · 막대 · 시간 · 비율)
+
+/// 존 하나의 시간. `seconds`는 그 존에 머문 시간, `fraction`은 전체 대비 비율(0~1).
+struct StampHRZoneRow: Equatable {
+    let zone: Int   // 1~5
+    let seconds: TimeInterval
+    let fraction: Double
+
+    /// 상세의 존 데이터 → 줄. 다섯 존이 다 있고 시간이 있을 때만(없으면 스탬프를 고를 수 없다).
+    static func rows(_ zones: [HRZoneData]?) -> [StampHRZoneRow]? {
+        guard let zones, zones.count == 5, zones.contains(where: { $0.seconds > 0 }) else { return nil }
+        return zones.sorted { $0.id < $1.id }
+            .map { StampHRZoneRow(zone: $0.id, seconds: $0.seconds, fraction: $0.fraction) }
+    }
+
+    /// 1시간 미만 "12:34", 이상 "1:02:34"
+    var timeText: String {
+        let t = Int(seconds.rounded())
+        return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
+                         : String(format: "%d:%02d", t / 60, t % 60)
+    }
+}
+
+private struct StampHRZoneRowsView: View {
+    let rows: [StampHRZoneRow]
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    /// 애플 피트니스 심박 영역과 비슷한 색(파랑·초록·노랑·주황·빨강). 공식 색 코드가 없어 근사값.
+    /// 앱 공용 존 색(`Theme.hrZoneColors`)과 달리 이 스탬프만 쓴다. 색칩과 무관하게 고정.
+    private static let zoneColors: [Color] = [
+        Color(hex: "32ADE6"), Color(hex: "30D158"), Color(hex: "FFD60A"),
+        Color(hex: "FF9F0A"), Color(hex: "FF375F"),
+    ]
+
+    /// 요약 그리드 3열 폭(54×3 + 8×2)과 같게 — 격자 왼쪽·오른쪽 선에 맞춘다.
+    private var width: CGFloat { sz(178, scale) }
+    private var zoneW: CGFloat { sz(14, scale) }
+    private var timeW: CGFloat { sz(32, scale) }
+    private var pctW: CGFloat { sz(22, scale) }
+    private var colGap: CGFloat { sz(5, scale) }
+    private var rowH: CGFloat { sz(10, scale) }
+    private var barMax: CGFloat { width - zoneW - timeW - pctW - colGap * 3 }
+
+    /// 막대 길이 — 가장 오래 머문 존을 꽉 채운 길이로.
+    private func barWidth(_ r: StampHRZoneRow) -> CGFloat {
+        let top = rows.map(\.fraction).max() ?? 0
+        return top > 0 ? barMax * CGFloat(r.fraction / top) : 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: sz(3, scale)) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows, id: \.zone) { r in
+                    let color = Self.zoneColors[min(max(r.zone - 1, 0), 4)]
+                    HStack(spacing: colGap) {
+                        Text("Z\(r.zone)")
+                            .font(.system(size: sz(7, scale), weight: .bold).monospacedDigit())
+                            .foregroundStyle(color)
+                            .frame(width: zoneW, alignment: .leading)
+                        Rectangle()
+                            .fill(color)
+                            .frame(width: barWidth(r), height: sz(5, scale))
+                            .frame(width: barMax, alignment: .leading)
+                        Text(r.timeText)
+                            .font(.system(size: sz(9, scale), weight: .black).width(.compressed).monospacedDigit())
+                            .italic()
+                            .fixedSize()
+                            .frame(width: timeW, alignment: .trailing)
+                        Text("\(Int((r.fraction * 100).rounded()))%")
+                            .font(.system(size: sz(8, scale), weight: .bold).monospacedDigit())
+                            .fixedSize()
+                            .frame(width: pctW, alignment: .trailing)
+                    }
+                    .lineLimit(1)
+                    .frame(height: rowH)
+                }
+            }
+            HStack(spacing: colGap) {
+                Text("ZONE").fixedSize().frame(width: zoneW, alignment: .leading)
+                Spacer(minLength: 0)
+                Text("TIME").frame(width: timeW, alignment: .trailing)
+                Text("%").frame(width: pctW, alignment: .trailing)
+            }
+            .font(.system(size: sz(7, scale), weight: .bold))
+            .tracking(0.9)
+            .lineLimit(1)
         }
         .frame(width: width, alignment: .leading)
         .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)

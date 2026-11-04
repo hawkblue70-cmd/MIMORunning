@@ -1035,6 +1035,7 @@ struct ShareCardScreen: View {
         d.elevSeries    = elevSeries
         d.hrSeries      = hrSeries
         d.hrSamples     = stampHRChartSamples
+        d.hrZoneRows    = StampHRZoneRow.rows(detail?.hrZones)
         d.placeName     = stampPlaceName
         d.placeRegion   = stampPlaceRegion
         d.coordText     = stampCoordText
