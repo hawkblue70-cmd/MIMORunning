@@ -37,6 +37,18 @@ func mrRunKmInText(_ km: Double) -> String {
 
 /// 합계(이번 주·이번 달·올해·누적·신발) — 러닝 한 번과 같은 소수 둘째 자리, 천 단위 쉼표(5,052.37).
 /// 첫 러닝 날 기록과 이번 주 합계가 같은 숫자가 되게, 올림도 버림도 하지 않는다(2026-11-04 사용자: "전부 표시해줘").
+/// 소수 첫째 자리 거리(월말 결산 총 거리) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(203.19 → 203.1)
+func mrTenthKm(_ km: Double) -> String {
+    let f = NumberFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.numberStyle = .decimal
+    f.minimumFractionDigits = 1
+    f.maximumFractionDigits = 1
+    // 1e-9: 203.1처럼 딱 떨어지는 값이 부동소수 오차로 203.0이 되지 않게
+    let v = ((km * 10 + 1e-9).rounded(.down)) / 10
+    return f.string(from: NSNumber(value: v)) ?? String(format: "%.1f", v)
+}
+
 /// 소수점 없는 거리(홈의 올해·누적 칸) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(5,052)
 func mrWholeKm(_ km: Double) -> String {
     let f = NumberFormatter()

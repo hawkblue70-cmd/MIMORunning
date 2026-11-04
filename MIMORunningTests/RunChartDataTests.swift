@@ -52,8 +52,11 @@ struct RunChartDataTests {
         // 홈의 올해·누적 — 소수점 없이, 올림 없음
         #expect(mrWholeKm(2.97) == "2")
         #expect(mrWholeKm(5052.97) == "5,052")
-        // 결산 총 거리 — 월말은 둘째 자리, 연말은 소수점 없이
-        #expect(SummaryPeriodStats(kind: .monthly(year: 2026, month: 10), activities: [], useMiles: false).distanceStr == "0.00")
+        // 결산 총 거리 — 월말은 첫째 자리(올림 없음), 연말은 소수점 없이
+        #expect(mrTenthKm(203.19) == "203.1")
+        #expect(mrTenthKm(203.1) == "203.1")
+        #expect(mrTenthKm(1203.96) == "1,203.9")
+        #expect(SummaryPeriodStats(kind: .monthly(year: 2026, month: 10), activities: [], useMiles: false).distanceStr == "0.0")
         #expect(SummaryPeriodStats(kind: .yearly(year: 2026), activities: [], useMiles: false).distanceStr == "0")
     }
 

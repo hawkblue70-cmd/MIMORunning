@@ -128,16 +128,13 @@ struct MeView: View {
             return d > 0 ? t / (d / 1000) : nil
         }()
 
-        var ytdKm: Double? = nil
-        if monthOffset == 0 {
-            let currYear = cal.component(.year, from: Date())
-            let km = runActivities.filter {
-                cal.component(.year, from: $0.date) == currYear
-            }.reduce(0.0) { $0 + $1.distance / 1000 }
-            ytdKm = km > 0 ? km : nil
-        }
-        // 전체 러닝 누적 — 그달 말까지(이번 달은 지금까지). 지난달 카드가 오늘 값으로 바뀌지 않게(연말 결산과 같은 기준, 2026-11-04)
+        // 올해·전체 러닝 누적 — 그달 말까지(이번 달은 지금까지). 지난달 카드가 오늘 값으로 바뀌지 않게(연말 결산과 같은 기준, 2026-11-04)
         let monthEnd = cal.date(from: DateComponents(year: year, month: month + 1, day: 1)) ?? .distantFuture
+        let ytdKm: Double? = {
+            let km = runActivities.filter { cal.component(.year, from: $0.date) == year && $0.date < monthEnd }
+                .reduce(0.0) { $0 + $1.distance / 1000 }
+            return km > 0 ? km : nil
+        }()
         let lifetimeKm: Double? = {
             let km = runActivities.filter { $0.date < monthEnd }.reduce(0.0) { $0 + $1.distance / 1000 }
             return km > 0 ? km : nil

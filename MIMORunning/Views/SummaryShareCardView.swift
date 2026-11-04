@@ -91,10 +91,10 @@ struct SummaryPeriodStats {
     }
 
     var distanceStr: String {
-        // 올림 없이 — 월말은 소수 둘째 자리, 연말은 소수점 없이(2026-11-04)
+        // 올림 없이 — 월말은 소수 첫째 자리, 연말은 소수점 없이(2026-11-04)
         let v = useMiles ? totalDistanceKm * 0.621371 : totalDistanceKm
         if case .yearly = kind { return mrWholeKm(v) }
-        return mrTotalKm(v)
+        return mrTenthKm(v)
     }
 
     var distanceUnit: String { useMiles ? "mi" : "km" }
