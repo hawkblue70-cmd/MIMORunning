@@ -871,7 +871,7 @@ struct RecordBarChart: View {
     }
 
     private func kmText(_ km: Double) -> String {
-        km >= 100 ? String(format: "%.0f km", mrTotalKmFloor(km, digits: 0)) : mrTotalKm(km) + " km"
+        mrTotalKm(km) + " km"
     }
 
     /// 하루 말풍선용 실제 시계 표기 — 36:18 / 1:02:04

@@ -170,7 +170,7 @@ struct ShoeShareCard: View {
             .padding(.top, 13)
 
             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(data.totalKm >= 100 ? String(format: "%.0f", mrTotalKmFloor(data.totalKm, digits: 0)) : mrTotalKm(data.totalKm))
+                Text(mrTotalKm(data.totalKm))
                     .font(.system(size: 34, weight: .black).width(.condensed)).foregroundStyle(.white)
                 Text("km").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                 Text(L.s("· 러닝 \(data.runs)회", "· \(data.runs) runs", ja: "· ラン\(data.runs)回"))

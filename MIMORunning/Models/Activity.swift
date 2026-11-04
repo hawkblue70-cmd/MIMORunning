@@ -35,12 +35,16 @@ func mrRunKmInText(_ km: Double) -> String {
     return s
 }
 
-/// 합계(이번 주·이번 달·올해·누적·신발) — 소수 첫째 자리 **버림**. 실제로 뛴 거리보다 크게 보이지 않게(2.15 → 2.1).
-/// 부동소수 합이 2.0999…로 떨어져도 2.1이 되게 작은 여유를 둔다. 100 이상 정수 표기는 `mrTotalKmFloor`로 내린 값을 쓴다.
-func mrTotalKm(_ km: Double) -> String { String(format: "%.1f", mrTotalKmFloor(km, digits: 1)) }
-func mrTotalKmFloor(_ km: Double, digits: Int) -> Double {
-    let m = pow(10.0, Double(digits))
-    return floor(km * m + 1e-6) / m
+/// 합계(이번 주·이번 달·올해·누적·신발) — 러닝 한 번과 같은 소수 둘째 자리, 천 단위 쉼표(5,052.37).
+/// 첫 러닝 날 기록과 이번 주 합계가 같은 숫자가 되게, 올림도 버림도 하지 않는다(2026-11-04 사용자: "전부 표시해줘").
+func mrTotalKm(_ km: Double) -> String {
+    guard km >= 1000 else { return mrRunKm(km) }
+    let f = NumberFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.numberStyle = .decimal
+    f.minimumFractionDigits = 2
+    f.maximumFractionDigits = 2
+    return f.string(from: NSNumber(value: km)) ?? mrRunKm(km)
 }
 
 struct Activity: Identifiable, Hashable {

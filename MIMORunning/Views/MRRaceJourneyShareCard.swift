@@ -75,7 +75,7 @@ struct MRRaceJourneyShareCard: View {
                 if let pr = j.progress {
                     // 진행 중 — 지금까지 거리를 크게, 몇 주차인지 옆에
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(j.totalKm >= 100 ? String(format: "%.0f", j.totalKm) : String(format: "%.1f", j.totalKm))
+                        Text(mrTotalKm(j.totalKm))
                             .font(.system(size: 34, weight: .black).width(.condensed))
                             .foregroundStyle(p.text)
                         Text("km")
@@ -90,7 +90,7 @@ struct MRRaceJourneyShareCard: View {
                 } else if let m = j.month {
                     // 월간 — 이번 달 실제 거리를 크게(거리는 기록 시간이 아니라 글자색), 횟수 옆에
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(m.monthKm >= 100 ? String(format: "%.0f", m.monthKm) : String(format: "%.1f", m.monthKm))
+                        Text(mrTotalKm(m.monthKm))
                             .font(.system(size: 34, weight: .black).width(.condensed))
                             .foregroundStyle(p.text)
                         Text("km")

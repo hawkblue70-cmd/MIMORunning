@@ -45,12 +45,10 @@ struct RunChartDataTests {
         #expect(mrRunKmInText(16) == "16")
         #expect(mrRunKmInText(19.6) == "19.6")
         #expect(mrRunKmInText(13.62) == "13.62")
-        // 합계 — 첫째 자리 버림(실제보다 크게 보이지 않게), 부동소수 합도 안전하게
-        #expect(mrTotalKm(2.15) == "2.1")
-        #expect(mrTotalKm(10.96) == "10.9")
-        #expect(mrTotalKm(0.1 + 0.2) == "0.3")
-        #expect(mrTotalKm(5.0) == "5.0")
-        #expect(mrTotalKmFloor(1303.9, digits: 0) == 1303)
+        // 합계 — 러닝과 같은 둘째 자리, 올림·버림 없음, 천 단위 쉼표
+        #expect(mrTotalKm(2.15) == "2.15")
+        #expect(mrTotalKm(203.14) == "203.14")
+        #expect(mrTotalKm(5052.37) == "5,052.37")
     }
 
     @Test func tileOrderFollowsMetricGrid() {

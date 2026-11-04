@@ -490,17 +490,9 @@ struct StampRunTotals: Equatable {
         }
     }
 
-    /// 100km 미만은 소수 한 자리, 이상은 정수 + 천 단위 쉼표 (예: 32.4 · 1,204)
+    /// 소수 둘째 자리 + 천 단위 쉼표 (예: 32.47 · 1,204.15)
     static func format(_ km: Double) -> String {
-        if km < 100 { return mrTotalKm(km) }
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.maximumFractionDigits = 0
-        let km = mrTotalKmFloor(km, digits: 0)   // 합계는 버림
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.usesGroupingSeparator = true
-        f.groupingSeparator = ","
-        return f.string(from: NSNumber(value: km.rounded())) ?? String(format: "%.0f", km)
+        mrTotalKm(km)
     }
 }
 
