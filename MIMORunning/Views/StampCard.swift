@@ -492,9 +492,9 @@ struct StampRunTotals: Equatable {
         }
     }
 
-    /// 소수 둘째 자리 + 천 단위 쉼표 (예: 32.47 · 1,204.15)
+    /// 누적 거리·월 결산 스탬프 — 소수 첫째 자리(버림) + 천 단위 쉼표 (예: 32.4 · 1,204.1, 2026-11-04)
     static func format(_ km: Double) -> String {
-        mrTotalKm(km)
+        mrTenthKm(km)
     }
 }
 
