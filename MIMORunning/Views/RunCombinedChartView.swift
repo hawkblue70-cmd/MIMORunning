@@ -14,6 +14,9 @@ struct RunCombinedChartView: View {
     var onInteraction: (() -> Void)? = nil
     /// Minimum vertical gap (pt) between right-side end-point labels. Default 11, use 9 when chart is short.
     var endLabelMinGap: CGFloat = 11
+    /// 공유 카드 — 시간·거리 줄 아래 오른쪽에 러닝화 이름(2026-11-07: 헤더 줄에서 "뉴발란스 SC R…"로 잘렸다).
+    /// 있으면 아래 여백이 한 줄 늘고 그만큼 플롯이 줄어 카드 전체 높이는 그대로다.
+    var shoeFootnote: String? = nil
 
     @State private var selectedKm: Double? = nil
 
@@ -22,7 +25,7 @@ struct RunCombinedChartView: View {
     private let padL: CGFloat = 26   // Z1–Z5 labels at x=0–22; plot starts at 26
     private var padR: CGFloat { playProgress != nil ? 8 : 40 }  // collapse right pad during playback (no end labels)
     private let padT: CGFloat = 26   // increased from 16: room for scrubber label above chart rect
-    private let padB: CGFloat = 28   // 페이스 라벨 한 줄 + 시간·거리 한 줄 (예전 세 줄일 때 38)
+    private var padB: CGFloat { shoeFootnote == nil ? 28 : 40 }   // 페이스 라벨 한 줄 + 시간·거리 한 줄 (+ 러닝화 한 줄)
 
     var body: some View {
         // 페이스 막대는 토글 대상이 아니다(타일 없음) — 데이터가 있으면 항상 그린다
@@ -576,8 +579,9 @@ struct RunCombinedChartView: View {
         let km = data.totalKm
         func distLabel(_ v: Double) -> String {
             if v == 0 { return "0" }
-            let r = v.rounded()
-            return v == r ? "\(Int(r))km" : String(format: "%.1fkm", v)
+            // 올림 없이 첫째 자리 버림(13.76 → 13.7) — 다른 거리 표기와 같은 규칙(2026-11-07)
+            let t = (v * 10 + 1e-6).rounded(.down) / 10
+            return t == t.rounded() ? "\(Int(t))km" : String(format: "%.1fkm", t)
         }
         let ticks: [(km: Double, anchor: UnitPoint)] = [
             (0,      .topLeading),
@@ -596,6 +600,16 @@ struct RunCombinedChartView: View {
                     .foregroundStyle(p.xAxisDistColor),
                 at: CGPoint(x: x, y: rect.maxY + 16),
                 anchor: tick.anchor
+            )
+        }
+        // 러닝화 — 끝 라벨("1:25:29 · 13.7km") 바로 아래, 오른쪽 끝 맞춤
+        if let shoe = shoeFootnote {
+            ctx.draw(
+                (Text(Image(systemName: "shoe.fill")) + Text(" " + shoe))
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(p.xAxisDistColor),
+                at: CGPoint(x: xFor(km: km, in: rect), y: rect.maxY + 28),
+                anchor: .topTrailing
             )
         }
     }
@@ -623,7 +637,8 @@ struct RunCombinedChartView: View {
 
     /// Formats seconds as "M:SS" or "H:MM:SS".
     private func formatElapsed(_ seconds: TimeInterval) -> String {
-        let s = Int(seconds.rounded())
+        // 버림 — 러닝 시간 표기(formattedDuration)와 같게. 반올림이면 헤더 1:25:29 · 축 끝 1:25:30으로 갈렸다(2026-11-07)
+        let s = Int(seconds)
         let h = s / 3600
         let m = (s % 3600) / 60
         let sec = s % 60

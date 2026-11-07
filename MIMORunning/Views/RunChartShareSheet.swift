@@ -42,7 +42,7 @@ struct RunChartShareCard: View {
                     paceText: paceText, raceName: raceName, palette: palette)
 
                 RunCombinedChartView(data: data, enabledLayers: enabledLayers, chartHeight: chartHeight,
-                                    playProgress: playProgress)
+                                    playProgress: playProgress, shoeFootnote: shoeText)
                     .environment(\.shareChartPalette, palette)
                     .padding(.top, 2)
                     .padding(.bottom, 4)
@@ -148,13 +148,8 @@ struct RunChartShareHeader: View {
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundStyle(palette.textPrimary.opacity(0.75))
                 }
-                Spacer(minLength: 6)
-                if let shoe = shoeText {
-                    Label(shoe, systemImage: "shoe.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(palette.textSecondary)
-                        .lineLimit(1)
-                }
+                Spacer(minLength: 0)
+                // 러닝화는 차트 아래 시간·거리 줄 밑으로 옮겼다(RunCombinedChartView.shoeFootnote) — 이 줄에선 잘렸다(2026-11-07)
             }
         }
     }

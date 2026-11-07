@@ -463,7 +463,7 @@ enum RunChartReplayExporter {
                         let chartImg = renderCGImage(
                             chartStrip(data: data, enabledLayers: enabledLayers,
                                        chartHeight: chartHeight, playProgress: distRatio,
-                                       palette: palette),
+                                       palette: palette, shoeText: shoeText),
                             width: cardW, height: nil, palette: palette)
                         frame = composeCardFrame(header: headerImg, chart: chartImg,
                                                  tiles: tilesImg, palette: palette)
@@ -473,7 +473,8 @@ enum RunChartReplayExporter {
                                 data: data,
                                 enabledLayers: enabledLayers,
                                 chartHeight: chartPtH,
-                                playProgress: distRatio
+                                playProgress: distRatio,
+                                shoeFootnote: shoeText
                             )
                             .frame(width: cardW, height: chartPtH)
                             .background(palette.sectionBackground),
@@ -563,7 +564,7 @@ enum RunChartReplayExporter {
             let distRatio = timeToDistanceRatio(timeRatio: progress, table: timeDistTable)
             let chartImg = renderCGImage(
                 chartStrip(data: data, enabledLayers: enabledLayers,
-                           chartHeight: chartHeight, playProgress: distRatio, palette: palette),
+                           chartHeight: chartHeight, playProgress: distRatio, palette: palette, shoeText: shoeText),
                 width: cardW, height: nil, palette: palette)
             return composeCardFrame(header: headerImg, chart: chartImg, tiles: tilesImg, palette: palette)
         }
@@ -574,7 +575,7 @@ enum RunChartReplayExporter {
         let chartImg: CGImage? = layout.chartH > 0 ? renderCGImage(
             RunCombinedChartView(
                 data: data, enabledLayers: enabledLayers,
-                chartHeight: chartPtH, playProgress: progress
+                chartHeight: chartPtH, playProgress: progress, shoeFootnote: shoeText
             )
             .frame(width: cardW, height: chartPtH)
             .background(palette.sectionBackground),
@@ -1232,10 +1233,11 @@ enum RunChartReplayExporter {
     /// 여기가 카드와 달라지면 프레임마다 그리는 부분만 어긋난다.
     private static func chartStrip(
         data: RunChartData, enabledLayers: Set<RunChartLayer>,
-        chartHeight: CGFloat, playProgress: Double, palette: ShareChartPalette
+        chartHeight: CGFloat, playProgress: Double, palette: ShareChartPalette,
+        shoeText: String? = nil
     ) -> some View {
         RunCombinedChartView(data: data, enabledLayers: enabledLayers,
-                             chartHeight: chartHeight, playProgress: playProgress)
+                             chartHeight: chartHeight, playProgress: playProgress, shoeFootnote: shoeText)
             .environment(\.shareChartPalette, palette)
             .padding(.top, 2)
             .padding(.bottom, 4)
