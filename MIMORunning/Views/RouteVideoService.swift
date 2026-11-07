@@ -1285,8 +1285,11 @@ struct RouteVideoExportService {
 
     // MARK: - KM label image (pre-rendered CGImage, avoids CATextLayer rendering quirks)
 
+    /// 경로 영상 km 글자 배율 — 12pt → 15pt(2026-11-07 사용자: 지도 글자가 작다). 활동 상세 지도는 그대로(배율은 이 호출만).
+    static let kmLabelSizeFactor: CGFloat = 1.25
+
     private static func makeKmLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
-        makeKmMarkerLabelImage(km: km, renderScale: renderScale)
+        makeKmMarkerLabelImage(km: km, renderScale: renderScale * kmLabelSizeFactor)
     }
 
     // MARK: - Gradient helpers (CAShapeLayer path)
