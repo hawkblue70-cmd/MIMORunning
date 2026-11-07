@@ -414,7 +414,7 @@ struct MRReadinessTests {
         p.easyKm = 6.4
         let s = mrSessionSuggestion(level: .easy, plan: p, runs: saturdayLongRunHistory(asOf: wed), asOf: wed)
         #expect(s?.session == "이지 6.4km")
-        #expect(s?.progress.contains("이지 0회 · 계획 4회") == true)
+        #expect(s?.progress.contains("이지 0번 · 계획 4번") == true)
     }
 
     @Test func habitualLongRunWeekdayIsSaturday() {
@@ -427,7 +427,7 @@ struct MRReadinessTests {
         runs.append(contentsOf: [thisWeekRun(dayOffset: 1, km: 8, asOf: sat), thisWeekRun(dayOffset: 3, km: 8, asOf: sat)])
         let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sat)
         #expect(s?.session == "롱런 14km")
-        #expect(s?.progress == "이번 주 롱런 아직 · 이지 2회 · 계획 3회")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 2번 · 계획 3번")
     }
 
     // MARK: 계획 롱런이 최근 30일 최장보다 10% 넘게 길 때 (Frandsen 2025)
@@ -473,7 +473,7 @@ struct MRReadinessTests {
         #expect(s?.session == "이지 8km")
         #expect(s?.isLongRun == false)
         #expect(s?.whyNote == "여유는 토요일 롱런에 쓰세요.")
-        #expect(s?.progress == "이번 주 롱런 아직 · 이지 1회 · 계획 3회")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 1번 · 계획 3번")
     }
 
     @Test func goWithEasySessionReadsAsEasyWithRoom() {
@@ -512,14 +512,14 @@ struct MRReadinessTests {
         let wed = thisWeek(weekday: 4)
         let s = mrSessionSuggestion(level: .easy, plan: plan(), runs: saturdayLongRunHistory(asOf: wed), asOf: wed)
         #expect(s?.session == "이지 8km")
-        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0회 · 계획 3회 · 5일 남음")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0번 · 계획 3번 · 5일 남음")
     }
 
     @Test func restLevelHasNoSessionAndWarnsLateInWeek() {
         let sat = thisWeek(weekday: 7)
         let s = mrSessionSuggestion(level: .rest, plan: plan(), runs: saturdayLongRunHistory(asOf: sat), asOf: sat)
         #expect(s?.session == nil)
-        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0회 · 계획 3회 · 롱런은 이번 주 못 하면 다음 주로")
+        #expect(s?.progress == "이번 주 롱런 아직 · 이지 0번 · 계획 3번 · 롱런은 이번 주 못 하면 다음 주로")
     }
 
     @Test func raceWeekYieldsNothing() {
@@ -533,7 +533,7 @@ struct MRReadinessTests {
         runs.append(thisWeekRun(dayOffset: 5, km: 11.5, asOf: sun))   // 14 × 0.8 = 11.2 이상 → 완료
         let s = mrSessionSuggestion(level: .go, plan: plan(), runs: runs, asOf: sun)
         #expect(s?.session == "이지 8km")
-        #expect(s?.progress == "이번 주 롱런 완료 · 이지 0회 · 계획 3회")
+        #expect(s?.progress == "이번 주 롱런 완료 · 이지 0번 · 계획 3번")
     }
 
     @Test func everythingDoneSaysPlanComplete() {
@@ -555,7 +555,7 @@ struct MRReadinessTests {
         let r = mrReadiness(runs: runs, phys: phys, heatHR: MRHeatHRModel(), hrvNights: [], planPhase: nil, asOf: wed, planWeek: plan())
         #expect(r?.level == .easy)
         #expect(r?.line == "오늘은 이지런 · 이지 8km")
-        #expect(r?.planLine == "이번 주 롱런 아직 · 이지 1회 · 계획 3회 · 5일 남음")
+        #expect(r?.planLine == "이번 주 롱런 아직 · 이지 1번 · 계획 3번 · 5일 남음")
         #expect(r?.detail.contains("이번 주 롱런") == false)   // 계획 진행은 셋째 줄로 따로
     }
 

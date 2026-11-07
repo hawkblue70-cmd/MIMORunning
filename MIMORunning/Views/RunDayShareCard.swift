@@ -346,9 +346,10 @@ struct RunStatsRow: View {
 /// 라벨("당일 아침") + 제안 줄(판정 색 = 홈과 같은 displayColor) + why 전체 + data + planLine.
 /// 제안이 없고 `direction`이 있으면 "→ 다음: {방향}" 한 줄. 둘 다 없으면 아무것도 그리지 않는다.
 struct MorningSuggestionView: View {
-    /// 옛 진행 표기(실제/계획 나눗셈) → 지금 표기. "이지 1/3회" → "이지 1회 · 계획 3회" (한·영·일)
+    /// 옛 진행 표기 → 지금 표기. "이지 1/3회"(실제/계획 나눗셈)·"이지 1회 · 계획 3회"(11/7 전 단위) → "이지 1번 · 계획 3번" (한·영·일)
     static func modernPlanLine(_ s: String) -> String {
-        var t = s.replacingOccurrences(of: #"이지 (\d+)/(\d+)회"#, with: "이지 $1회 · 계획 $2회", options: .regularExpression)
+        var t = s.replacingOccurrences(of: #"이지 (\d+)/(\d+)회"#, with: "이지 $1번 · 계획 $2번", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"이지 (\d+)회 · 계획 (\d+)회"#, with: "이지 $1번 · 계획 $2번", options: .regularExpression)
         t = t.replacingOccurrences(of: #"easy (\d+)/(\d+)"#, with: "easy $1 · plan $2", options: .regularExpression)
         t = t.replacingOccurrences(of: #"イージー (\d+)/(\d+)回"#, with: "イージー$1回 · 計画$2回", options: .regularExpression)
         return t
