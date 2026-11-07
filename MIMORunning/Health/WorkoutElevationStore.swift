@@ -26,8 +26,11 @@ final class WorkoutElevationStore: @unchecked Sendable {
         for w in workouts {
             guard let q = w.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity,
                   q.is(compatibleWith: .meter()) else { continue }
-            let m = Int(q.doubleValue(for: .meter()).rounded())
-            guard m >= 0, cache[w.uuid.uuidString] != m else { continue }
+            // 다른 앱이 써 준 값일 수 있다 — NaN·아주 큰 값은 Int 변환에서 종료되므로 변환 전에 거른다(앱 켤 때마다 도는 경로)
+            let v = q.doubleValue(for: .meter())
+            guard v.isFinite, v >= 0, v < 100_000 else { continue }
+            let m = Int(v.rounded())
+            guard cache[w.uuid.uuidString] != m else { continue }
             cache[w.uuid.uuidString] = m
             changed = true
         }
