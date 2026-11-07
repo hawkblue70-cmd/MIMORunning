@@ -166,8 +166,9 @@ struct MRRaceJourney: Identifiable {
             let parts: [(text: String, kind: Kind)] = groups.enumerated()
                 .sorted { ($0.element.kind.rawValue, -$0.offset) > ($1.element.kind.rawValue, -$1.offset) }
                 .map { g in
-                    let kmStr = mrPointKmString((g.element.km * 10).rounded() / 10)
-                    return (L.s("\(g.element.name) \(g.element.n)회 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
+                    // 러닝 횟수는 "번"(계획 문장과 같은 단위), 거리는 올림 없이 첫째 자리 버림(2026-11-07)
+                    let kmStr = mrPointKmString((g.element.km * 10 + 1e-6).rounded(.down) / 10)
+                    return (L.s("\(g.element.name) \(g.element.n)번 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
                                 ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km"), g.element.kind)
                 }
             let named = parts.map(\.text)

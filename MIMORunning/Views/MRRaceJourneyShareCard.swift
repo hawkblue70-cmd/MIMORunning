@@ -96,7 +96,7 @@ struct MRRaceJourneyShareCard: View {
                         Text("km")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(p.text)
-                        Text(AppLanguage.shared.s("· \(m.monthRuns)회", "· \(m.monthRuns) runs", ja: "· \(m.monthRuns)回"))
+                        Text(AppLanguage.shared.s("· \(m.monthRuns)번", "· \(m.monthRuns) runs", ja: "· \(m.monthRuns)回"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(p.sub)
                     }
@@ -269,13 +269,14 @@ struct MRRaceJourneyShareCard: View {
         let doneWeeks = j.weeks.filter { !$0.isFuture }.count   // 진행 중이면 이번 주까지
         var out: [(label: String, value: String)] = []
         out.append((j.month != nil || j.progress != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
-                    L.s("\(doneWeeks)주 · \(j.runCount)회 · ", "\(doneWeeks) wks · \(j.runCount) runs · ",
+                    L.s("\(doneWeeks)주 · \(j.runCount)번 · ", "\(doneWeeks) wks · \(j.runCount) runs · ",
                         ja: "\(doneWeeks)週 · \(j.runCount)回 · ") + mrTotalKm(j.totalKm) + "km"))
         var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))
             + mrRunKm(j.longestKm) + "km"
         if j.hardPlanned > 0 {
-            t += " · " + L.s("강도 훈련 \(j.hardDone)/\(j.hardPlanned)회", "Hard \(j.hardDone)/\(j.hardPlanned)",
-                             ja: "強度練習 \(j.hardDone)/\(j.hardPlanned)回")
+            // 실제/계획 나눗셈은 진행률 표기 — 두 값을 따로(아침 계획 줄 "이지 2번 · 계획 3번"과 같은 형식, 2026-11-07)
+            t += " · " + L.s("강도 훈련 \(j.hardDone)번 · 계획 \(j.hardPlanned)번", "hard \(j.hardDone) · plan \(j.hardPlanned)",
+                             ja: "強度練習\(j.hardDone)回 · 計画\(j.hardPlanned)回")
         }
         out.append((L.s("훈련", "Training", ja: "練習"), t))
         let syms = j.symbolCounts
