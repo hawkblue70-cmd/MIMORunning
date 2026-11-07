@@ -234,3 +234,19 @@ struct TabDigestPerformanceTests {
         #expect(v.text == "후반에 심박이 많이 올랐습니다. 이 거리와 강도가 아직 버거울 수 있습니다.")
     }
 }
+
+/// 같은 러닝의 디커플링 숫자는 요약 줄·차트 제목이 같은 표기(2026-11-07: "-0.6%"와 "−1%")
+@Suite struct DecouplingValueFormatTests {
+    @Test func oneDecimalWithSign() {
+        #expect(TabDigestPerformance.decouplingValue(-0.6) == "−0.6")
+        #expect(TabDigestPerformance.decouplingValue(4.94) == "+4.9")
+        #expect(TabDigestPerformance.decouplingValue(-0.04) == "+0.0")
+    }
+
+    @Test func morningLineLongRunDetection() {
+        #expect(InsightMorning.lineIsLongRun("오늘은 이지런 · 롱런 14km"))
+        #expect(InsightMorning.lineIsLongRun("Today: easy · Long run 14km"))
+        #expect(!InsightMorning.lineIsLongRun("오늘은 이지런 · 이지 4.5km"))
+        #expect(!InsightMorning.lineIsLongRun("오늘은 휴식"))
+    }
+}

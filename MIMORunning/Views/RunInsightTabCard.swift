@@ -3482,8 +3482,7 @@ private struct PerformanceInsightCard: View {
     @ViewBuilder
     private func decouplingBar(_ pct: Double) -> some View {
         let L = AppLanguage.shared
-        let n = Int(pct.rounded())
-        let valueText = (n >= 0 ? "+" : "−") + "\(abs(n))%"
+        let valueText = TabDigestPerformance.decouplingValue(pct) + "%"   // 요약 줄과 같은 숫자
         let reading = decouplingReading(pct)
         let band = Self.decouplingBandIndex(pct)
         let labels = [L.s("음수", "<0", ja: "マイナス"), "0~5", "5~10", L.s("10 이상", "10+", ja: "10以上")]

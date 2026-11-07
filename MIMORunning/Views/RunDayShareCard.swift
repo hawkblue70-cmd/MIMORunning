@@ -509,6 +509,14 @@ struct RunDayShareCard: View {
             let label = t.koreanLabel
             let capS = (e.easyCapHR).map { L.s("(제안 \($0) 아래)", " (guide: under \($0))", ja: "(提案\($0)未満)") } ?? ""
             let hrS = late.hrLo == late.hrHi ? "\(late.hrHi)" : "\(late.hrLo)~\(late.hrHi)"
+            // 아침 세션이 롱런이었으면 롱런을 그 유형으로 달린 것 — "이지 대신 거리주"만 쓰면 롱런을 안 한 것처럼 읽혔다(2026-11-07)
+            if InsightMorning.lineIsLongRun(e.line) {
+                let km = mrRunKmInText(activity.distance / 1000)
+                return L.s("→ 실제: 롱런 \(km)km를 이지 대신 \(label)\(KoreanParticle.instrumental(after: label)) 달렸습니다 · 마지막 2km \(mrFormatPace(late.pace)) · 심박 \(hrS)\(capS)",
+                           "→ Actual: ran the \(km) km long run as a \(label.lowercased()) instead of easy · last 2 km \(mrFormatPace(late.pace)) · HR \(hrS)\(capS)",
+                           ja: "→ 実際: ロング走\(km)kmをイージーの代わりに\(label)で走りました · 最後の2km \(mrFormatPace(late.pace)) · 心拍\(hrS)\(capS)")
+                    .keepingNumberUnitsTogether
+            }
             return L.s("→ 실제: 이지 대신 \(label)\(KoreanParticle.instrumental(after: label)) 달렸습니다 · 마지막 2km \(mrFormatPace(late.pace)) · 심박 \(hrS)\(capS)",
                        "→ Actual: ran a \(label.lowercased()) instead of easy · last 2 km \(mrFormatPace(late.pace)) · HR \(hrS)\(capS)",
                        ja: "→ 実際: イージーの代わりに\(label)で走りました · 最後の2km \(mrFormatPace(late.pace)) · 心拍\(hrS)\(capS)")

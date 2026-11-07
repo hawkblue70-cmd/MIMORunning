@@ -34,6 +34,13 @@ struct InsightMorning: Equatable {
         return String(line.dropFirst(h.count))
     }
 
+    /// 판정 줄의 세션이 롱런인가 — "오늘은 이지런 · 롱런 14km" / "… · Long run 14km" / "… · ロング走14km"
+    static func lineIsLongRun(_ line: String) -> Bool {
+        let parts = line.components(separatedBy: " · ")
+        guard parts.count >= 2 else { return false }
+        return ["롱런", "Long run", "ロング走"].contains { parts[1].hasPrefix($0) }
+    }
+
     /// 판정 줄이 포인트 세션인가(숫자 칸이 없던 옛 스냅샷용) — "오늘은 강도 OK · 빌드업 10km …"
     static func lineLooksPoint(level: String, line: String) -> Bool {
         guard level == "go", let rest = sessionText(line: line) else { return false }

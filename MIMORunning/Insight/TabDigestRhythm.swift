@@ -369,7 +369,10 @@ enum TabDigestRhythm {
             // ⓪ GCT 개선 구절 — 페이스 하락이 있어도 접지 단축이면 덧붙임
             if let fg = halfAvgGCT(first), let sg = halfAvgGCT(second), (sg - fg) <= -7 {
                 let delta = Int(abs((sg - fg).rounded()))
-                result = Verdict(text: result.text + L.s(" 지면접촉은 \(delta)ms 짧아졌습니다.", " Ground contact shortened by \(delta) ms though.", ja: " 接地時間は\(delta)ms短くなりました。"),
+                // 앞 문장 끝에 마침표를 찍고 잇는다("않았습니다 지면접촉은"으로 붙었다). 숫자는 빼고 사실만 — 같은 화면 폼 차트의
+                // "283 → 269 (−14ms)"(처음·끝 km)와 이 값(전반·후반 평균 9ms)이 달라 보였다(2026-11-07)
+                let sep = result.text.hasSuffix(".") || result.text.hasSuffix("。") ? "" : L.s(".", ".", ja: "。")
+                result = Verdict(text: result.text + sep + L.s(" 후반에는 지면접촉이 짧아졌습니다.", " Ground contact got shorter late in the run.", ja: "後半は接地時間が短くなりました。"),
                                  isProblem: result.isProblem, shade: result.shade, paceShape: result.paceShape,
                                  short: result.short.map { $0 + L.s(" · 지면접촉 -\(delta)ms", " · contact -\(delta) ms", ja: " · 接地-\(delta)ms") })
             }

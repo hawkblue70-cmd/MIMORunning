@@ -73,6 +73,13 @@ enum TabDigestPerformance {
     ///
     /// `lateHRRoseFirst` — 총평 "후반"이 심박 신호인지(`RunSummaryBuilder.lateHRRoseFirst`). pct ≤ 5일 때만 읽는다.
     /// shade: 카드 색 — 초록(.good)·흰색 0.85(.neutral)·주의색(.caution).
+    /// 디커플링 숫자 — 소수 첫째 자리 + 부호(+0.6 · −0.6). 요약 줄과 퍼포먼스 카드 차트 제목이 같이 쓴다
+    /// (요약 "-0.6%"·차트 "−1%"로 갈렸다, 2026-11-07)
+    static func decouplingValue(_ pct: Double) -> String {
+        let s = String(format: "%.1f", abs(pct))
+        return (pct < 0 && s != "0.0" ? "−" : "+") + s
+    }
+
     /// isProblem: 5% 넘게 올랐고 덥지 않은 날(설계 P3). 빌드업은 계획이라 문제가 아니다.
     static func decouplingVerdict(pct: Double, workoutType wt: WorkoutType, temperatureC: Double?,
                                   lateHRRoseFirst: Bool, samePaceRise: FormNarrative.SamePaceHRRise? = nil,
@@ -81,7 +88,7 @@ enum TabDigestPerformance {
         let hot = (temperatureC ?? -.infinity) >= decouplingHotTempC
         typealias V = TabDigestRhythm.Verdict
         // 요약 개조식 — 같은 pct 값
-        let p = String(format: "%.1f", pct)
+        let p = decouplingValue(pct)
         // 카드 차트 제목("디커플링")과 같은 이름 — 다른 화면의 '심박 드리프트'(전후반 심박 bpm 차)와 다른 지표다
         let drift = L.s("디커플링 \(p)%", "Decoupling \(p)%", ja: "デカップリング\(p)%")
         let heatTail = L.s(" · 더위 영향", " · heat", ja: " · 暑さの影響")
