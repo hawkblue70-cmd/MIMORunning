@@ -530,9 +530,9 @@ enum FormPhase {
 
         // 후반: 심박 드리프트 ↔ 케이던스 (부호 있는 페이스·케이던스 변화, 더위 위안은 드리프트가 작을 때만)
         if let h1 = m.avgHR, let h2 = l.avgHR, h2 - h1 >= 5 {
-            let hrRise = h2 - h1
-            let hrDelta = Int(hrRise.rounded())
-            let paceDelta = l.paceSecPerKm - m.paceSecPerKm
+            // 숫자는 표에 보이는 반올림 값끼리의 차 — 표 143 → 154인데 문장이 12bpm이던 것(142.5→154, 2026-11-07)
+            let hrDelta = Int(h2.rounded()) - Int(h1.rounded())
+            let paceDelta = (l.paceSecPerKm.rounded()) - (m.paceSecPerKm.rounded())
 
             let paceKo: String
             let paceEn: String

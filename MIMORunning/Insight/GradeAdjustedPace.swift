@@ -171,6 +171,12 @@ enum GradeAdjustedPace {
     /// 전반·후반 순 고도 변화가 이만큼(m) 다르면 두 반을 같은 조건으로 비교하지 않는다 — 심박 캡션·폼 전후반 비교가 같이 쓴다.
     static let halvesClimbGapM: Double = 15
 
+    /// "후반 오르막" — 전후반 오르내림 차가 15m↑이고 후반 자체가 10m↑ 올랐을 때만.
+    /// 전반에 크게 내려가고 후반이 평지(+2m)인 코스가 차이만으로 '후반 오르막'이 되던 것(2026-11-07 다른 러너, 고도 그래프는 후반 평지).
+    static func isLateClimb(_ c: (first: Double, second: Double)) -> Bool {
+        c.second - c.first >= halvesClimbGapM && c.second >= sustainedChangeM
+    }
+
     /// 전반·후반 순 고도 변화(m). x는 거리(km) 또는 시간(초) — 반은 x의 가운데로 나눈다. 5점 이동평균으로 GPS 고도 잡음을 누른다.
     /// 지속 경사(`hasRealElevation`와 같은 1km·10m 기준)가 없는 코스면 nil — 평지 트랙의 고도 흔들림으로 판단하지 않는다.
     static func halvesNetClimb(_ pts: [(x: Double, altitude: Double)]) -> (first: Double, second: Double)? {

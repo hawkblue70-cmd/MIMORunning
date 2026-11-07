@@ -360,14 +360,24 @@ func mrFormObservation(_ shifts: [MRFormShift], hasRecentGap: Bool = false, refC
         var dropMech = false
         if let r = runCadenceResidual {
             let endpoint = cs.recentMean
-            if r >= endpoint - 1 {
+            // 추세 방향으로 잰다 — 케이던스가 내려가는 추세에서 오히려 높았던 러닝(191, 평소 186~192 위쪽)이
+            // "같은 방향"으로 나오던 것(2026-11-07 다른 러너)
+            let dir: Double = cs.delta >= 0 ? 1 : -1
+            let along = (r - endpoint) * dir
+            if along >= -1 {
                 tailKor = " 이 러닝도 같은 방향입니다."
                 tailEng = " This run points the same way."
                 tailJa = "このランも同じ方向です。"
-            } else if r < endpoint - 2 {
-                tailKor = " 이 러닝은 그 흐름보다 조금 느긋했습니다."
-                tailEng = " This run was a little more relaxed than that trend."
-                tailJa = "このランはその流れより少しゆったりしていました。"
+            } else if along < -2 {
+                if dir > 0 {
+                    tailKor = " 이 러닝은 그 흐름보다 조금 느긋했습니다."
+                    tailEng = " This run was a little more relaxed than that trend."
+                    tailJa = "このランはその流れより少しゆったりしていました。"
+                } else {
+                    tailKor = " 이 러닝은 그 흐름보다 케이던스가 높았습니다."
+                    tailEng = " This run's cadence was higher than that trend."
+                    tailJa = "このランはその流れよりケイデンスが高めでした。"
+                }
             }
         } else if wks >= 8 {
             // 러닝별 값이 없고 추세가 오래 이어지면 — 이미 여러 번 본 문단이므로 사실 + 결론만

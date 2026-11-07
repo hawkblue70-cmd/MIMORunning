@@ -4563,7 +4563,8 @@ private struct PerformanceInsightCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             // 한 줄: AU가 무엇인지 — 캡션과 같은 크기·색, 강조 없음
-            Text(L.s("AU = 체감 강도 × 분 · 최근 흐름을 지난 4주 흐름과 비교합니다",
+            // 짧게 — 좁은 열에서 끝이 '…'로 잘렸다(2026-11-07)
+            Text(L.s("AU = 체감 강도 × 분 · 지난 4주 흐름과 비교",
                      "AU = perceived effort × minutes · recent trend vs last 4 weeks", ja: "AU = 体感強度 × 分 · 最近の流れを直近4週の流れと比べます"))
                 .font(.system(size: 8)).foregroundStyle(ink.fg(0.45))
                 .lineLimit(1).minimumScaleFactor(0.8)

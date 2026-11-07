@@ -131,7 +131,7 @@ enum TabDigestRhythm {
         // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저
         if diff >= 8, workoutType != .buildUp,
            let climb = GradeAdjustedPace.halvesNetClimb(detail?.altitudeTimeProfile.map { (x: $0.offset, altitude: $0.altitude) } ?? []),
-           climb.second - climb.first >= GradeAdjustedPace.halvesClimbGapM, climb.second > 0 {
+           GradeAdjustedPace.isLateClimb(climb) {
             return HRCaption(kind: .lateClimb, text: L.s("후반 오르막에서 심박이 올랐습니다", "HR rose on the late climb", ja: "後半の上りで心拍が上がりました"))
         }
         // 빌드업은 후반 상승이 계획 — 문구만 유형별 (색은 동일)
@@ -435,7 +435,7 @@ enum TabDigestRhythm {
                 let lateClimb: Bool = {
                     guard let c = GradeAdjustedPace.halvesNetClimb(altitudeProfile.map { (x: $0.distanceKm, altitude: $0.altitude) })
                     else { return false }
-                    return c.second - c.first >= GradeAdjustedPace.halvesClimbGapM && c.second > 0
+                    return GradeAdjustedPace.isLateClimb(c)
                 }()
                 if lateClimb {
                     // 문장만 지형을 밝히고 판정 무게(isProblem)는 그대로 — 요약 블록·맨 위 요약의 느낌이 바뀌지 않게(2026-10-17 사용자 결정)

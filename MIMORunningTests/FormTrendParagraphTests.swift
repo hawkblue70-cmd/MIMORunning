@@ -103,6 +103,15 @@ struct FormTrendParagraphTests {
         #expect(e.hasSuffix("This run was a little more relaxed than that trend."))
     }
 
+    @Test func downTrend_measuresAlongTrendDirection() {
+        // 케이던스가 내려가는 추세(끝점 −3) — 더 내려간 러닝은 같은 방향, 오히려 높은 러닝은 '높았습니다'(2026-11-07)
+        let same = ko([cad(-6, recentMean: -3.0), gct(-5)], run: -4.0)
+        #expect(same.hasSuffix("이 러닝도 같은 방향입니다."))
+        let higher = ko([cad(-6, recentMean: -3.0), gct(-5)], run: 1.0)
+        #expect(higher.hasSuffix("이 러닝은 그 흐름보다 케이던스가 높았습니다."))
+        #expect(!higher.contains("같은 방향"))
+    }
+
     @Test func runSlightlyBelow_noTail() {
         let t = ko([cad(3, recentMean: 2.0), gct(-8)], run: 0.5)   // 끝점 − 2 ≤ r < 끝점 − 1
         #expect(t.hasSuffix("짧은 접지로 달리고 있다는 뜻입니다."))

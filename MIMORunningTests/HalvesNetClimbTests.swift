@@ -24,6 +24,18 @@ import Foundation
         #expect(GradeAdjustedPace.halvesNetClimb(profile(noisy)) == nil)
     }
 
+    @Test func descentThenFlatIsNotALateClimb() throws {
+        // 앞 5km 60m 내려가고 뒤 5km 평지(+2m) — 차이는 크지만 후반은 오르막이 아니다(2026-11-07)
+        let down = (0...50).map { 100 - Double($0) * 1.2 }
+        let flat = (1...50).map { 40 + Double($0) * 0.04 }
+        let c = try #require(GradeAdjustedPace.halvesNetClimb(profile(down + flat)))
+        #expect(c.second - c.first >= GradeAdjustedPace.halvesClimbGapM)
+        #expect(!GradeAdjustedPace.isLateClimb(c))
+        // V자 코스(뒤에서 60m 오름)는 그대로 후반 오르막
+        let up = (1...50).map { 40 + Double($0) * 1.2 }
+        #expect(GradeAdjustedPace.isLateClimb(try #require(GradeAdjustedPace.halvesNetClimb(profile(down + up)))))
+    }
+
     @Test func steadyClimbHasBalancedHalves() throws {
         // 처음부터 끝까지 같은 경사로 40m 오름 — 두 반의 차이가 작아 비교를 막지 않는다
         let climb = (0...50).map { Double($0) * 0.8 }
