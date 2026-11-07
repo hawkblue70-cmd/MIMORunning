@@ -673,7 +673,7 @@ func detectWeeklyPatterns(_ inputs: WeeklyInsightInputs) -> [WeeklyPattern] {
         var facts: [String] = [
             "심박 \(pct(inputs.hrChangeRatio))",
             "페이스 \(pct(inputs.paceChangeRatio))",
-            "이번 주 \(String(format: "%.1f", inputs.thisWeekDistanceKm))km"
+            "이번 주 \(mrTotalKm(inputs.thisWeekDistanceKm))km"
         ]
         if inputs.vo2Max == .up, let r = inputs.metricChangeRatios[.vo2Max] { facts.append("유산소 \(pct(r))") }
         patterns.append(WeeklyPattern(

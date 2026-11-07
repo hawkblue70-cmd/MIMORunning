@@ -23,9 +23,13 @@ enum ActivityType: String {
     }
 }
 
-/// 러닝 한 번의 거리 — 거리와 상관없이 소수 둘째 자리(애플 피트니스와 같은 표기). 10.96km가 "11.0km"로 뛰지 않은 거리까지
-/// 올라가 보이던 것(2026-11-04 앱스토어 리뷰 "소수점 올리지 말고 멈춘 그대로"). km 값을 받아 숫자만 돌려준다.
-func mrRunKm(_ km: Double) -> String { String(format: "%.2f", km) }
+/// 소수 둘째 자리까지 버린 값 — 애플 피트니스와 같은 방식(13.749 → 13.74, 반올림하면 13.75로 애플과 달랐다, 2026-11-07).
+/// 1e-7: 5052.37처럼 딱 떨어지는 값이 부동소수 오차(505236.99999…)로 5052.36이 되지 않게
+func mrKmFloor2(_ km: Double) -> Double { ((km * 100 + 1e-7).rounded(.down)) / 100 }
+
+/// 러닝 한 번의 거리 — 거리와 상관없이 소수 둘째 자리, 셋째 자리부터 버림(애플 피트니스와 같은 표기). 10.96km가 "11.0km"로
+/// 뛰지 않은 거리까지 올라가 보이던 것(2026-11-04 앱스토어 리뷰 "소수점 올리지 말고 멈춘 그대로"). km 값을 받아 숫자만 돌려준다.
+func mrRunKm(_ km: Double) -> String { String(format: "%.2f", mrKmFloor2(km)) }
 
 /// 문장 속 러닝 거리 — 소수 둘째 자리에서 끝의 0만 뺀다(16.00 → "16", 19.60 → "19.6", 13.62 → "13.62"). 카드 숫자와 같은 값.
 func mrRunKmInText(_ km: Double) -> String {
@@ -35,8 +39,6 @@ func mrRunKmInText(_ km: Double) -> String {
     return s
 }
 
-/// 합계(이번 주·이번 달·올해·누적·신발) — 러닝 한 번과 같은 소수 둘째 자리, 천 단위 쉼표(5,052.37).
-/// 첫 러닝 날 기록과 이번 주 합계가 같은 숫자가 되게, 올림도 버림도 하지 않는다(2026-11-04 사용자: "전부 표시해줘").
 /// 소수 첫째 자리 거리(월말 결산 총 거리) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(203.19 → 203.1)
 func mrTenthKm(_ km: Double) -> String {
     let f = NumberFormatter()
@@ -58,8 +60,11 @@ func mrWholeKm(_ km: Double) -> String {
     return f.string(from: NSNumber(value: km.rounded(.down))) ?? String(Int(km))
 }
 
+/// 합계(이번 주·이번 달·신발 등) — 러닝 한 번과 같은 소수 둘째 자리(셋째 자리부터 버림), 천 단위 쉼표(5,052.37).
+/// 첫 러닝 날 기록과 이번 주 합계가 같은 숫자가 되게(2026-11-04 사용자: "전부 표시해줘", 11-07 애플과 같은 버림).
 func mrTotalKm(_ km: Double) -> String {
     guard km >= 1000 else { return mrRunKm(km) }
+    let km = mrKmFloor2(km)
     let f = NumberFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
     f.numberStyle = .decimal

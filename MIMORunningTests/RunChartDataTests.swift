@@ -49,6 +49,11 @@ struct RunChartDataTests {
         #expect(mrTotalKm(2.15) == "2.15")
         #expect(mrTotalKm(203.14) == "203.14")
         #expect(mrTotalKm(5052.37) == "5,052.37")
+        // 애플 피트니스와 같이 셋째 자리부터 버림(반올림하면 13.75)
+        #expect(mrRunKm(13.749) == "13.74")
+        #expect(mrRunKm(2.159) == "2.15")
+        #expect(mrRunKm(10.0) == "10.00")
+        #expect(mrTotalKm(5052.379) == "5,052.37")
         // 홈의 올해·누적 — 소수점 없이, 올림 없음
         #expect(mrWholeKm(2.97) == "2")
         #expect(mrWholeKm(5052.97) == "5,052")

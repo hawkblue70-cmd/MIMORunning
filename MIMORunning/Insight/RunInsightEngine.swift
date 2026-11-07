@@ -646,8 +646,8 @@ enum RunInsightEngine {
         let totalKm = activity.distance / 1000.0
         guard workKm > 0, totalKm > 0 else { return nil }
 
-        let workStr  = String(format: "%.1f", workKm)
-        let totalStr = String(format: "%.1f", totalKm)
+        let workStr  = mrRunKmInText(workKm)    // 거리 표기 공용(둘째 자리 버림)
+        let totalStr = mrRunKmInText(totalKm)
         let msg = L.s(
             "운동 구간 합계 \(workStr)km / 회복 포함 총 \(totalStr)km",
             "Work intervals total \(workStr) km / \(totalStr) km incl. recovery", ja: "本練習の合計\(workStr)km / 回復込みの合計\(totalStr)km"
