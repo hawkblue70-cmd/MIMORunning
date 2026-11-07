@@ -945,20 +945,22 @@ enum RunChartReplayExporter {
         guard totalKm > 0, timeProgress > 0 else { return }
         let km = distanceProgress * totalKm
         let elapsed = timeProgress * totalDuration
-        let s = Int(elapsed.rounded())
+        // 시간·거리 버림 — 아래 차트 표시("2.7km · 16:56")와 같은 숫자(반올림이면 지도만 16:57이었다, 2026-11-07)
+        let s = Int(elapsed)
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         let timeStr = h > 0
             ? String(format: "%d:%02d:%02d", h, m, sec)
             : String(format: "%d:%02d", m, sec)
-        let text = String(format: "%.1fkm · %@", km, timeStr)
+        let text = String(format: "%.1fkm · %@", (km * 10 + 1e-6).rounded(.down) / 10, timeStr)
 
-        let font = UIFont.systemFont(ofSize: 11, weight: .heavy)
+        // 글자 11 → 15(2026-11-07 사용자: 지도 거리 글자가 작다)
+        let font = UIFont.systemFont(ofSize: 15, weight: .heavy)
         let textColor = UIColor(palette.textPrimary)
         let attrStr = NSAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: textColor
         ])
         let textSize = attrStr.size()
-        let padH: CGFloat = 10, padV: CGFloat = 6
+        let padH: CGFloat = 12, padV: CGFloat = 7
         let bgW = textSize.width + padH * 2
         let bgH = textSize.height + padV * 2
         let bgX = routeRect.midX - bgW / 2
@@ -993,9 +995,10 @@ enum RunChartReplayExporter {
         guard maxKm >= interval else { return }
 
         let passedDist = distanceProgress * totalDist
-        let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        let padH: CGFloat = 8, padV: CGFloat = 5
-        let corner: CGFloat = 6
+        // 글자 11 → 15(2026-11-07 사용자: 지도 km 글자가 작다)
+        let font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        let padH: CGFloat = 9, padV: CGFloat = 5
+        let corner: CGFloat = 7
 
         for km in stride(from: interval, through: maxKm, by: interval) {
             let targetDist = Double(km) * 1000.0
