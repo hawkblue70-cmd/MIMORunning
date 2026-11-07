@@ -747,7 +747,7 @@ struct RecordBarChart: View {
             guard compact else { return .stride(by: .day, count: 7) }
             switch bars.count {
             case ...8:   return .stride(by: .day, count: 2)
-            case 9...16: return .stride(by: .day, count: 3)
+            case 9...16: return .stride(by: .day, count: 5)   // 사흘 간격은 14일 창에서 "10/2310/26…"로 붙었다(2026-11-07)
             default:     return .stride(by: .day, count: 7)
             }
         case .week:  return .stride(by: .weekOfYear, count: 1)

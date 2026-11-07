@@ -2220,7 +2220,9 @@ class HealthKitManager {
             sortDescriptors: [SortDescriptor(\HKWorkout.startDate, order: .reverse)]
             // No limit — full 12-month history for accurate growth/insight
         )
-        return try await descriptor.result(for: store)
+        let workouts = try await descriptor.result(for: store)
+        WorkoutElevationStore.shared.record(workouts)   // 지난 러닝 상승 고도 — 같은 페이스 심박 비교의 코스 판단
+        return workouts
     }
 
     // MARK: - Activity builders

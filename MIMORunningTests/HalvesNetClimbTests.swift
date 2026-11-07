@@ -43,3 +43,29 @@ import Foundation
         #expect(abs(c.second - c.first) < GradeAdjustedPace.halvesClimbGapM)
     }
 }
+
+/// 같은 페이스 심박이 높을 때 원인 — 비교 러닝보다 오르내림이 많은 코스(2026-11-07)
+@Suite struct EfficiencyTerrainCauseTests {
+    private func run(_ km: Double) -> Activity {
+        Activity(id: UUID(), type: .running, date: Date(), duration: km * 400, distance: km * 1000,
+                 calories: nil, avgHeartRate: 147)
+    }
+
+    @Test @MainActor func hillierThanComparisonRunsNamesTheCourse() throws {
+        let today = run(10), others = (0..<5).map { _ in run(10) }
+        var gains: [UUID: Double] = [today.id: 158]
+        for o in others { gains[o.id] = 50 }
+        let t = try #require(RunInsightEngine.efficiencyTerrainCause(activity: today, comparable: others, gain: { gains[$0] }))
+        #expect(t.contains("16m"))
+        #expect(t.contains("5m"))
+    }
+
+    @Test @MainActor func similarCourseOrMissingDataGivesNothing() {
+        let today = run(10), others = (0..<5).map { _ in run(10) }
+        var gains: [UUID: Double] = [today.id: 158]
+        for o in others { gains[o.id] = 120 }
+        #expect(RunInsightEngine.efficiencyTerrainCause(activity: today, comparable: others, gain: { gains[$0] }) == nil)
+        // 비교 러닝 고도가 3개 미만이면 말하지 않는다
+        #expect(RunInsightEngine.efficiencyTerrainCause(activity: today, comparable: others, gain: { $0 == today.id ? 158 : nil }) == nil)
+    }
+}

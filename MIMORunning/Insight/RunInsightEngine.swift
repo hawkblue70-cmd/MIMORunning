@@ -1375,7 +1375,7 @@ enum RunInsightEngine {
     }
 
     /// "높아요" 뒤에 붙는 원인 한 마디 — 14일 이상 공백이면 공백, 아니면 컨디션
-    private static func efficiencyCause(activity: Activity, history: [Activity]) -> String {
+    private static func efficiencyCause(activity: Activity, history: [Activity], comparable: [Activity] = []) -> String {
         let L = AppLanguage.shared
         let sorted = history.filter { $0.type == .running && $0.date < activity.date }.sorted { $0.date < $1.date }
         if let last = sorted.last {
@@ -1384,7 +1384,28 @@ enum RunInsightEngine {
         }
         // 그날 아침 손목 온도·호흡수가 평소보다 높았으면 그 사실을 원인 자리에 — 아침 카드가 짚은 것을 러닝 뒤에도 잇는다(2026-10-18)
         if let v = MREngineStore.persistedVitalSignal(asOf: activity.date) { return v.postRunCause }
+        if let t = efficiencyTerrainCause(activity: activity, comparable: comparable) { return t }
         return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.", ja: "今日のコンディションを反映しているのかもしれません。")
+    }
+
+    /// 비교 러닝보다 오르내림이 분명히 많은 코스였으면 그 사실 — km당 상승이 10m↑이고 비교 러닝 중앙값보다 8m↑ 많을 때만.
+    /// 상승 158m 코스가 "오늘 컨디션"으로 설명되던 것(2026-11-07 다른 러너). 상승 값은 운동 기록 메타데이터(`WorkoutElevationStore`).
+    static func efficiencyTerrainCause(activity: Activity, comparable: [Activity],
+                                       gain: (UUID) -> Double? = { WorkoutElevationStore.shared.gain($0) }) -> String? {
+        let L = AppLanguage.shared
+        func perKm(_ a: Activity) -> Double? {
+            guard a.distance > 0, let g = gain(a.id) else { return nil }
+            return g / (a.distance / 1000)
+        }
+        guard let mine = perKm(activity) else { return nil }
+        let others = comparable.compactMap(perKm).sorted()
+        guard others.count >= 3 else { return nil }
+        let median = others[others.count / 2]
+        guard mine >= 10, mine - median >= 8 else { return nil }
+        let a = Int(mine.rounded()), b = Int(median.rounded())
+        return L.s("오르내림이 많은 코스였습니다(km당 상승 \(a)m · 비교 러닝 \(b)m).",
+                   "The course was hillier (\(a) m gain per km vs \(b) m for the comparison runs).",
+                   ja: "起伏の多いコースでした(1kmあたり上昇\(a)m · 比較ラン\(b)m)。")
     }
 
     /// 심박 효율 비교 표본 — 퍼포먼스 카드의 산점도 제목("심박 효율 ↓N bpm")·히어로·맨 아래 문장이 **이 함수 하나**를 쓴다.
@@ -1443,7 +1464,7 @@ enum RunInsightEngine {
             }
             let cause = heatExplains
                 ? L.s("\(tempStr) 더위 영향일 수 있습니다.", "the \(tempStr) heat may be a factor.", ja: "\(tempStr)の暑さの影響かもしれません。")
-                : Self.efficiencyCause(activity: activity, history: history)
+                : Self.efficiencyCause(activity: activity, history: history, comparable: comparable)
             return RunInsight(category: .efficiency, tone: .neutral, badge: L.s("참고", "Note", ja: "参考"),
                 message: L.s("비슷한 페이스의 최근 8주 \(sampleStr)회보다 심박이 \(diffStr)bpm 높습니다. \(cause)",
                              "HR is \(diffStr) bpm higher vs \(sampleStr) similar-pace runs — \(cause)", ja: "近いペースの直近8週\(sampleStr)回と比べて心拍が\(diffStr) bpm高いです。\(cause)"),
@@ -1488,7 +1509,7 @@ enum RunInsightEngine {
                 highlights: [diffStr + "bpm", AppLanguage.shared.s(sampleStr + "회", sampleStr, ja: sampleStr + "回")],
                 source: .efficiencyComparison)
         }
-        let cause = Self.efficiencyCause(activity: activity, history: history)
+        let cause = Self.efficiencyCause(activity: activity, history: history, comparable: comparable)
         // 오늘 기온이 설명할 만큼 덥지 않아도, 과거 기록 쪽이 평균적으로 더 더웠다면
         // 그걸 15°C로 맞췄다는 걸 밝혀야 "왜 과거 심박이 낮아 보이는지"가 왜곡 없이 읽힌다.
         let histHeatDelta = avgHistRaw - avgHistRef

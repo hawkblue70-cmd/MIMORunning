@@ -1238,6 +1238,17 @@ private struct HRTimeSeriesView: View {
     var recovery: MRRecoveryResult? = nil
     /// 같은 심박으로 끝낸 과거 러닝의 평소 낙폭 범위. 1분·2분 각각 자기 점 뒤에만 깔린다.
     var recoveryBands: MRRecoveryBands? = nil
+    /// 멈춘 구간 — 가로축을 달린 시간으로(2026-11-07). 시계 시간 그대로면 끝 라벨이 77:43인데 러닝 시간은 1:07:42였다.
+    var pausedSpans: [PausedSpan] = []
+
+    private var runSamples: [(offset: TimeInterval, bpm: Int)] {
+        pausedSpans.isEmpty ? samples
+            : samples.map { (offset: pausedSpans.activeElapsed(atWallOffset: $0.offset), bpm: $0.bpm) }
+    }
+    private var runAltitude: [(offset: TimeInterval, altitude: Double)] {
+        pausedSpans.isEmpty ? altitudeProfile
+            : altitudeProfile.map { (offset: pausedSpans.activeElapsed(atWallOffset: $0.offset), altitude: $0.altitude) }
+    }
 
 
 
@@ -1269,6 +1280,7 @@ private struct HRTimeSeriesView: View {
     }
 
     var body: some View {
+        let samples = runSamples
         guard samples.count >= 5 else {
             return AnyView(
                 Text(AppLanguage.shared.s("심박 데이터 없음", "No HR data", ja: "心拍データなし"))
@@ -1311,7 +1323,7 @@ private struct HRTimeSeriesView: View {
         let totalDur = max(1.0, pts.last?.offset ?? 1)
 
         // 고도 — 심박과 같은 시간축. 노이즈 제거 후 200개로 다운샘플
-        var elevPts = smoothAltitude(altitudeProfile.filter { $0.offset <= totalDur * 1.05 })
+        var elevPts = smoothAltitude(runAltitude.filter { $0.offset <= totalDur * 1.05 })
         if elevPts.count > 200 {
             let step = Double(elevPts.count - 1) / 199.0
             elevPts = (0..<200).map { elevPts[Int((Double($0) * step).rounded())] }
@@ -1496,7 +1508,10 @@ private struct HRTimeSeriesView: View {
 
                 // X축 라벨
                 let fmt: (TimeInterval) -> String = { t in
-                    let s = Int(t); return String(format: "%d:%02d", s / 60, s % 60)
+                    // 1시간 넘으면 h:mm:ss — 러닝 시간(1:07:42)과 같은 표기
+                    let s = Int(t)
+                    return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
+                                     : String(format: "%d:%02d", s / 60, s % 60)
                 }
                 ctx.draw(Text("0:00").font(.system(size: 8))
                     .foregroundStyle(ink.fg(0.70)),
@@ -1967,7 +1982,8 @@ private struct RhythmInsightCard: View {
                             elevationGainM: detail?.elevationGain ?? 0,
                             showsFlatEquivalent: flatEquivalentText != nil,
                             recovery: recoveryResult,
-                            recoveryBands: recoveryBands
+                            recoveryBands: recoveryBands,
+                            pausedSpans: detail?.pausedSpans ?? []
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 100)   // 제목 12 + 간격 1.5 + 100 ≈ 칸 높이 114
