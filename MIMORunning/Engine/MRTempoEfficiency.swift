@@ -103,24 +103,63 @@ enum MRTempoEfficiency {
         monthly(runs, band: tempoBand(thresholdPace: thresholdPace), heat: heat, calendar: cal)
     }
 
-    /// 성장 탭 '같은 페이스 심박' 카드 값 — 평소 페이스 띠 · 월 5회↑ 달 · 그런 달이 3개↑일 때만.
+    /// 성장 탭 '같은 페이스 심박' 카드 값 — 평소 페이스 띠 · 주별 점(2번↑ 뛴 주) + 최근 4주 중앙값 선(4주에 5번↑).
+    /// 월 단위는 한 달에 한 번만 바뀌어 주 단위로 바꿨다(2026-11-10 사용자 B안). 주별 점만으로는 러닝 1~2번이라 ±5bpm 잡음이
+    /// 2bpm 변화를 덮으므로, 숫자·판정 대신 4주 선을 굵게 그리고 점은 옅게.
+    struct Week: Equatable {
+        let weekStart: Date
+        let runs: Int
+        let hr: Double
+    }
+
     struct UsualTrend: Equatable {
         let band: ClosedRange<Double>
         /// 환산 기준 페이스(띠 가운데)
         let centerPace: Double
-        let months: [Month]
-        var first: Month { months[0] }
-        var latest: Month { months[months.count - 1] }
+        /// 주별 중앙값 — 2번 이상 뛴 주만
+        let weeks: [Week]
+        /// 그 주까지 최근 4주 중앙값 — 4주에 5번 이상일 때만
+        let rolling: [Week]
+        var first: Week { rolling[0] }
+        var latest: Week { rolling[rolling.count - 1] }
     }
 
-    static let minTrendMonths = 3
+    static let minRunsPerWeekPoint = 2
+    static let rollingWeeks = 4
+    static let minRunsPerRolling = 5
+    /// 4주 선 점이 이만큼(약 두 달) 쌓여야 카드를 보인다
+    static let minRollingPoints = 8
 
     static func usualTrend(_ runs: [RunRow], heat: MRHeatHRModel, bpmPerMetersPerMin: Double?,
-                           calendar cal: Calendar = .current) -> UsualTrend? {
+                           calendar: Calendar = .current) -> UsualTrend? {
         guard let band = usualBand(runs) else { return nil }
-        let months = trend(runs, band: band, heat: heat, bpmPerMetersPerMin: bpmPerMetersPerMin, calendar: cal)
-        guard months.count >= minTrendMonths else { return nil }
-        return UsualTrend(band: band, centerPace: (band.lowerBound + band.upperBound) / 2, months: months)
+        let values = runs.compactMap { runValue($0, band: band, heat: heat, bpmPerMetersPerMin: bpmPerMetersPerMin) }
+        guard !values.isEmpty else { return nil }
+        // 주 = 월요일 시작(성장 탭·홈 이번 주와 같음)
+        var cal = calendar
+        cal.firstWeekday = 2
+        cal.minimumDaysInFirstWeek = 4
+        func weekStart(_ d: Date) -> Date { cal.dateInterval(of: .weekOfYear, for: d)?.start ?? cal.startOfDay(for: d) }
+        let groups = Dictionary(grouping: values) { weekStart($0.date) }
+        let weeks = groups.keys.sorted().compactMap { k -> Week? in
+            let g = groups[k]!
+            return g.count >= minRunsPerWeekPoint ? Week(weekStart: k, runs: g.count, hr: mrMedian(g.map(\.hr))) : nil
+        }
+        guard let firstWeek = groups.keys.min(), let lastWeek = groups.keys.max() else { return nil }
+        var rolling: [Week] = []
+        var w = firstWeek
+        while w <= lastWeek {
+            guard let from = cal.date(byAdding: .weekOfYear, value: -(rollingWeeks - 1), to: w),
+                  let to = cal.date(byAdding: .weekOfYear, value: 1, to: w) else { break }
+            let inWindow = values.filter { $0.date >= from && $0.date < to }
+            if inWindow.count >= minRunsPerRolling {
+                rolling.append(Week(weekStart: w, runs: inWindow.count, hr: mrMedian(inWindow.map(\.hr))))
+            }
+            guard let next = cal.date(byAdding: .weekOfYear, value: 1, to: w) else { break }
+            w = next
+        }
+        guard rolling.count >= minRollingPoints else { return nil }
+        return UsualTrend(band: band, centerPace: (band.lowerBound + band.upperBound) / 2, weeks: weeks, rolling: rolling)
     }
 
     /// 화면용 추세 — 월 5회 이상인 달만.

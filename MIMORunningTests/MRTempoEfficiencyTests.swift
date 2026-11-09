@@ -95,25 +95,33 @@ struct MRTempoEfficiencyTests {
         #expect(t.map(\.runs) == [5])
     }
 
-    // MARK: 성장 탭 카드 — 월 5회↑ 달 3개↑일 때만
+    // MARK: 성장 탭 카드 — 주별 점(2번↑) + 최근 4주 중앙값 선(5번↑), 선 점 8개↑일 때만(2026-11-10)
 
-    private func monthRuns(_ cal: Calendar, month: Int, count: Int, pace: Double, hr: Double) -> [T.RunRow] {
-        (1...count).map { day in
-            T.RunRow(date: cal.date(from: DateComponents(year: 2026, month: month, day: day, hour: 7))!, type: .easy, tempC: nil,
-                     kms: [.init(km: 3, paceSec: pace, hr: hr), .init(km: 4, paceSec: pace, hr: hr)])
+    /// 2026-06-01(월)부터 주 2번(월·목) — hr(주 번호)로 주마다 심박
+    private func weeklyRuns(_ cal: Calendar, weeks: Int, pace: Double, hr: (Int) -> Double) -> [T.RunRow] {
+        let start = cal.date(from: DateComponents(year: 2026, month: 6, day: 1, hour: 7))!
+        return (0..<weeks).flatMap { w in
+            [0, 3].map { off in
+                let d = cal.date(byAdding: .day, value: w * 7 + off, to: start)!
+                return T.RunRow(date: d, type: .easy, tempC: nil,
+                                kms: [.init(km: 3, paceSec: pace, hr: hr(w)), .init(km: 4, paceSec: pace, hr: hr(w))])
+            }
         }
     }
 
-    @Test func usualTrendNeedsThreeQualifiedMonths() throws {
+    @Test func usualTrendWeeklyPointsAndFourWeekLine() throws {
         let cal = Calendar(identifier: .gregorian)
-        let two = monthRuns(cal, month: 6, count: 5, pace: 375, hr: 141) + monthRuns(cal, month: 7, count: 5, pace: 375, hr: 147)
-        #expect(T.usualTrend(two, heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal) == nil)
-        let three = two + monthRuns(cal, month: 10, count: 6, pace: 375, hr: 142)
-            + monthRuns(cal, month: 5, count: 4, pace: 375, hr: 149)      // 4회 달은 빠진다
-        let t = try #require(T.usualTrend(three, heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal))
-        #expect(t.months.map(\.runs) == [5, 5, 6])
+        // 9주면 4주 선 점이 7개(3주째부터 5번↑) — 카드 없음
+        #expect(T.usualTrend(weeklyRuns(cal, weeks: 9, pace: 375, hr: { _ in 141 }), heat: MRHeatHRModel(),
+                             bpmPerMetersPerMin: nil, calendar: cal) == nil)
+        // 10주: 앞 6주 141, 뒤 4주 145 → 최근 4주 중앙값 145
+        let t = try #require(T.usualTrend(weeklyRuns(cal, weeks: 10, pace: 375, hr: { $0 < 6 ? 141 : 145 }),
+                                          heat: MRHeatHRModel(), bpmPerMetersPerMin: nil, calendar: cal))
+        #expect(t.weeks.count == 10)
+        #expect(t.rolling.count == 8)
         #expect(t.first.hr == 141)
-        #expect(t.latest.hr == 142)
+        #expect(t.latest.hr == 145)
+        #expect(t.latest.runs == 8)
         #expect(t.centerPace == 375)
         #expect(t.band == 365...385)
     }

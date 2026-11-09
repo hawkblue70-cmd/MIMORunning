@@ -256,7 +256,7 @@ struct GrowthView: View {
                             if manager.userLevel.bucket >= .intermediate, let t = engine.thresholdTrend, t.points.count >= 3 {
                                 ThresholdTrendCard(trend: t)
                             }
-                            // 같은 페이스 심박 — 평소 페이스 km의 월별 심박(2026-11-03). 월 5회↑ 달 3개↑일 때만.
+                            // 같은 페이스 심박 — 평소 페이스 km의 주별 점 + 최근 4주 선(2026-11-10, 전엔 월별). 선 점 8개↑일 때만.
                             if let u = usualPaceHRTrend {
                                 UsualPaceHRCard(trend: u)
                             }
