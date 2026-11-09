@@ -14,6 +14,8 @@ struct RunSummaryLine: Equatable {
 /// 총평 입력 — 각 카드가 이미 계산한 결론만 받는다. 없는 축은 nil/빈값 → 줄 생략.
 struct RunSummaryInput {
     var form: FormPhase.Result? = nil
+    /// 폼 탭과 같은 다리 무거움 판정(TabDigestForm.heavyLegs) — 있으면 러닝폼 줄이 그 사실을 먼저 말한다
+    var heavyLegs: (gct: String, cad: String)? = nil
     var distKm: Double = 0
     var typicalKm: Double? = nil
     var workoutType: WorkoutType = .general
@@ -176,9 +178,19 @@ enum RunSummary {
     private static func formLine(_ i: RunSummaryInput) -> RunSummaryLine? {
         guard let f = i.form else { return nil }
         let L = AppLanguage.shared
-        var line = RunSummaryLine(axis: L.s("러닝폼", "Form", ja: "ランニングフォーム"), state: FormPhase.shortState(f),
-                                  tone: (f.isHeld || f.isSoftCadenceOnly) ? .good : .neutral)
+        // 러닝 전체가 평소 폼과 달랐으면(다리 무거움) 그게 먼저 — 후반 변화만 말하면 폼 탭과 색·말이 갈린다(2026-11-10)
+        let heavy = i.heavyLegs
+        var line = RunSummaryLine(axis: L.s("러닝폼", "Form", ja: "ランニングフォーム"),
+                                  state: heavy == nil ? FormPhase.shortState(f) : L.s("다리 무거운 날 패턴", "Heavy-legs pattern", ja: "脚が重い日のパターン"),
+                                  tone: heavy == nil && (f.isHeld || f.isSoftCadenceOnly) ? .good : .neutral)
         line.evidence = formEvidence(f)
+        if let h = heavy {
+            // 폼 탭 문장과 같은 표현("지면접촉이 281ms로 길고 케이던스가 172spm으로 낮았습니다") — 281은 값이지 차이가 아니다
+            let whole = L.s("같은 페이스 평소보다 지면접촉 \(h.gct)ms로 길고 케이던스 \(h.cad)spm으로 낮음",
+                            "contact \(h.gct) ms (longer) and cadence \(h.cad) spm (lower) than usual at this pace",
+                            ja: "同じペースの普段より接地\(h.gct)msと長く、ケイデンス\(h.cad)spmと低い")
+            line.evidence = [whole, line.evidence].compactMap { $0 }.joined(separator: " · ")
+        }
         // 거리 적응 줄이 뜨는 러닝(평소 1.3배↑)도 롱런으로 부른다 — 두 줄의 호칭이 어긋나지 않게
         line.next = formNext(f, isLongDistanceContext: i.isLongDistanceContext || distanceLineApplies(i))
         return line

@@ -328,6 +328,14 @@ enum TabDigestForm {
         return nil
     }
 
+    /// 이지런 다리 무거움 패턴(F2: 같은 페이스 평소보다 지면접촉 김 + 케이던스 낮음, 이지 강도 미유지)이면 그 값 — 총평 러닝폼 줄이
+    /// 같은 판정을 쓰게(2026-11-10: 폼 탭 '다리 무거운 날 패턴'인데 총평은 초록 '편한 페이스'였다). 아니면 nil.
+    static func heavyLegs(_ x: Inputs) -> (gct: String, cad: String)? {
+        guard case .framed(let i, let f)? = route(x), let gct = i.gctStr,
+              i.gct == .above, f == .easy, i.cad == .below, framedVerdict(i, f) == .problem else { return nil }
+        return (gct, i.cadStr)
+    }
+
     /// 마무리 문장이 케이던스가 평소보다 낮다고 이미 말했는가 — 3단계 문장의 이지 위안 꼬리를 뺄지 판단
     static func narrativeSaysLowCadence(_ x: Inputs) -> Bool {
         if case .framed(let i, _)? = route(x) { return i.cad == .below }

@@ -1240,6 +1240,8 @@ private struct HRTimeSeriesView: View {
     var recoveryBands: MRRecoveryBands? = nil
     /// 멈춘 구간 — 가로축을 달린 시간으로(2026-11-07). 시계 시간 그대로면 끝 라벨이 77:43인데 러닝 시간은 1:07:42였다.
     var pausedSpans: [PausedSpan] = []
+    /// 러닝 시간(멈춤 제외) — 가로축 끝을 러닝 시간과 같게(마지막 심박 표본이 몇 초 일찍 끝나 53:19 vs 53:23, 2026-11-10)
+    var runDuration: TimeInterval? = nil
 
     private var runSamples: [(offset: TimeInterval, bpm: Int)] {
         pausedSpans.isEmpty ? samples
@@ -1320,7 +1322,7 @@ private struct HRTimeSeriesView: View {
         // 위쪽 10bpm 여유 — 선과 끝점 마커가 천장에 붙지 않게. 축 라벨은 이 값(차트 최대)을 쓴다.
         let maxBPM = max(smoothed.max() ?? 1, recoveryBPM.max() ?? -.infinity) + 10
         let valRange = max(1.0, maxBPM - minBPM)
-        let totalDur = max(1.0, pts.last?.offset ?? 1)
+        let totalDur = max(1.0, pts.last?.offset ?? 1, runDuration ?? 0)
 
         // 고도 — 심박과 같은 시간축. 노이즈 제거 후 200개로 다운샘플
         var elevPts = smoothAltitude(runAltitude.filter { $0.offset <= totalDur * 1.05 })
@@ -1983,7 +1985,8 @@ private struct RhythmInsightCard: View {
                             showsFlatEquivalent: flatEquivalentText != nil,
                             recovery: recoveryResult,
                             recoveryBands: recoveryBands,
-                            pausedSpans: detail?.pausedSpans ?? []
+                            pausedSpans: detail?.pausedSpans ?? [],
+                            runDuration: activity.duration
                         )
                         .padding(.horizontal, 2)
                         .frame(height: 100)   // 제목 12 + 간격 1.5 + 100 ≈ 칸 높이 114

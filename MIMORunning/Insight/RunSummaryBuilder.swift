@@ -225,6 +225,15 @@ enum RunSummaryBuilder {
             return FormPhase.result(splits: det.splits, altitudeProfile: det.altitudeProfile,
                                     baseline: c.formBaseline, formShifts: c.formShifts, workoutType: c.workoutType)
         }()
+        // 폼 탭과 같은 재료로 다리 무거움 판정(존 비율까지 같게) — 총평 러닝폼 줄이 폼 탭과 같은 말을 하게
+        if let det = c.detail, det.avgCadence != nil {
+            let x = TabDigestForm.Inputs(
+                activity: c.activity, detail: det, baseline: c.formBaseline, formShifts: c.formShifts,
+                workoutType: c.workoutType,
+                typicalKm: typicalRunDistanceKm(activity: c.activity, history: c.history), fatigueContext: nil)
+                .withEasyZone(TabDigestRhythm.easyLowZoneFraction(zones: c.hrZones))
+            input.heavyLegs = TabDigestForm.heavyLegs(x)
+        }
         input.lateRun = lateRun(activity: c.activity, detail: c.detail, workoutType: c.workoutType,
                                 history: c.history, form: input.form, baseline: c.formBaseline)
         input.distKm = c.activity.distance / 1000
