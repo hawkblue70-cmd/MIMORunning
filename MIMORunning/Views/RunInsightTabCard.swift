@@ -2233,10 +2233,13 @@ private struct RhythmInsightCard: View {
         }
 
         // 3. 케이던스 상대 신호
+        // 바로 위 게이지("평소 범위입니다")와 같은 판정 — 중앙값 ±3으로 재면 범위 안 192(186–192)가 "높았습니다"로 갈렸다(2026-11-10)
         if let stat = bb.cadence, let cad = det.avgCadence {
-            let delta = Double(cad) - stat.median
-            if delta >= 3  { return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual", ja: "ケイデンスが普段より高かったです"), ink.positive) }
-            if delta <= -3 { return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), ink.fg(0.75)) }
+            switch FormNarrative.status(rawValue: Double(cad), stat: stat, metric: .cadence) {
+            case .above: return (L.s("케이던스가 평소보다 높았습니다", "Higher cadence than usual", ja: "ケイデンスが普段より高かったです"), ink.positive)
+            case .below: return (L.s("케이던스가 평소보다 낮았습니다", "Lower cadence than usual", ja: "ケイデンスが普段より低かったです"), ink.fg(0.75))
+            default: break
+            }
         }
 
         // 4. 보폭 — 곡선 기준(있으면). 폼 카드와 같은 헬퍼

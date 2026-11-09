@@ -125,7 +125,8 @@ enum TabDigestRhythm {
                 secAbove += min(max(samples[i + 1].offset - samples[i].offset, 0), 30)
             }
             if secAbove >= 120 {
-                return HRCaption(kind: .maxIntensity, text: L.s("최고 강도까지 올렸습니다", "Pushed to max intensity", ja: "最高強度まで上げました"))
+                // 사실만 — "올렸습니다"는 일부러 올린 것처럼 읽힌다(같은 페이스에 심박만 오른 러닝, 2026-11-10)
+                return HRCaption(kind: .maxIntensity, text: L.s("심박이 최고 강도까지 올라갔습니다", "HR reached max intensity", ja: "心拍が最高強度まで上がりました"))
             }
         }
         // 후반 오르막 코스에서 오른 심박은 사실대로 — 빌드업은 계획이라 유형 문구가 먼저

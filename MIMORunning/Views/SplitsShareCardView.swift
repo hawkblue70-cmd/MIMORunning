@@ -217,7 +217,10 @@ struct SplitsShareCardView: View {
     }
 
     private var bestPace: Double? { displaySplits.map(\.paceSecPerKm).min() }
-    private var totalDistanceKm: Double { splits.reduce(0) { $0 + $1.distanceM } / 1000 }
+    /// 총 거리 = 러닝 기록 거리(아래 러닝 데이터 '거리'와 같은 값). 구간 합은 끝 조각이 빠지면 8.00 vs 8.03으로 갈렸다(2026-11-10)
+    private var totalDistanceKm: Double {
+        activity.distance > 0 ? activity.distance / 1000 : splits.reduce(0) { $0 + $1.distanceM } / 1000
+    }
 
     private var maxPaceSec: Double { displaySplits.map(\.paceSecPerKm).max() ?? 1 }
     private var minPaceSec: Double { displaySplits.map(\.paceSecPerKm).min() ?? 1 }

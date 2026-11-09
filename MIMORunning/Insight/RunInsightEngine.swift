@@ -1384,6 +1384,10 @@ enum RunInsightEngine {
         }
         // 그날 아침 손목 온도·호흡수가 평소보다 높았으면 그 사실을 원인 자리에 — 아침 카드가 짚은 것을 러닝 뒤에도 잇는다(2026-10-18)
         if let v = MREngineStore.persistedVitalSignal(asOf: activity.date) { return v.postRunCause }
+        // 어젯밤 수면이 짧았으면 그 사실 — 아침 강도 관문과 같은 5시간 기준(2026-11-10: 잠을 못 잔 날 24bpm 높았는데 "컨디션"으로만 나왔다)
+        if let h = MREngineStore.persistedSleepHours(asOf: activity.date), h > 0, h < MRIntensityGate.shortSleepHours {
+            return MRIntensityGate.fact(.shortSleep(hours: h))
+        }
         if let t = efficiencyTerrainCause(activity: activity, comparable: comparable) { return t }
         return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.", ja: "今日のコンディションを反映しているのかもしれません。")
     }
