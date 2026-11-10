@@ -19,7 +19,7 @@ struct BalanceSnapshotTests {
                 groundContact: 250, groundContactStat: stat(250, 8),
                 verticalOsc: 8.0, verticalOscStat: stat(8.0, 0.4),
                 effort: 5, effortTypeMedian: 5,
-                sleepHours: 7, usualSleepHours: 7, hrvLevel: .good, load: .steady,
+                sleepHours: 7, usualSleepHours: 7, hrvLevel: .good, hrvDisplay: "좋음", load: .steady,
                 vo2: 48, vo2SixMonths: [47, 49])
     }
 
@@ -109,5 +109,61 @@ struct BalanceSnapshotTests {
         v.verticalOsc = 12
         let s = try #require(S.make(v))
         #expect(s.outputScore == 0)
+    }
+
+    private func trend(_ st: MRHRVTrend.State = .within, volatile: Bool = false,
+                       mean: Double = 50, base: Double = 50, cv7: Double = 0.1, cvBase: Double = 0.1) -> MRHRVTrend {
+        MRHRVTrend(state: st, isVolatile: volatile, sevenDayMean: mean, baseline: base, baselineSD: 5,
+                   sevenDayCV: cv7, baselineCV: cvBase, sevenDayNights: 7, baselineNights: 28)
+    }
+
+    @Test func hrvLevels() {
+        #expect(S.hrvLevel(nil, lastNightLow: false) == nil)
+        #expect(S.hrvLevel(trend(volatile: true), lastNightLow: false) == .bad)
+        #expect(S.hrvLevel(trend(.below), lastNightLow: false) == .bad)
+        #expect(S.hrvLevel(trend(.above), lastNightLow: true) == .bad)
+        #expect(S.hrvLevel(trend(.above), lastNightLow: false) == .good)
+        #expect(S.hrvLevel(trend(.within), lastNightLow: false) == .normal)
+    }
+
+    @Test func bodiesOrderAndDisplay() throws {
+        var i = base()
+        i.sleepHours = 5.0; i.hrvLevel = .bad; i.hrvDisplay = "불안정"; i.load = .high
+        var s = try #require(S.make(i))
+        #expect(s.bodies.map(\.kind) == [.sleep, .hrv, .load, .vo2])
+        #expect(s.bodies.map(\.display) == ["5h", "불안정", "높음", "48.0"])
+        i.sleepHours = 6.5
+        s = try #require(S.make(i))
+        #expect(s.bodies[0].display == "6.5h")
+        i.hrvDisplay = nil
+        s = try #require(S.make(i))
+        #expect(!s.bodies.contains { $0.kind == .hrv })
+    }
+
+    @Test func effortScoring() throws {
+        var i = base()
+        i.effort = 7
+        #expect(try #require(S.make(i)).inputScore == 1)
+        i.effort = 3
+        #expect(try #require(S.make(i)).inputScore == -1)
+        i.effort = 6
+        #expect(try #require(S.make(i)).inputScore == 0)
+    }
+
+    @Test func groundContactDirection() throws {
+        var i = base()
+        i.groundContact = 230
+        #expect(try #require(S.make(i)).outputScore == 1)
+        i.groundContact = 270
+        #expect(try #require(S.make(i)).outputScore == -1)
+    }
+
+    @Test func intervalBadSleepAddsInput() throws {
+        var i = base()
+        i.workoutType = .interval
+        i.sleepHours = 5
+        let s = try #require(S.make(i))
+        #expect(s.mode == .bodyOnly)
+        #expect(s.inputScore == 1)
     }
 }

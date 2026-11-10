@@ -47,6 +47,7 @@ struct BalanceSnapshot: Equatable {
         var effort: Int?;        var effortTypeMedian: Int?
         var sleepHours: Double?; var usualSleepHours: Double?
         var hrvLevel: BalanceLevel?        // 접착 코드가 `hrvLevel(_:lastNightLow:)`로 채움
+        var hrvDisplay: String?            // 접착 코드가 `MRHRVTrend.gradeLabel`로 채움 — 없으면 HRV 막대를 만들지 않음
         var load: EffortLoad.RatioLabel?
         var vo2: Double?;        var vo2SixMonths: [Double]
     }
@@ -84,16 +85,15 @@ struct BalanceSnapshot: Equatable {
         // 몸 상태 막대 (값 있는 것만, 순서 고정)
         var bodies: [BalanceBody] = []
         if let h = i.sleepHours, let u = i.usualSleepHours {
-            let m = Int((h * 60).rounded())
             bodies.append(BalanceBody(kind: .sleep, level: sleepLevel(hours: h, usual: u),
-                                      display: String(format: "%d:%02d", m / 60, m % 60)))
+                                      display: sleepText(h)))
         }
-        if let lv = i.hrvLevel {
-            bodies.append(BalanceBody(kind: .hrv, level: lv, display: levelText(lv)))
+        if let lv = i.hrvLevel, let d = i.hrvDisplay {
+            bodies.append(BalanceBody(kind: .hrv, level: lv, display: d))
         }
         if let l = i.load {
             let lv = loadLevel(l)
-            bodies.append(BalanceBody(kind: .load, level: lv, display: levelText(lv)))
+            bodies.append(BalanceBody(kind: .load, level: lv, display: loadText(l)))
         }
         if let v = i.vo2, let lv = vo2Level(current: v, sixMonths: i.vo2SixMonths) {
             bodies.append(BalanceBody(kind: .vo2, level: lv, display: String(format: "%.1f", v)))
@@ -174,12 +174,20 @@ struct BalanceSnapshot: Equatable {
                                inputScore: input, outputScore: output)
     }
 
-    private static func levelText(_ l: BalanceLevel) -> String {
+    /// 수면 시간 — 정수면 "6h", 아니면 소수 한 자리 "6.5h".
+    private static func sleepText(_ h: Double) -> String {
+        let r = (h * 10).rounded() / 10
+        return r == r.rounded() ? String(format: "%.0fh", r) : String(format: "%.1fh", r)
+    }
+
+    /// 부하 막대 글자 — 판정어가 아니라 부하 상태 그대로(색이 좋고 나쁨을 말한다).
+    private static func loadText(_ l: EffortLoad.RatioLabel) -> String {
         let L = AppLanguage.shared
         switch l {
-        case .good: return L.s("좋음", "good", ja: "良好")
-        case .normal: return L.s("보통", "normal", ja: "普通")
-        case .bad: return L.s("나쁨", "poor", ja: "悪い")
+        case .low: return L.s("낮음", "low", ja: "低め")
+        case .steady: return L.s("유지", "steady", ja: "維持")
+        case .high: return L.s("높음", "high", ja: "高め")
+        case .veryHigh: return L.s("크게 높음", "very high", ja: "かなり高め")
         }
     }
 }
