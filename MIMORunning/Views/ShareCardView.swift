@@ -927,7 +927,7 @@ struct ShareCardScreen: View {
                         cardHeightOverride: 375,
                         cardWidthOverride: vidW,
                         safeTopInset: 54 + StampHeaderMark.extraTopInset(stampPreviewData.raceName),
-                        safeBottomInset: 14,
+                        safeBottomInset: 14 + StampShoeLabel.reserve(stampPreviewData.footerShoe),
                         isStaticPreview: true
                     )
                     .frame(width: vidW, height: 375)
@@ -944,6 +944,12 @@ struct ShareCardScreen: View {
                     .padding(.leading, vidW * 0.047)
                     .padding(.top, 375.0 * 0.06)
                     .frame(width: vidW, height: 375, alignment: .topLeading)
+                if let shoe = stampPreviewData.footerShoe {
+                    StampShoeLabel(name: shoe)
+                        .padding(.trailing, vidW * 0.05)
+                        .padding(.bottom, StampShoeLabel.bottomPadding)
+                        .frame(width: vidW, height: 375, alignment: .bottomTrailing)
+                }
                 if stampVM.showDate {
                     StampDateLabel(date: activity.date,
                                    weatherIcon: stampPreviewData.weatherIcon, weatherText: stampPreviewData.weatherText)
@@ -1051,6 +1057,7 @@ struct ShareCardScreen: View {
         d.weatherIcon = condition?.weather?.systemIcon(at: activity.date)
         d.weatherText = activity.temperatureC.map { String(format: "%.0f°C", $0) } ?? condition?.weather?.formattedTemp
         d.shoeName    = displayShoeName
+        d.footerShoe  = stampVM.showShoe ? displayShoeName : nil
         // 대회 — 확정 + 대회 칩 ON일 때만 로고 아래 뱃지
         d.raceName    = stampVM.showRace ? confirmedRace?.raceName : nil
         d.runTotals   = stampRunTotals
@@ -2428,6 +2435,13 @@ struct ShareCardScreen: View {
                 guard isStamp, template == .photo else { return }
                 storyShareImages = []
                 previewImage = nil
+            }
+            // 러닝화 칩은 config 밖(카드 전체 공통)이라 저장 onChange가 안 걸린다 — 만들어 둔 이미지·영상을 버린다
+            .onChange(of: stampVM.showShoe) { _, _ in
+                guard isStamp else { return }
+                storyShareImages = []
+                previewImage = nil
+                exportedVideoFile = nil
             }
             .onChange(of: stampVM.baseConfig)   { _, _ in
                 guard isStamp else { return }
@@ -3834,7 +3848,8 @@ struct ShareCardScreen: View {
 
         let stampLogoImg = makeStampLogoOverlay(renderSize: renderSz, date: vm.showDate ? activity.date : nil,
                                                 raceName: data.raceName,
-                                                weatherIcon: data.weatherIcon, weatherText: data.weatherText)
+                                                weatherIcon: data.weatherIcon, weatherText: data.weatherText,
+                                                shoeName: data.footerShoe)
 
         var processedURLs: [URL] = []
         for (i, recipe) in vm.clipRecipes.enumerated() {
@@ -4191,7 +4206,8 @@ struct ShareCardScreen: View {
             let logoOverlay = makeStampLogoOverlay(renderSize: renderSz, date: stampVM.showDate ? activity.date : nil,
                                                    raceName: stampPreviewData.raceName,
                                                    weatherIcon: stampPreviewData.weatherIcon,
-                                                   weatherText: stampPreviewData.weatherText)
+                                                   weatherText: stampPreviewData.weatherText,
+                                                   shoeName: stampPreviewData.footerShoe)
             if let out = try? await exportStampSlide(
                 photos: photos,
                 cropOffsets: cropOffsets,
@@ -4420,7 +4436,8 @@ struct ShareCardScreen: View {
                 if let logoImg = makeStampLogoOverlay(renderSize: VideoExportService.targetSize, date: stampVM.showDate ? activity.date : nil,
                                                         raceName: stampPreviewData.raceName,
                                                    weatherIcon: stampPreviewData.weatherIcon,
-                                                   weatherText: stampPreviewData.weatherText) {
+                                                   weatherText: stampPreviewData.weatherText,
+                                                   shoeName: stampPreviewData.footerShoe) {
                     exportStampLayers.append(RouteVideoExportService.StampLayerConfig(
                         image: logoImg,
                         entranceMode: .none,

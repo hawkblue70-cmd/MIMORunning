@@ -90,6 +90,8 @@ struct StampData {
     var weatherIcon: String?     = nil   // SF Symbol
     var weatherText: String?     = nil   // "18°C"
     var shoeName: String?        = nil
+    /// 맨 오른쪽 아래 러닝화 표시 — 러닝화 칩 ON이고 러닝화가 있을 때만. 있으면 스탬프·문구가 그만큼 위로 비켜선다
+    var footerShoe: String?      = nil
     /// 대회명 — 대회 확정 + 대회 칩 ON일 때만. 좌측 상단 로고 아래 뱃지(`StampHeaderMark`)
     var raceName: String?        = nil
     /// 심박 곡선(bpm) — 다듬고 줄인 값(`StampHRChart.prepare`). 요약 그리드+심박. 부족하면 그 스탬프를 고를 수 없다
@@ -197,6 +199,32 @@ struct StampDateLabel: View {
     /// 예: "2026. 9. 4 오후 6:16" (애슬레틱 카드 날짜 줄과 같은 포맷터)
     static func string(for date: Date) -> String {
         "\(date.cardDateString) \(date.cardTimeString)"
+    }
+}
+
+/// 스탬프 카드 맨 오른쪽 아래 러닝화 라벨 — 날짜 라벨과 같은 글자·색·그림자.
+/// 스탬프·문구는 `reserve`만큼 아래 여백을 더 잡아 이 줄과 겹치지 않는다(아래 줄에 있을 때만 의미가 있다).
+struct StampShoeLabel: View {
+    let name: String
+    var onLight: Bool = false
+
+    /// 카드 아래 가장자리에서 라벨까지 여백 (스탬프 아래 여백과 같은 12pt)
+    static let bottomPadding: CGFloat = 12
+    /// 라벨 줄 높이(≈10) + 간격 6 — 스탬프·문구 아래 여백에 더하는 값
+    static func reserve(_ shoe: String?) -> CGFloat { shoe == nil ? 0 : 16 }
+
+    /// 긴 이름은 카드 폭을 밀어내므로 22자에서 자른다
+    private var shown: String { name.count > 22 ? String(name.prefix(21)) + "…" : name }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "shoe.fill").font(.system(size: 7))
+            Text(shown)
+        }
+        .font(.system(size: 8, weight: .medium))
+        .lineLimit(1).fixedSize()
+        .foregroundStyle(onLight ? Color.black : Color.white)
+        .shadow(color: .black.opacity(onLight ? 0 : 0.4), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -530,6 +558,8 @@ struct StampCard: View {
 
         // 대회 뱃지가 로고 아래에 붙으면 그만큼 위 여백을 늘린다 — 문구·스탬프가 뱃지를 덮지 않게
         let topInset = wordmarkTopInset + StampHeaderMark.extraTopInset(data.raceName)
+        // 오른쪽 아래 러닝화 줄이 있으면 그만큼 아래 여백을 늘린다 — 스탬프·문구가 러닝화를 덮지 않게
+        let shoeReserve = StampShoeLabel.reserve(data.footerShoe)
 
         ZStack {
             if !renderOnlyText {
@@ -537,7 +567,8 @@ struct StampCard: View {
                     stampContent(fill: fill, outline: outline, scale: scale, topClearance: topInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if template.fitsCardHeight {
-                    fittedTallStamp(fill: fill, outline: outline, scale: scale, topInset: topInset)
+                    fittedTallStamp(fill: fill, outline: outline, scale: scale, topInset: topInset,
+                                    bottomInset: 12 + shoeReserve)
                 } else {
                     // ImageRenderer에서 .frame(alignment:)의 bottom 앵커가 무시되는 SwiftUI 버그를
                     // 회피하기 위해 VStack/HStack/Spacer로 9격 위치 결정.
@@ -551,7 +582,7 @@ struct StampCard: View {
                         .padding(EdgeInsets(
                             top: position.isTop ? topInset : 12,
                             leading: sideInset + template.leadingOverhang * scale,
-                            bottom: 12,
+                            bottom: 12 + shoeReserve,
                             trailing: sideInset + template.leadingOverhang * scale))
                     VStack(spacing: 0) {
                         if !position.isTop    { Spacer(minLength: 0) }
@@ -574,7 +605,7 @@ struct StampCard: View {
                 let textPadded = textOverlay
                     .padding(EdgeInsets(
                         top: stampTextPosition.isTop ? topInset : 14,
-                        leading: textSideInset, bottom: 14, trailing: textSideInset))
+                        leading: textSideInset, bottom: 14 + shoeReserve, trailing: textSideInset))
                 VStack(spacing: 0) {
                     if !stampTextPosition.isTop    { Spacer(minLength: 0) }
                     textPadded
@@ -587,12 +618,13 @@ struct StampCard: View {
     /// 세로로 긴 스탬프 — 위(로고 아래)·아래 여백 안에 들어가는 가장 큰 배율로 그린다.
     /// 배율표 값부터 5%씩 줄여 가며 ViewThatFits가 처음 들어가는 것을 고른다(레이아웃만이라 ImageRenderer에서도 같다).
     /// 들어갈 높이를 통째로 잡고 그 안에서 위·가운데·아래로 정렬하므로 9칸 위치는 그대로 따른다.
-    private func fittedTallStamp(fill: Color, outline: Color, scale: CGFloat, topInset: CGFloat) -> some View {
+    private func fittedTallStamp(fill: Color, outline: Color, scale: CGFloat, topInset: CGFloat,
+                                 bottomInset: CGFloat) -> some View {
         let sideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
         let vAlign: VerticalAlignment = position.isTop ? .top : position.isBottom ? .bottom : .center
         let candidates = (0...10).map { scale * (1 - 0.05 * CGFloat($0)) }   // 100% → 50%
         return GeometryReader { geo in
-            let avail = max(0, geo.size.height - topInset - 12)
+            let avail = max(0, geo.size.height - topInset - bottomInset)
             HStack(spacing: 0) {
                 if !position.isLeading { Spacer(minLength: 0) }
                 ViewThatFits(in: .vertical) {
@@ -604,7 +636,7 @@ struct StampCard: View {
                 .frame(height: avail, alignment: Alignment(horizontal: .leading, vertical: vAlign))
                 if !position.isTrailing { Spacer(minLength: 0) }
             }
-            .padding(EdgeInsets(top: topInset, leading: sideInset, bottom: 12, trailing: sideInset))
+            .padding(EdgeInsets(top: topInset, leading: sideInset, bottom: bottomInset, trailing: sideInset))
         }
     }
 

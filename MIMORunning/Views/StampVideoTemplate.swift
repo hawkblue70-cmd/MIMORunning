@@ -47,7 +47,7 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
             cardHeightOverride: textH,
             cardWidthOverride: textW,
             safeTopInset: 54 + StampHeaderMark.extraTopInset(data.raceName),
-            safeBottomInset: 14,
+            safeBottomInset: 14 + StampShoeLabel.reserve(data.footerShoe),
             horizontalPadding: 14,
             isStaticPreview: true
         )
@@ -104,7 +104,8 @@ func makeStampOverlayImage(data: StampData, vm: StampViewModel,
 /// 영상 미리보기(previewW=375*9/16≈211pt)와 동일한 논리 크기로 렌더.
 @MainActor
 func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: String? = nil,
-                          weatherIcon: String? = nil, weatherText: String? = nil) -> UIImage? {
+                          weatherIcon: String? = nil, weatherText: String? = nil,
+                          shoeName: String? = nil) -> UIImage? {
     // 영상 미리보기 컨테이너와 동일한 논리 폭 → 미리보기·출력 워드마크 크기 일치
     let baseW: CGFloat = 375.0 * 9.0 / 16.0  // ≈ 210.94pt
     let ptH  = renderSize.height / renderSize.width * baseW  // ≈ 375pt for 1080×1920
@@ -121,6 +122,14 @@ func makeStampLogoOverlay(renderSize: CGSize, date: Date? = nil, raceName: Strin
         }
     }
     .frame(width: baseW, height: ptH, alignment: .topLeading)
+    // 러닝화 — 맨 오른쪽 아래 (미리보기와 같은 여백)
+    .overlay(alignment: .bottomTrailing) {
+        if let shoe = shoeName {
+            StampShoeLabel(name: shoe)
+                .padding(.trailing, 14)
+                .padding(.bottom, StampShoeLabel.bottomPadding)
+        }
+    }
     let renderer = ImageRenderer(content: overlay)
     renderer.proposedSize = .init(width: baseW, height: ptH)
     renderer.scale = renderSize.width / baseW  // ≈ 5.12x for 1080px
@@ -290,6 +299,8 @@ private struct StampVideoTextOverlay: View {
     let photoIndex: Int
     /// 대회 뱃지만큼 문구를 아래로 (StampHeaderMark.extraTopInset)
     var extraTopInset: CGFloat = 0
+    /// 러닝화 줄만큼 문구를 위로 (StampShoeLabel.reserve)
+    var extraBottomInset: CGFloat = 0
 
     @State private var phase: Double = 0
     @State private var loopCounter: Int = 0
@@ -327,7 +338,7 @@ private struct StampVideoTextOverlay: View {
                 cardHeightOverride: geo.size.height,
                 cardWidthOverride: kClipW,
                 safeTopInset: 54 + extraTopInset,
-                safeBottomInset: 14,
+                safeBottomInset: 14 + extraBottomInset,
                 horizontalPadding: 14,
                 isStaticPreview: true
             )
@@ -414,7 +425,8 @@ struct AnimatedStampPreviewCard: View {
                     isVideoPlaying: isVideoPlaying,
                     startDelay: stampDur,
                     photoIndex: currentPhotoIndex,
-                    extraTopInset: StampHeaderMark.extraTopInset(data.raceName)
+                    extraTopInset: StampHeaderMark.extraTopInset(data.raceName),
+                    extraBottomInset: StampShoeLabel.reserve(data.footerShoe)
                 )
             }
         }
@@ -602,6 +614,13 @@ extension ShareCardScreen {
                     StampHeaderMark(raceName: data.raceName)
                         .padding(.leading, 14)
                         .padding(.top, cardSectionH * 0.06)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if let shoe = data.footerShoe {
+                        StampShoeLabel(name: shoe)
+                            .padding(.trailing, 14)
+                            .padding(.bottom, StampShoeLabel.bottomPadding)
+                    }
                 }
                 .overlay(alignment: .topTrailing) {
                     if clipConfig.showDate {
@@ -890,6 +909,13 @@ extension ShareCardScreen {
             StampHeaderMark(raceName: stampPreviewData.raceName)
                 .padding(.leading, 10)
                 .padding(.top, cardSectionH * 0.06)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let shoe = stampPreviewData.footerShoe {
+                StampShoeLabel(name: shoe)
+                    .padding(.trailing, 11)
+                    .padding(.bottom, StampShoeLabel.bottomPadding)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if displayConfig.showDate {

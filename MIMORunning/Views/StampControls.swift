@@ -113,7 +113,7 @@ struct StampControlsView: View {
             if showHRChip || template == .photo {
                 HStack(spacing: 6) {
                     if showHRChip         { heartRateChip }
-                    if template == .photo { dateChip }
+                    if template == .photo { dateChip; shoeChip }
                 }
             }
             // 배속 — 영상, 클립이 있을 때
@@ -133,9 +133,10 @@ struct StampControlsView: View {
                         .buttonStyle(.plain)
                     }
                     dateChip   // 영상: 2x 다음
+                    shoeChip
                 }
             } else if template == .video {
-                HStack(spacing: 6) { dateChip }   // 클립이 없을 때도 날짜 칩은 노출
+                HStack(spacing: 6) { dateChip; shoeChip }   // 클립이 없을 때도 날짜·러닝화 칩은 노출
             }
             // 애니메이션 모드 — 영상·슬라이드·경로 영상
             if template == .video || template == .slide || template == .routeVideo {
@@ -151,6 +152,7 @@ struct StampControlsView: View {
                     }
                     if template == .slide || template == .routeVideo {
                         dateChip   // 슬라이드·경로 영상: '없음' 옆
+                        shoeChip
                     }
                 }
                 // 방향 선택 — flyIn 모드일 때만
@@ -358,6 +360,31 @@ struct StampControlsView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: isOn)
+    }
+
+    /// 러닝화 토글 — 맨 오른쪽 아래에 러닝화 이름. 러닝화를 고른 러닝에서만 보인다
+    @ViewBuilder
+    private var shoeChip: some View {
+        if data.shoeName != nil {
+            let isOn = vm.showShoe
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { vm.showShoe.toggle() }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "shoe.fill").font(.system(size: 9))
+                    Text(AppLanguage.shared.s("러닝화", "Shoes", ja: "シューズ"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(isOn ? Theme.violet : Color.white.opacity(0.08))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 0.15), value: isOn)
+        }
     }
 
     private var muteChip: some View {

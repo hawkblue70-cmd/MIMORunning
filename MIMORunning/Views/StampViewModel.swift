@@ -15,6 +15,8 @@ final class StampViewModel {
 
     /// 대회 뱃지(로고 아래 대회명) 표시 — 시트를 열 때마다 ON(저장 안 함). 대회 확정된 러닝에서만 칩이 보인다.
     var showRace: Bool = true
+    /// 러닝화 칩 — 맨 오른쪽 아래 러닝화 표시. 카드 전체 공통, 시트를 열 때마다 ON(날짜·로고와 같은 원칙)
+    var showShoe: Bool = true
 
     // MARK: - Per-photo Configs
 

@@ -136,7 +136,7 @@ struct StampStoryRenderView: View {
                     showWordmark: false,
                     cardHeightOverride: renderHeight,
                     safeTopInset: (renderHeight > 400 ? 77 : 42) + StampHeaderMark.extraTopInset(data.raceName),
-                    safeBottomInset: 20,
+                    safeBottomInset: 20 + StampShoeLabel.reserve(data.footerShoe),
                     isStaticPreview: true
                 )
             }
@@ -147,6 +147,13 @@ struct StampStoryRenderView: View {
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
+            if let shoe = data.footerShoe {
+                StampShoeLabel(name: shoe, onLight: photo == nil)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, StampShoeLabel.bottomPadding)
+                    .frame(width: renderWidth, height: renderHeight, alignment: .bottomTrailing)
+                    .allowsHitTesting(false)
+            }
             if resolved.showDate, let d = data.date {
                 StampDateLabel(date: d, onLight: photo == nil,
                                weatherIcon: data.weatherIcon, weatherText: data.weatherText)
@@ -238,7 +245,7 @@ struct StampAnimPreviewCard: View {
                     showWordmark: false,
                     cardHeightOverride: renderHeight,
                     safeTopInset: (renderHeight > 400 ? 77 : 42) + StampHeaderMark.extraTopInset(data.raceName),
-                    safeBottomInset: 20,
+                    safeBottomInset: 20 + StampShoeLabel.reserve(data.footerShoe),
                     isStaticPreview: true
                 )
                 .scaleEffect(scaleFor(textVisible, mode: cfg.textEntranceMode))
@@ -253,6 +260,13 @@ struct StampAnimPreviewCard: View {
                 .padding(.top, 14)
                 .frame(width: renderWidth, height: renderHeight, alignment: .topLeading)
                 .allowsHitTesting(false)
+            if let shoe = data.footerShoe {
+                StampShoeLabel(name: shoe, onLight: photo == nil)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, StampShoeLabel.bottomPadding)
+                    .frame(width: renderWidth, height: renderHeight, alignment: .bottomTrailing)
+                    .allowsHitTesting(false)
+            }
             if cfg.showDate, let d = data.date {
                 StampDateLabel(date: d, onLight: photo == nil,
                                weatherIcon: data.weatherIcon, weatherText: data.weatherText)
