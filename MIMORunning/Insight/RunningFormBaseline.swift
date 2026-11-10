@@ -41,7 +41,7 @@ struct PaceBandCutoffs: Codable {
 
 // MARK: - Models
 
-struct FormStat: Codable {
+struct FormStat: Codable, Equatable {
     let median: Double
     let sd: Double
     let count: Int
