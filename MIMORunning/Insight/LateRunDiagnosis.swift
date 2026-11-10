@@ -586,7 +586,9 @@ enum LateRunDiagnosis {
     /// 다음 행동 — 유형별 대책(영상 요지: 거리만 늘리지 말고 무너지는 원인에 맞춰 훈련을 나눈다).
     /// - isRace: 대회면 "다음 대회" 기준 문장.
     /// - isLongRun: 롱런 거리인가 — 아니면 "다음 롱런은" 대신 "다음 러닝은"(60분 넘는 평소 거리 러닝에도 진단이 붙는다)
-    static func next(_ r: Result, heatDeltaBpm: Double? = nil, isRace: Bool = false, isLongRun: Bool = true) -> String? {
+    /// - startedEasy: 초반이 이미 중반보다 느렸나 — 그러면 "초반을 더 편하게 시작하고"를 뺀다
+    static func next(_ r: Result, heatDeltaBpm: Double? = nil, isRace: Bool = false, isLongRun: Bool = true,
+                     startedEasy: Bool = false) -> String? {
         let L = AppLanguage.shared
         let hot = (heatDeltaBpm ?? 0) >= RunSummary.heatNoteMinBpm
         switch r.kind {
@@ -623,6 +625,10 @@ enum LateRunDiagnosis {
                 : L.s("90분 넘는 롱런은 30~40분부터 시간당 30~60g 탄수화물을 나눠 먹어 보세요. 초반 10분은 목표보다 느리게 달리세요.",
                       "On runs over 90 minutes, take 30–60 g of carbs per hour from 30–40 minutes in, and start the first 10 minutes easier.", ja: "90分を超えるロング走は、30~40分から1時間あたり30~60gの炭水化物を分けて摂ってみてください。最初の10分は目標より遅く走ってください。")
         case .combined:
+            if startedEasy {
+                return L.s("긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 기본 지구력을 올려 보세요.",
+                           "Build base endurance with steady weekly volume rather than one big long run.", ja: "長いロング走1回より週間距離を継続して積んで基礎持久力を上げてみてください。")
+            }
             return L.s("초반을 더 편하게 시작하고, 긴 롱런 한 번보다 주간 거리를 꾸준히 쌓아 기본 지구력을 올려 보세요.",
                        "Start easier, and build base endurance with steady weekly volume rather than one big long run.", ja: "序盤をもっと楽に入り、長いロング走1回より週間距離を継続して積んで基礎持久力を上げてみてください。")
         }

@@ -190,6 +190,20 @@ final class MREngineStore: ObservableObject {
         return a.last(where: { $0.count == 2 && calendar.isDate(Date(timeIntervalSince1970: $0[0]), inSameDayAs: asOf) })?[1]
     }
 
+    /// 그날(러닝 날짜) 밤 HRV가 평소(4주)보다 15% 넘게 낮았나 — 총평·아침 근거의 "(평소보다 낮음)"과 같은 판정.
+    /// 러닝 뒤 "같은 페이스 심박이 높다" 원인 자리에 쓴다(2026-11-11: 아침 HRV 64 · 평소 81인데 "컨디션"으로만 나왔다).
+    static func persistedLastNightHRVLow(asOf: Date, calendar: Calendar = .current) -> Bool {
+        let ud = UserDefaults.standard
+        guard ud.integer(forKey: hrvCacheRuleKey) == hrvNightRuleVersion,
+              let raw = ud.array(forKey: hrvCacheNightsKey) as? [[Double]] else { return false }
+        let nights = raw.compactMap { a -> (date: Date, value: Double)? in
+            a.count == 2 ? (Date(timeIntervalSince1970: a[0]), a[1]) : nil
+        }
+        guard let n = nights.last(where: { calendar.isDate($0.date, inSameDayAs: asOf) })?.value,
+              let t = mrHRVTrend(nights: nights, asOf: asOf, calendar: calendar) else { return false }
+        return MRReadiness.lastNightDeviation(n, trend: t) < 0
+    }
+
     /// 저장된 밤 활력 징후로 그날 아침의 이상 징후(손목 온도·호흡수) — 러닝 뒤 "같은 페이스 심박이 높다" 문장이
     /// 아침 카드와 같은 사실을 원인 자리에 적도록(2026-10-18). 캐시가 없거나 벗어난 게 없으면 nil.
     static func persistedVitalSignal(asOf: Date) -> MRVitalSignal? {

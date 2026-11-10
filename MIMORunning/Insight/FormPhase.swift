@@ -502,7 +502,8 @@ enum FormPhase {
         var out: [String] = []
 
         // 중반: 페이스 ↔ 보폭·접지·케이던스
-        let accel = e.paceSecPerKm - m.paceSecPerKm
+        // 숫자는 표에 보이는 반올림 페이스끼리의 차 — 표 6'55" → 5'59"(56초)인데 문장이 55초였다(2026-11-11, 후반 줄과 같은 규칙)
+        let accel = e.paceSecPerKm.rounded() - m.paceSecPerKm.rounded()
         if accel >= accelDeltaSec {
             var koPairs: [(conj: String, final: String)] = []
             var enPhrases: [String] = []

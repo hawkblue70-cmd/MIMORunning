@@ -42,7 +42,7 @@ struct ZoneVerdictTests {
         i.zoneFractions = [1: 0.07, 2: 0.24, 3: 0.25, 4: 0.22, 5: 0.22]
         i.workoutType = .buildUp
         let line = RunSummary.lines(i).first { $0.axis == "심박" }
-        #expect(line?.state == "고강도 구간 · Zone 3 이상 69%")
+        #expect(line?.state == "고강도 구간 · Zone 4~5 44%")
         #expect(line?.evidence?.hasPrefix("Zone 4·5 44%") == true)
     }
 }

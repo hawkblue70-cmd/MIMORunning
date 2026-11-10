@@ -1388,6 +1388,10 @@ enum RunInsightEngine {
         if let h = MREngineStore.persistedSleepHours(asOf: activity.date), h > 0, h < MRIntensityGate.shortSleepHours {
             return MRIntensityGate.fact(.shortSleep(hours: h))
         }
+        // 어젯밤 HRV가 평소보다 낮았으면 그 사실 — 아침 카드가 짚은 것을 러닝 뒤에도 잇는다(2026-11-11)
+        if MREngineStore.persistedLastNightHRVLow(asOf: activity.date) {
+            return MRIntensityGate.fact(.lastNightHRVLow)
+        }
         if let t = efficiencyTerrainCause(activity: activity, comparable: comparable) { return t }
         return L.s("오늘 컨디션을 반영한 것일 수 있습니다.", "may reflect today's condition.", ja: "今日のコンディションを反映しているのかもしれません。")
     }

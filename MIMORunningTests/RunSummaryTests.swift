@@ -103,7 +103,7 @@ struct RunSummaryTests {
         let out = bare(raw)
         #expect(out[0] == RunSummaryLine(axis: "러닝폼", state: "끝까지 유지", tone: .good))
         #expect(out[1] == RunSummaryLine(axis: "거리 적응", state: "평소 2.1배, 범위 안", tone: .good))
-        #expect(out[2] == RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 3 이상 90%", tone: .good))
+        #expect(out[2] == RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 4~5 70%", tone: .good))
         // 최근 7일 +55%라도 상태어는 4주 평균 대비로만 — 증감은 근거 줄의 숫자. 4일 연속이라 톤은 중립.
         #expect(out[3] == RunSummaryLine(axis: "훈련부하", state: "지난 4주 수준 · 4일 연속", tone: .neutral))
         #expect(out[4] == RunSummaryLine(axis: "유산소", state: "50대 남성 기준 높음", tone: .good))
@@ -175,18 +175,18 @@ struct RunSummaryTests {
     @Test func plannedHighIntensityInZoneFourIsGood() {
         var i = RunSummaryInput(); i.workoutType = .tempo; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
         // 템포는 페이스 모양으로 붙인 분류 — "의도한" 대신 존 사실(2026-10-20)
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 3 이상 100%", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 4~5 70%", tone: .good)])
     }
 
     @Test func generalRunInZoneFourIsNeutral() {
         var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.3, 4: 0.6, 5: 0.1]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 100%", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 4~5 70%", tone: .neutral)])
     }
 
     @Test func distanceRunInHighZonesIsPlanned() {
         // 거리주는 레이스페이스 장거리 — 이지 의도도 아니고, Zone 4 우세면 계획대로
         var i = RunSummaryInput(); i.workoutType = .distanceRun; i.zoneFractions = [3: 0.2, 4: 0.7, 5: 0.1]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 3 이상 100%", tone: .good)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간 · Zone 4~5 80%", tone: .good)])
     }
 
     @Test func distanceRunInZoneThreeIsPlanned() {
@@ -218,7 +218,7 @@ struct RunSummaryTests {
 
     @Test func zoneTieBreaksToHigherZone() {
         var i = RunSummaryInput(); i.workoutType = .general; i.zoneFractions = [3: 0.45, 4: 0.45, 2: 0.10]
-        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 3 이상 90%", tone: .neutral)])
+        #expect(bare(lines(i)) == [RunSummaryLine(axis: "심박", state: "고강도 구간이 많음 · Zone 4~5 45%", tone: .neutral)])
     }
 
     @Test func zoneThreeDominantOnGeneralIsTempo() {

@@ -160,15 +160,18 @@ enum RunSummary {
         // 거리주는 이미 목표 페이스 근처로 달린 날이라 유지여도 가속 권유를 하지 않는다.
         // 롱런 거리가 아니면 "다음 롱런은" 대신 "다음 러닝은" — 폼 줄과 같은 판정
         let isLong = i.isLongDistanceContext || distanceLineApplies(i)
+        // 초반이 중반보다 10초/km↑ 느렸으면 이미 편하게 시작한 러닝 — "초반을 더 편하게"를 권하지 않는다(2026-11-11: 6'55" 출발)
+        let startedEasy: Bool = i.form.map { $0.phases.early.paceSecPerKm - $0.phases.mid.paceSecPerKm >= FormPhase.paceDeltaSec } ?? false
         let fatigued = i.acuteChronic == .high || i.acuteChronic == .veryHigh || i.streakDays >= 4
             || i.planPhase.map { planEasyPhases.contains($0) } == true
         if i.workoutType != .race, fatigued || i.workoutType == .distanceRun {
             line.next = r.kind == .held ? nil
                 : (fatigued ? AppLanguage.shared.s("피로가 쌓인 상태에서 뛴 러닝입니다. 후반 판단은 회복한 뒤 롱런에서 다시 보세요.",
                                                     "This run came on accumulated fatigue — judge your late-run durability again on a long run after recovery.", ja: "疲労がたまった状態で走ったランです。後半の判断は回復した後のロング走で改めて見てください。")
-                            : LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isLongRun: isLong))
+                            : LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isLongRun: isLong, startedEasy: startedEasy))
         } else {
-            line.next = LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isRace: i.workoutType == .race, isLongRun: isLong)
+            line.next = LateRunDiagnosis.next(r, heatDeltaBpm: i.heatDeltaBpm, isRace: i.workoutType == .race, isLongRun: isLong,
+                                              startedEasy: startedEasy)
         }
         return line
     }
@@ -465,16 +468,19 @@ enum RunSummary {
                         line = RunSummaryLine(axis: axis, state: L.s("유산소 구간에 머묾", "Stayed in aerobic zone", ja: "有酸素域にとどまった"), tone: .neutral)
                     }
                 default:
+                    // 고강도 판정 근거는 리듬 탭·도넛과 같은 Zone 4~5 합(verdictZone) — "Zone 3 이상 83%"는 같은 러닝의
+                    // 리듬 탭 "Zone 4~5 56%"와 숫자가 갈렸다(2026-11-11)
+                    let z45 = Int(((frac(4) + frac(5)) * 100).rounded())
                     // "의도한"은 의도가 분명한 인터벌·대회, 아침에 포인트를 제안받은 날만 — 그 밖 빌드업·템포·거리주는 존 사실만(2026-10-20)
                     line = (i.workoutType == .interval || i.workoutType == .race
                             || (i.plannedPointToday && FormNarrative.isPlannedHighIntensity(i.workoutType)))
                         ? RunSummaryLine(axis: axis, state: L.s("의도한 고강도", "Intended high intensity", ja: "意図した高強度"), tone: .good)
                         : FormNarrative.isPlannedHighIntensity(i.workoutType)
                         ? RunSummaryLine(axis: axis,
-                                         state: L.s("고강도 구간 · Zone 3 이상 \(pct)%", "High intensity · \(pct)% in Zone 3+", ja: "高強度域 · ゾーン3以上\(pct)%"),
+                                         state: L.s("고강도 구간 · Zone 4~5 \(z45)%", "High intensity · \(z45)% in Zone 4–5", ja: "高強度域 · ゾーン4~5 \(z45)%"),
                                          tone: .good)
                         : RunSummaryLine(axis: axis,
-                                         state: L.s("고강도 구간이 많음 · Zone 3 이상 \(pct)%", "Mostly high intensity · \(pct)% in Zone 3+", ja: "高強度域が多い · ゾーン3以上\(pct)%"),
+                                         state: L.s("고강도 구간이 많음 · Zone 4~5 \(z45)%", "Mostly high intensity · \(z45)% in Zone 4–5", ja: "高強度域が多い · ゾーン4~5 \(z45)%"),
                                          tone: .neutral)
                 }
             }
