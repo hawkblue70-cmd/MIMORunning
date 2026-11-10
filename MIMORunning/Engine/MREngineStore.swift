@@ -190,6 +190,21 @@ final class MREngineStore: ObservableObject {
         return a.last(where: { $0.count == 2 && calendar.isDate(Date(timeIntervalSince1970: $0[0]), inSameDayAs: asOf) })?[1]
     }
 
+    /// 그날(러닝 날짜) 아침 전 28밤의 잠든 시간 중앙값 — 밸런스 탭 수면 막대 기준. 그날 밤은 제외, 7밤 미만이면 nil.
+    static func usualSleepHours(nights: [(date: Date, value: Double)], asOf: Date, calendar: Calendar = .current) -> Double? {
+        let dayStart = calendar.startOfDay(for: asOf)
+        guard let from = calendar.date(byAdding: .day, value: -28, to: dayStart) else { return nil }
+        let vals = nights.filter { $0.date >= from && $0.date < dayStart }.map(\.value)
+        return vals.count >= 7 ? mrMedian(vals) : nil
+    }
+
+    /// 저장된 밤별 잠든 시간(sleepNightsKey)으로 본인 평소 수면 시간. 없거나 7밤 미만이면 nil.
+    static func persistedUsualSleepHours(asOf: Date, calendar: Calendar = .current) -> Double? {
+        guard let a = UserDefaults.standard.array(forKey: sleepNightsKey) as? [[Double]] else { return nil }
+        let nights = a.compactMap { $0.count == 2 ? (date: Date(timeIntervalSince1970: $0[0]), value: $0[1]) : nil }
+        return usualSleepHours(nights: nights, asOf: asOf, calendar: calendar)
+    }
+
     /// 그날(러닝 날짜) 밤 HRV가 평소(4주)보다 15% 넘게 낮았나 — 총평·아침 근거의 "(평소보다 낮음)"과 같은 판정.
     /// 러닝 뒤 "같은 페이스 심박이 높다" 원인 자리에 쓴다(2026-11-11: 아침 HRV 64 · 평소 81인데 "컨디션"으로만 나왔다).
     static func persistedLastNightHRVLow(asOf: Date, calendar: Calendar = .current) -> Bool {

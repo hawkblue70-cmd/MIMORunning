@@ -166,4 +166,20 @@ struct BalanceSnapshotTests {
         #expect(s.mode == .bodyOnly)
         #expect(s.inputScore == 1)
     }
+
+    @MainActor @Test func usualSleepMedianExcludesTodayAndNeedsSeven() {
+        let cal = Calendar(identifier: .gregorian)
+        let today = cal.date(from: DateComponents(year: 2026, month: 11, day: 11, hour: 8))!
+        func night(_ daysAgo: Int, _ h: Double) -> (date: Date, value: Double) {
+            (cal.date(byAdding: .day, value: -daysAgo, to: today)!, h)
+        }
+        // 6밤뿐이면 nil
+        let few = (1...6).map { night($0, 7) }
+        #expect(MREngineStore.usualSleepHours(nights: few, asOf: today, calendar: cal) == nil)
+        // 10밤(6·7·8 섞음) + 그날 밤 3시간 — 그날 값은 중앙값에 안 들어감
+        let hours: [Double] = [6, 7, 8, 6, 7, 8, 7, 7, 6, 8]
+        var nights = hours.enumerated().map { night($0.offset + 1, $0.element) }
+        nights.append(night(0, 3))
+        #expect(MREngineStore.usualSleepHours(nights: nights, asOf: today, calendar: cal) == 7)
+    }
 }
