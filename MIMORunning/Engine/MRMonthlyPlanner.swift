@@ -301,7 +301,14 @@ enum MRMonthlyPlanner {
                     if without.easy <= b.easyCapKm + 0.05 { pt = nil; split = without }
                 }
                 if split.easy > b.easyCapKm + 0.05 {
-                    let lowered = split.long + (pt?.totalKm ?? 0) + Double(split.easyRuns) * b.easyCapKm
+                    // 낮춘 주간으로 다시 나누면 롱런이 '주간의 50%' 한도에 걸려 더 짧아질 수 있다(34km → 롱런 17 → 이지 8.5 > 8).
+                    // 다시 나눈 롱런으로 주간을 한 번 더 낮춰 이지가 상한 안에 들 때까지(최대 4번) — 테스트 실행에서 드러남(2026-11-11)
+                    var lowered = split.long + (pt?.totalKm ?? 0) + Double(split.easyRuns) * b.easyCapKm
+                    for _ in 0..<4 {
+                        let again = splitWeek(lowered, runs: n, longCap: lc, easyCap: b.easyCapKm, point: pt)
+                        guard again.easy > b.easyCapKm + 0.05 else { break }
+                        lowered = again.long + (pt?.totalKm ?? 0) + Double(again.easyRuns) * b.easyCapKm
+                    }
                     let plusOne: Double? = n < 7 ? lowered + b.easyCapKm : nil
                     if rate != nil {
                         let lim = MRMonthlyPlan.Limit.frequency(runs: n, weeklyMaxKm: r1(lowered), plusOneKm: plusOne.map(r1))
