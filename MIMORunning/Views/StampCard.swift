@@ -851,7 +851,7 @@ private struct StampBalanceView: View {
             // 페이스 줄은 거미줄 틀 맨 아래 빈 자리(아래 두 축 라벨 밑, 틀이 위아래 대칭이라 남는 ≈15pt)에 얹는다 —
             // 아래로 붙이면 높이가 172 → 188이 되어 특대가 높이 상한(158pt)에 먼저 걸린다
             BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stamp.scaled(scale),
-                             style: style, scale: scale)
+                             style: style, scale: scale, showsReferenceChip: false)
                 .overlay(alignment: .bottom) {
                     if let pace = snapshot.paceSecPerKm {
                         // 밸런스 탭 범례의 기준 페이스 줄과 같은 문구(공용 함수)

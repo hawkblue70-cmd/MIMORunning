@@ -134,6 +134,8 @@ struct BalanceRadarView: View {
     var progress: Double = 1
     /// 점·칩 크기 배율 — 스탬프 배율(탭 1). 틀(size)·글자(style.fontScale)는 쓰는 쪽이 이미 맞춰 넘긴다
     var scale: CGFloat = 1
+    /// "참고" 칩 표시 — 탭 true, 스탬프 false(2026-11-11 사용자: 스탬프엔 칩 없이 옅은 띠·점선 테두리만)
+    var showsReferenceChip: Bool = true
 
     var body: some View {
         let m = size
@@ -169,7 +171,7 @@ struct BalanceRadarView: View {
         }
         .frame(width: m.w, height: m.h)
         .overlay(alignment: .topLeading) {
-            if snapshot.isReference { referenceChip }
+            if snapshot.isReference && showsReferenceChip { referenceChip }
         }
     }
 
