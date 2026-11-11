@@ -502,6 +502,20 @@ struct RunDayShareCard: View {
         if e.level == "go", e.sessionIsPoint, let session = InsightMorning.sessionText(line: e.line) {
             return pointActual(session: session)
         }
+        // 몸 풀기 → 본 구간 → 마무리로 나눠 뛴 러닝 — 5km 평균("5'59"로 제안보다 31초 빨랐고")으로는 무엇을 했는지 안 보인다.
+        // 구성과 본 구간 페이스·심박을 그대로 적는다(2026-11-11)
+        if let st = MRStructuredSession.detect(splits) {
+            let easyAdvised = e.level == "easy" || e.easyCapHR != nil
+            let w = mrRunKmInText(st.warmupKm), m = mrRunKmInText(st.mainKm), c = mrRunKmInText(st.cooldownKm)
+            let p = mrFormatPace(st.mainPace)
+            let hrKo = st.mainHR.map { " · 본 구간 심박 \($0)" } ?? ""
+            let hrEn = st.mainHR.map { " · main-block HR \($0)" } ?? ""
+            let hrJa = st.mainHR.map { " · 本練習の心拍\($0)" } ?? ""
+            return L.s("→ 실제: \(easyAdvised ? "이지 대신 " : "")몸 풀기 \(w)km · 본 구간 \(m)km \(p) · 마무리 \(c)km로 달렸습니다\(hrKo)",
+                       "→ Actual: \(easyAdvised ? "instead of easy, " : "")\(w) km warm-up · \(m) km at \(p) · \(c) km cool-down\(hrEn)",
+                       ja: "→ 実際: \(easyAdvised ? "イージーの代わりに" : "")ウォームアップ\(w)km · 本練習\(m)km \(p) · クールダウン\(c)kmで走りました\(hrJa)")
+                .keepingNumberUnitsTogether
+        }
         // 이지를 권한 날 강도 유형(빌드업·템포·인터벌·거리주)으로 뛰었으면 평균 대신 후반 — 7'20"대 출발이 평균을 늦춰
         // "6'57"로 페이스는 지켰고, 심박만 1 높았다"로 읽혔지만 실제로는 6'29"·심박 179까지 올린 빌드업이었다(2026-11-03)
         // 이지를 권한 날만(판정 이지런, 또는 강도 OK인데 오늘 세션이 이지라 이지 상한을 적은 날) — 강도 OK 날 빌드업은 해당 없음

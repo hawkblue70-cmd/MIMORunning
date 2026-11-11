@@ -107,6 +107,12 @@ enum TabDigestRhythm {
         if !spikeWindows.isEmpty, let t0 = hrSamples.first?.offset {
             base = base.filter { s in !spikeWindows.contains { $0.contains(s.offset - t0) } }
         }
+        // 몸 풀기 → 본 구간 → 마무리로 나눈 러닝은 마무리 동안의 심박을 뺀다 — 본 구간에서 오른 심박이 '후반'에 들어가
+        // "후반에 심박이 올랐습니다"가 나왔다(2026-11-11). 시점은 달린 시간(멈춤 제외)으로 맞춘다.
+        if let st = MRStructuredSession.detect(detail?.splits ?? []), let t0 = hrSamples.first?.offset {
+            let spans = detail?.pausedSpans ?? []
+            base = base.filter { spans.activeElapsed(atWallOffset: $0.offset - t0) <= st.mainEndActiveSec }
+        }
         let samples = hrMidRunSpikeCleaned(base)
         guard samples.count >= 10 else { return nil }
         let n = samples.count
@@ -342,7 +348,8 @@ enum TabDigestRhythm {
     static func paceShapeVerdict(splits: [SplitData], workoutType wt: WorkoutType,
                                  altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Verdict? {
         let L = AppLanguage.shared
-        let fullSplits = fullSplits(splits)
+        // 마무리 감속은 페이스 모양 판정에서 뺀다(MRStructuredSession, 2026-11-11)
+        let fullSplits = fullSplits(MRStructuredSession.splitsWithoutCooldown(splits))
         switch wt {
         case .distanceRun:
             guard fullSplits.count >= 4 else { return nil }

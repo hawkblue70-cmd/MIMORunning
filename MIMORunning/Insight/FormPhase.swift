@@ -67,6 +67,8 @@ enum FormPhase {
         /// 폼 카드의 전체 러닝 범위와 다를 수 있어 근거 줄에 숫자로 밝힌다.
         var lateStrideRange: ClosedRange<Double>? = nil
         var lateGroundContactRange: ClosedRange<Double>? = nil
+        /// 구성을 알아본 러닝(`MRStructuredSession`)에서 판정에서 뺀 마무리 거리(km) — 문장 끝에 밝힌다
+        var cooldownExcludedKm: Double? = nil
         var isHeld: Bool { late == .held }
         /// 이지 프레임에서 케이던스만 내려간 말기는 "무거워짐"이 아니라 편한 날의 자연스러운 변화.
         /// (`.heavier([.cadence, .verticalOsc])`처럼 다른 신호가 섞이면 소프트가 아니다.)
@@ -377,6 +379,9 @@ enum FormPhase {
                        formShifts: [MRFormShift],
                        workoutType: WorkoutType) -> Result? {
         guard workoutType != .interval, let bl = baseline else { return nil }
+        // 몸 풀기 → 본 구간 → 마무리로 나눈 러닝은 마무리를 뺀다 — 마무리 감속을 "마지막 2km 페이스 떨어짐"으로 읽었다(2026-11-11)
+        let structured = MRStructuredSession.detect(splits)
+        let splits = structured.map { $0.warmup + $0.main } ?? splits
         let full = splits.filter { $0.distanceM >= 900 }
         let distKm = full.map(\.distanceM).reduce(0, +) / 1000
         let dur = full.map(\.duration).reduce(0, +)
@@ -386,10 +391,12 @@ enum FormPhase {
         guard bl.cutoffs.band(of: gapPace) != nil else { return nil }
         let gctShift = formShifts.first(where: { $0.metric.key == "gct" })
         let scales = phasePaceScales(splits: full, altitudeProfile: altitudeProfile)
-        return classify(splits: full, paceScales: scales, easyFrame: FormNarrative.frame(for: workoutType) == .easy,
-                        bandFor: { pace in
+        var r = classify(splits: full, paceScales: scales, easyFrame: FormNarrative.frame(for: workoutType) == .easy,
+                         bandFor: { pace in
             bandStats(in: bl, paceSecPerKm: pace, gctShift: gctShift)
         })
+        r?.cooldownExcludedKm = structured?.cooldownKm
+        return r
     }
 
     // MARK: - 문장
@@ -474,6 +481,10 @@ enum FormPhase {
             let d = String(format: "%.0f", r.totalKm)
             koS += " \(d)km 후반엔 흔한 변화입니다."
             enS += " Common late in a \(d) km run."
+        }
+        if let c = r.cooldownExcludedKm {
+            koS += " 마지막 \(mrRunKmInText(c))km는 마무리로 보고 판정에서 뺐습니다."
+            enS += " The last \(mrRunKmInText(c)) km was treated as a cool-down and left out."
         }
         return L.s(koS, enS)
     }

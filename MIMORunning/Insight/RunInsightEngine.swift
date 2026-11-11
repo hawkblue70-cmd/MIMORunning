@@ -1332,6 +1332,8 @@ enum RunInsightEngine {
         // 300m 미만 끝 조각은 뺀다 — 0.14km 마무리 조각 하나가 후반 평균을 끌어내려 실제 4.7% 처짐이 "1.1%"로 나왔다(2026-10-08).
         // 반쪽 평균도 km 페이스 단순 평균이 아니라 시간 합 ÷ 거리 합.
         guard let splits = detail?.splits.filter({ $0.distanceM >= 300 && $0.duration > 0 }), splits.count >= 4 else { return nil }
+        // 몸 풀기 → 본 구간 → 마무리로 나눈 러닝은 전후반 페이스 편차가 배분을 말해 주지 않는다(2026-11-11)
+        if MRStructuredSession.detect(splits) != nil { return nil }
         let L = AppLanguage.shared
         let half     = splits.count / 2
         let front    = Array(splits[..<half])
@@ -1344,7 +1346,12 @@ enum RunInsightEngine {
         let driftStr = String(format: "%.1f%%", abs(drift))
 
         let tone: InsightTone; let badge: String; let msg: String
-        if drift <= 3 {
+        if drift <= -1 {
+            // 후반이 더 빨랐으면 "편차"가 아니라 빨라진 사실(2026-11-11: 편차 5.7%를 "끝까지 잘 유지"로 적었다)
+            tone = .good; badge = L.s("후반 가속", "Negative Split", ja: "後半加速")
+            msg = L.s("후반이 전반보다 \(driftStr) 빨랐습니다.",
+                      "The back half was \(driftStr) faster than the front half.", ja: "後半が前半より\(driftStr)速かったです。")
+        } else if drift <= 3 {
             tone = .good; badge = L.s("후반 유지", "Strong Finish", ja: "後半維持")
             msg = L.s(
                 "전반 대비 후반 페이스 편차 \(driftStr) — 끝까지 잘 유지했습니다.",

@@ -35,6 +35,9 @@ struct WorkoutTypeClassifier {
         let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
 
         if isPlanInterval(intervalSegments: intervalSegments)              { return .interval    }
+        // 롱런 거리면 롱런 판정이 먼저 — 마지막에 대회 페이스를 넣고 식힌 롱런이 템포가 되지 않게
+        if !isLongRun(activity: activity, base: base),
+           isStructuredTempo(splits: splits, base: base)                   { return .tempo       }
         // 쉬운 강도라도 롱런 거리면 LSD — 길게·천천히·고르게. 거리를 보기 전에 이지런으로 끝나
         // 평소 2.2배 19.6km(Zone 2 63%)가 "편안한 페이스로 회복하는 러닝"이 됐다(2026-10-16)
         if isEasy(activity: activity, base: base, hrZones: hrZones) {
@@ -309,6 +312,13 @@ struct WorkoutTypeClassifier {
     }
 
     /// Faster than baseline + CV ≤ 7% across splits (uniform effort) + ≥ 4 km
+    /// 몸 풀기 → 빠른 본 구간 → 마무리(`MRStructuredSession`)이고 본 구간이 평소 페이스보다 2% 넘게 빠르면 템포런 —
+    /// 평균 페이스·편차로만 보면 '일반 러닝'이 됐다(2026-11-11 몸 풀기 2km · 하프 대회 페이스 2km · 마무리 1km). 이지 판정보다 먼저.
+    static func isStructuredTempo(splits: [SplitData], base: Baseline) -> Bool {
+        guard let s = MRStructuredSession.detect(splits), let med = base.pace else { return false }
+        return s.mainPace < med * 0.98
+    }
+
     private static func isTempo(activity: Activity, base: Baseline, splits: [SplitData]) -> Bool {
         guard activity.distance >= 4000, let pace = base.todayPace, let med = base.pace else { return false }
         guard pace < med * 0.98 else { return false }
@@ -354,6 +364,10 @@ struct WorkoutTypeClassifier {
             .sorted { $0.date > $1.date }
         let base = Baseline(activity: activity, recentRuns: recentRuns, typeOf: typeOf, heat: heat)
 
+        if !isLongRun(activity: activity, base: base), isStructuredTempo(splits: splits, base: base),
+           let s = MRStructuredSession.detect(splits) {
+            return (.tempo, "템포(구성): 몸 풀기 \(String(format: "%.1f", s.warmupKm))km · 본 \(String(format: "%.1f", s.mainKm))km \(pf(s.mainPace)) · 마무리 \(String(format: "%.1f", s.cooldownKm))km")
+        }
         var notes: [String] = []
         let full = splits.filter { $0.distanceM >= 900 }
         let distKm = activity.distance / 1000

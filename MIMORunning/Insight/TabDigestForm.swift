@@ -144,6 +144,9 @@ enum TabDigestForm {
         }
 
         var isInterval: Bool { workoutType == .interval }
+        /// 몸 풀기 → 본 구간 → 마무리로 나눈 러닝 — 페이스가 섞인 전체 평균이라 평균 페이스 기준 비교를 하지 않는다
+        /// (2026-11-11: 섞인 평균 지면접촉 258ms를 평균 페이스 5'59" 범위와 비교해 "평소보다 길었습니다")
+        var isStructured: Bool { MRStructuredSession.detect(splits) != nil }
 
         /// true → 장거리 문맥. 장거리에서는 지표 하락이 자주 나타남 — 상태 배지를 숨기고 조언을 유보.
         var isLongDistanceContext: Bool {
@@ -177,7 +180,7 @@ enum TabDigestForm {
 
         if cadD < 160 { return .lowCadence(cad) }
         // 인터벌: 회복 구간이 포함된 전체 평균이라 개인 기준 비교를 생략한다
-        if x.isInterval { return .interval }
+        if x.isInterval || x.isStructured { return .interval }
         guard bb?.isJudgeable == true else { return .notJudgeable }
 
         // 장거리 문맥: 장거리에서는 지표 하락이 자주 나타남 — 판단 유보, 사실 서술만 (문장은 FormNarrative 공유)

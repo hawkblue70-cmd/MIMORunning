@@ -205,7 +205,8 @@ enum LateRunDiagnosis {
                          baseline: RunningFormBaseline? = nil, plannedFastFinish: Bool = false,
                          temperatureC: Double? = nil, drift: MRDriftModel? = nil,
                          altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> Result? {
-        let full = splits.filter { $0.distanceM >= 900 }
+        // 몸 풀기 → 본 구간 → 마무리로 나눈 러닝은 마무리를 뺀다(FormPhase와 같은 규칙, 2026-11-11)
+        let full = MRStructuredSession.splitsWithoutCooldown(splits).filter { $0.distanceM >= 900 }
         guard let p = FormPhase.phases(full) else { return nil }
         let mid = p.mid, late = p.late
         guard mid.paceSecPerKm > 0, late.paceSecPerKm > 0 else { return nil }
