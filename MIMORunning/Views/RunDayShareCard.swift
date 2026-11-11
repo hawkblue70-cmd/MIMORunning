@@ -457,6 +457,8 @@ struct RunDayShareCard: View {
     var splits: [SplitData] = []
     /// 이 러닝의 저장 유형 — 이지를 권한 날 강도 유형으로 뛰었으면 평균 대신 후반을 적는다
     var actualType: WorkoutType? = nil
+    /// 이 러닝 뒤 가장 가까운 계획 대회의 대회 페이스(예상 기록 ÷ 거리, 훈련일지 '예상'과 같은 값) — 본 구간 이름용
+    var racePaceSecPerKm: Double? = nil
 
     private var divider: some View {
         Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
@@ -508,12 +510,17 @@ struct RunDayShareCard: View {
             let easyAdvised = e.level == "easy" || e.easyCapHR != nil
             let w = mrRunKmInText(st.warmupKm), m = mrRunKmInText(st.mainKm), c = mrRunKmInText(st.cooldownKm)
             let p = mrFormatPace(st.mainPace)
-            let hrKo = st.mainHR.map { " · 본 구간 심박 \($0)" } ?? ""
-            let hrEn = st.mainHR.map { " · main-block HR \($0)" } ?? ""
-            let hrJa = st.mainHR.map { " · 本練習の心拍\($0)" } ?? ""
-            return L.s("→ 실제: \(easyAdvised ? "이지 대신 " : "")몸 풀기 \(w)km · 본 구간 \(m)km \(p) · 마무리 \(c)km로 달렸습니다\(hrKo)",
-                       "→ Actual: \(easyAdvised ? "instead of easy, " : "")\(w) km warm-up · \(m) km at \(p) · \(c) km cool-down\(hrEn)",
-                       ja: "→ 実際: \(easyAdvised ? "イージーの代わりに" : "")ウォームアップ\(w)km · 本練習\(m)km \(p) · クールダウン\(c)kmで走りました\(hrJa)")
+            // 계획 대회의 대회 페이스와 ±10초/km 안이면 "대회 페이스", 아니면(계획 없음 포함) "본 구간"(2026-11-11 사용자)
+            let isRacePace = racePaceSecPerKm.map { abs(st.mainPace - $0) <= Self.racePaceMatchSec } ?? false
+            let nameKo = isRacePace ? "대회 페이스" : "본 구간"
+            let nameEn = isRacePace ? "race pace" : "main block"
+            let nameJa = isRacePace ? "レースペース" : "本練習"
+            let hrKo = st.mainHR.map { " · \(nameKo) 심박 \($0)" } ?? ""
+            let hrEn = st.mainHR.map { " · \(nameEn) HR \($0)" } ?? ""
+            let hrJa = st.mainHR.map { " · \(nameJa)の心拍\($0)" } ?? ""
+            return L.s("→ 실제: \(easyAdvised ? "이지 대신 " : "")몸 풀기 \(w)km · \(nameKo) \(m)km \(p) · 마무리 \(c)km로 달렸습니다\(hrKo)",
+                       "→ Actual: \(easyAdvised ? "instead of easy, " : "")\(w) km warm-up · \(m) km \(nameEn) at \(p) · \(c) km cool-down\(hrEn)",
+                       ja: "→ 実際: \(easyAdvised ? "イージーの代わりに" : "")ウォームアップ\(w)km · \(nameJa)\(m)km \(p) · クールダウン\(c)kmで走りました\(hrJa)")
                 .keepingNumberUnitsTogether
         }
         // 이지를 권한 날 강도 유형(빌드업·템포·인터벌·거리주)으로 뛰었으면 평균 대신 후반 — 7'20"대 출발이 평균을 늦춰
@@ -581,6 +588,16 @@ struct RunDayShareCard: View {
                        "→ Actual: \(apStr), \(faster) s/km faster than the guide (\(tpStr)), but avg HR \(hrS) stayed under \(cap)",
                        ja: "→ 実際: \(apStr)で提案(\(tpStr))より\(faster)秒/km速かったものの、平均心拍\(hrS)で\(cap)未満でした")
         }
+    }
+
+    /// 본 구간을 "대회 페이스"라 부르는 폭 — 계획 대회 페이스와 이만큼(초/km) 안
+    static let racePaceMatchSec = 10.0
+
+    /// 이 러닝 뒤 가장 가까운 계획 대회의 대회 페이스 — 예상 기록(훈련일지 '예상') ÷ 거리. 계획이 없으면 nil.
+    static func planRacePace(plans: [MRRacePlan], runDate: Date) -> Double? {
+        guard let p = plans.filter({ $0.raceDate > runDate }).min(by: { $0.raceDate < $1.raceDate }),
+              p.projectedFinal > 0, p.distanceM > 0 else { return nil }
+        return p.projectedFinal * 60 / (p.distanceM / 1000)
     }
 
     /// 마지막 2km(풀 구간 둘)의 시간 가중 페이스와 심박 범위 — 구간이 모자라면 nil
@@ -725,6 +742,7 @@ struct RunDayShareSheet: View {
     var comparisonHR: (bpm: Int, excludedKm: Int)? = nil
     var splits: [SplitData] = []
     var actualType: WorkoutType? = nil
+    var racePaceSecPerKm: Double? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -746,7 +764,8 @@ struct RunDayShareSheet: View {
         RunDayShareCard(activity: activity, workoutTypeLabel: workoutTypeLabel, text: text,
                         condition: condition, digest: digest, morning: morning,
                         weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight,
-                        comparisonHR: comparisonHR, splits: splits, actualType: actualType)
+                        comparisonHR: comparisonHR, splits: splits, actualType: actualType,
+                        racePaceSecPerKm: racePaceSecPerKm)
     }
 
     var body: some View {

@@ -557,7 +557,8 @@ struct ActivityDetailView: View {
                                 weekKm: runDayDistance(month: false), monthKm: runDayDistance(month: true),
                                 comparisonHR: avgHRExcludingWarmupPhase(detail?.splits ?? [], altitudeProfile: detail?.altitudeProfile ?? []),
                                 splits: detail?.splits ?? [],
-                                actualType: detail?.workoutType)
+                                actualType: detail?.workoutType,
+                                racePaceSecPerKm: RunDayShareCard.planRacePace(plans: engine.plans, runDate: activity.date))
                         }
                     }
                     StorySection(workoutID: activity.id.uuidString,
