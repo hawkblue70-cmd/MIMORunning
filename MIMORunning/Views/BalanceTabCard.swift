@@ -376,12 +376,13 @@ struct BalanceTabCard: View {
     // MARK: - 폼 거미줄
 
     // 2026-11-11 실기기 요청으로 크게 — 전체 폭 가운데에 둔다(R 52 → 72)
-    /// 거미줄 크기 — 큰 화면 R 96, 그 외 R 76(`radar`의 ViewThatFits). 2026-11-11 실기기 요청으로 두 번 키움(52 → 72 → 96).
+    /// 거미줄 크기 — 큰 화면 R 108, 그 외 R 88(`radar`의 ViewThatFits). 2026-11-11 실기기 요청으로 키움(52 → 72 → 96 → 108).
     private struct RadarSize {
         let w: CGFloat, h: CGFloat, r: CGFloat, labelR: CGFloat
         var center: CGPoint { CGPoint(x: w / 2, y: h / 2) }
-        static let large = RadarSize(w: 340, h: 292, r: 96, labelR: 124)
-        static let medium = RadarSize(w: 290, h: 244, r: 76, labelR: 100)
+        // 바깥 크기는 그대로, 도형과 라벨 사이 여백(28 → 22pt)을 줄여 도형만 키움(2026-11-11 실기기: 96 → 108)
+        static let large = RadarSize(w: 340, h: 292, r: 108, labelR: 130)
+        static let medium = RadarSize(w: 290, h: 244, r: 88, labelR: 108)
     }
 
     /// 그릴 축 — 스냅샷 순서(심박·케이던스·보폭·접지·수직 진폭) 중 있는 것만
