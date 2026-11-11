@@ -16,7 +16,9 @@ struct MREvidenceTests {
     @Test func catalogCoversAdviceSourcesOnce() {
         let names = MREvidence.catalog.flatMap(\.cites).map(\.name)
         #expect(names.contains("Frandsen 2025"))
-        #expect(names.contains("Int J Sports Med 2023"))
+        #expect(names.contains("Schimpchen 2023"))
+        #expect(names.contains("Bosquet 2007"))
+        #expect(MRCitation.lateRacePace.text == "통제 연구 없음(코칭 관행)")
         #expect(Set(names).count == names.count)        // 같은 문헌이 두 기능에 겹쳐 나오지 않는다
         #expect(MREvidence.catalog.allSatisfy { !$0.cites.isEmpty })
     }
