@@ -70,7 +70,7 @@ struct MRSessionPointTests {
                                                  hardStarts: [hardTue.start]))
         #expect(!s.isPoint)
         #expect(s.progress.contains("강도 훈련 완료"))
-        #expect(s.progress.contains("이지 0/2회"))
+        #expect(s.progress.contains("이지 0번 · 계획 2번"))
     }
 
     @Test func noPointInPlanKeepsOldProgress() throws {

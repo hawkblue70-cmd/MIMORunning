@@ -682,9 +682,10 @@ struct RunSummaryTests {
     }
 
     @Test func buildPhaseHighIntensityIsNotFlagged() {
-        // 늘리기 주의 고강도는 계획대로다
+        // 늘리기 주의 고강도는 계획 이탈로 표시하지 않는다 — 거리주는 존 사실만("의도한"은 인터벌·대회·아침 포인트 날만, 2026-10-20)
         var i = todayInput(); i.planPhase = "늘리기"
-        #expect(lines(i)[2].state == "의도한 고강도")
+        #expect(lines(i)[2].state == "고강도 구간 · Zone 4~5 70%")
+        #expect(lines(i)[2].tone == .good)
     }
 
     @Test func planRecoveryPhaseOverrides() {

@@ -4,10 +4,26 @@ import SwiftData
 
 @MainActor
 final class MRReadinessSnapshotTests: XCTestCase {
+    /// 컨테이너를 테스트 동안 붙잡아 두고, 저장소는 테스트마다 임시 폴더의 고유 파일로 — 메모리 저장소(/dev/null)는
+    /// 전체 실행에서만 "No eligible connection available"로 멈췄다(단독 실행은 통과, 2026-11-11)
+    private var container: ModelContainer?
+    private var storeURL: URL?
+
     private func ctx() throws -> ModelContext {
+        let url = FileManager.default.temporaryDirectory.appending(path: "readiness-\(UUID().uuidString).store")
         let c = try ModelContainer(for: MRReadinessDaySnapshot.self, MRReadinessSnapshot.self,
-                                   configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+                                   configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
+        container = c
+        storeURL = url
         return ModelContext(c)
+    }
+
+    override func tearDown() {
+        container = nil
+        if let url = storeURL {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: url.path + suffix) }
+        }
+        super.tearDown()
     }
 
     func testKeyFormat() {

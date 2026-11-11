@@ -145,7 +145,8 @@ struct TabDigestFormTests {
         let blocks = TabDigest.make(rhythm + form)
         let r3Text = r3?.text ?? "-"
         #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3Text } != true)
-        #expect(blocks.first { $0.tab == .form }?.statements.contains { $0.text == f6?.text } == true)
+        let f6Shown = f6.map { $0.short ?? $0.text }   // 블록은 짧은 표현(short) 우선(2026-10-15)
+        #expect(blocks.first { $0.tab == .form }?.statements.contains { $0.text == f6Shown } == true)
     }
 
     /// 폼에 후반 폼 신호가 없으면 리듬 R3 '다리 먼저'는 리듬 블록에 남는다
@@ -161,7 +162,8 @@ struct TabDigestFormTests {
         let r3 = rhythm.first { $0.priority == 3 && $0.kind == .problem }
         #expect(r3 != nil)
         let blocks = TabDigest.make(rhythm)
-        #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3?.text } == true)
+        let r3Shown = r3.map { $0.short ?? $0.text }   // 블록은 짧은 표현(short) 우선(2026-10-15)
+        #expect(blocks.first { $0.tab == .rhythm }?.statements.contains { $0.text == r3Shown } == true)
     }
 
     // MARK: 요약 개조식(short)

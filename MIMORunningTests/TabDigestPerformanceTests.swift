@@ -182,9 +182,10 @@ struct TabDigestPerformanceTests {
         let blocks = TabDigest.make([r4] + perf)
         let rhythm = blocks.first { $0.tab == .rhythm }
         #expect(rhythm?.statements.contains { $0.text == r4.text } != true)
-        #expect(blocks.first { $0.tab == .performance }?.statements.contains {
-            $0.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다."
-        } == true)
+        let late = perf.first { $0.family == .lateHR }
+        let lateShown = late.map { $0.short ?? $0.text }   // 블록은 짧은 표현(short) 우선(2026-10-15)
+        #expect(late?.text == "후반에 심박이 올랐지만 더운 날이라 자연스러운 범위입니다.")
+        #expect(blocks.first { $0.tab == .performance }?.statements.contains { $0.text == lateShown } == true)
     }
 
     // MARK: 요약 개조식(short)

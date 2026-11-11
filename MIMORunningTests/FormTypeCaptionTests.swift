@@ -81,7 +81,7 @@ struct FormTypeCaptionTests {
         let s = mk(paces, [151, 159, 164, 141, 147, 146, 148, 146, 148, 150, 158])
         #expect(hrWarmupPhaseKm(s) == 3)
         #expect(splitsExcludingWarmupPhase(s).first?.id == 4)
-        #expect(hrWarmupPhaseEndOffset(s) == 405 + 400 + 393)
+        #expect(hrWarmupPhaseEndOffset(s) == TimeInterval(405 + 400 + 393))
         #expect(hrWarmupPhase(s) == HRWarmupPhase(km: 3, peakBpm: 164, settledBpm: 141))
         #expect(avgHRExcludingWarmupPhase(s)?.bpm == 148 && avgHRExcludingWarmupPhase(s)?.excludedKm == 3)
         let pct = TabDigestPerformance.decouplingPct(splits: s, workoutType: .general, distKm: 11) ?? 99
