@@ -182,4 +182,67 @@ struct BalanceSnapshotTests {
         nights.append(night(0, 3))
         #expect(MREngineStore.usualSleepHours(nights: nights, asOf: today, calendar: cal) == 7)
     }
+
+    // MARK: - 그리기 재료 (Task 3)
+
+    @Test func radiusScale() {
+        let st = stat(100, 10)   // 하한 88 · 상한 112
+        #expect(S.radius(value: 100, stat: st) == 0.5)
+        #expect(abs(S.radius(value: 112, stat: st) - 0.75) < 1e-9)
+        #expect(abs(S.radius(value: 88, stat: st) - 0.25) < 1e-9)
+        #expect(S.radius(value: 200, stat: st) == 1.0)
+        #expect(S.radius(value: 0, stat: st) == 0.1)
+    }
+
+    @Test func adverseDirections() {
+        #expect(S.isAdverse(.heartRate, .above))
+        #expect(!S.isAdverse(.heartRate, .below))
+        #expect(S.isAdverse(.cadence, .below))
+        #expect(S.isAdverse(.stride, .below))
+        #expect(S.isAdverse(.groundContact, .above))
+        #expect(!S.isAdverse(.groundContact, .below))
+        #expect(S.isAdverse(.verticalOsc, .above))
+        #expect(!S.isAdverse(.cadence, .unknown))
+    }
+
+    @Test func blocksAllUsualOnLevelDay() throws {
+        let s = try #require(S.make(base()))
+        #expect(s.inputBlocks.map(\.kind) == [.heartRate, .effort, .sleep, .hrv, .load])
+        #expect(s.outputBlocks.map(\.kind) == [.cadence, .stride, .groundContact])
+        #expect(s.inputBlocks.filter { [.heartRate, .effort].contains($0.kind) }.allSatisfy { $0.tone == .usual && $0.height == 0.5 })
+        #expect(s.outputBlocks.allSatisfy { $0.tone == .usual && $0.height == 0.5 })
+    }
+
+    @Test func blocksHeavyLegs() throws {
+        var i = base()
+        i.heartRate = 160; i.cadence = 166; i.groundContact = 270; i.effort = 8
+        let s = try #require(S.make(i))
+        let inB = Dictionary(uniqueKeysWithValues: s.inputBlocks.map { ($0.kind, $0) })
+        let outB = Dictionary(uniqueKeysWithValues: s.outputBlocks.map { ($0.kind, $0) })
+        #expect(inB[.heartRate]?.tone == .bad)
+        #expect(inB[.effort]?.tone == .bad)
+        #expect(outB[.cadence]?.tone == .bad)
+        #expect(outB[.groundContact]?.tone == .bad)
+        // 접지가 길면 나온 것 블록은 작아진다(눈금 뒤집힘)
+        #expect((outB[.groundContact]?.height ?? 1) < 0.5)
+    }
+
+    @Test func referenceBandBlocksStayGray() throws {
+        var i = base()
+        i.isReferenceBand = true
+        i.heartRate = 170; i.cadence = 160
+        let s = try #require(S.make(i))
+        #expect(s.axes.allSatisfy { !S.isAdverse($0.kind, $0.status) })
+        #expect(s.inputBlocks.first { $0.kind == .heartRate }?.tone == .usual)
+        #expect(s.outputBlocks.allSatisfy { $0.tone == .usual })
+    }
+
+    @Test func scaleOnlyNeedsHeartRateValue() {
+        var i = base()
+        i.hasForm = false
+        i.heartRate = nil
+        i.effort = nil; i.effortTypeMedian = nil
+        i.sleepHours = nil; i.usualSleepHours = nil; i.hrvLevel = nil; i.load = nil
+        #expect(S.make(i) == nil)
+    }
 }

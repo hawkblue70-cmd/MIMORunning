@@ -6,13 +6,14 @@ import CoreLocation
 // MARK: - Tab Enum
 
 enum InsightTabKind: CaseIterable, Hashable {
-    case rhythm, form, performance, race
+    case rhythm, form, performance, balance, race
 
     var title: String {
         switch self {
         case .rhythm:      return AppLanguage.shared.s("리듬", "Rhythm", ja: "リズム")
         case .form:        return AppLanguage.shared.s("폼", "Form", ja: "フォーム")
         case .performance: return AppLanguage.shared.s("퍼포먼스", "Performance", ja: "パフォーマンス")
+        case .balance:     return AppLanguage.shared.s("밸런스", "Balance", ja: "バランス")
         case .race:        return AppLanguage.shared.s("대회", "Race", ja: "レース")
         }
     }
@@ -1051,11 +1052,29 @@ struct RunInsightTabCard: View {
         }
     }
 
+    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평(리듬 카드 summaryLines)과 같은 Context.
+    /// 내보내기 시트도 같은 식(미리보기 = 출력).
+    private var balanceSnapshot: BalanceSnapshot? {
+        BalanceTabCard.snapshot(context: RunSummaryBuilder.Context(
+            activity: activity, detail: detail, history: history,
+            hrZones: hrZones, hrSamples: hrSamples,
+            formBaseline: formBaseline, formShifts: formShifts,
+            workoutType: workoutTypeFn?(activity.id) ?? .general, workoutTypeFn: workoutTypeFn,
+            effortIndex: effortIndex, heatHRModel: heatHRModel,
+            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
+            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
+            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
+            plannedPointToday: plannedPointToday,
+            planWeekHasPoint: planWeekHasPoint
+        ), vo2Points: vo2Points)
+    }
+
     private var visibleTabs: [InsightTabKind] {
         let hasForm = detail?.avgCadence != nil
         let isRace  = workoutTypeFn?(activity.id) == .race
+        let hasBalance = balanceSnapshot != nil
         return InsightTabKind.allCases.filter {
-            ($0 != .form || hasForm) && ($0 != .race || isRace)
+            ($0 != .form || hasForm) && ($0 != .race || isRace) && ($0 != .balance || hasBalance)
         }
     }
 
@@ -1153,6 +1172,10 @@ struct RunInsightTabCard: View {
                 hasIntensityDist: $performanceHasIntensity,
                 vo2Points: vo2Points, shoeName: shoeName
             )
+        case .balance:
+            if let snap = balanceSnapshot {
+                BalanceTabCard(snapshot: snap)
+            }
         case .race:
             RaceInsightCard(
                 activity: activity, detail: detail,
@@ -5624,11 +5647,29 @@ struct InsightExportSheet: View {
         }
     }
 
+    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평(리듬 카드 summaryLines)과 같은 Context.
+    /// 내보내기 시트도 같은 식(미리보기 = 출력).
+    private var balanceSnapshot: BalanceSnapshot? {
+        BalanceTabCard.snapshot(context: RunSummaryBuilder.Context(
+            activity: activity, detail: detail, history: history,
+            hrZones: hrZones, hrSamples: hrSamples,
+            formBaseline: formBaseline, formShifts: formShifts,
+            workoutType: workoutTypeFn?(activity.id) ?? .general, workoutTypeFn: workoutTypeFn,
+            effortIndex: effortIndex, heatHRModel: heatHRModel,
+            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
+            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
+            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
+            plannedPointToday: plannedPointToday,
+            planWeekHasPoint: planWeekHasPoint
+        ), vo2Points: vo2Points)
+    }
+
     private var visibleTabs: [InsightTabKind] {
         let hasForm = detail?.avgCadence != nil
         let isRace  = workoutTypeFn?(activity.id) == .race
+        let hasBalance = balanceSnapshot != nil
         return InsightTabKind.allCases.filter {
-            ($0 != .form || hasForm) && ($0 != .race || isRace)
+            ($0 != .form || hasForm) && ($0 != .race || isRace) && ($0 != .balance || hasBalance)
         }
     }
 
@@ -5820,6 +5861,10 @@ struct InsightExportSheet: View {
                 heatHRModel: heatHRModel,
                 vo2Points: vo2Points, shoeName: shoeName
             )
+        case .balance:
+            if let snap = balanceSnapshot {
+                BalanceTabCard(snapshot: snap, isExport: true)
+            }
         case .race:
             RaceInsightCard(
                 activity: activity, detail: detail,
