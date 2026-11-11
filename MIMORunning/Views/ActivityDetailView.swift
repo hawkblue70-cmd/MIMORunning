@@ -354,6 +354,8 @@ struct ActivityDetailView: View {
         )
     }
 
+    /// 밸런스 스탬프용 — 밸런스 탭과 같은 함수(같은 판정)
+    private var shareBalance: BalanceSnapshot? { BalanceTabCard.snapshot(context: summaryContext, vo2Points: vo2Points) }
     private var shareSummaryLines: [RunSummaryLine] { RunSummaryBuilder.lines(summaryContext) }
 
     /// headline 재계산 트리거 — 인사이트·총평 재료가 바뀌면 달라지는 값들
@@ -730,7 +732,8 @@ struct ActivityDetailView: View {
         }
         .navigationDestination(isPresented: $showShareCard) {
             ShareCardScreen(activity: activity, detail: detail, insight: shareInsight, manager: manager, condition: condition,
-                             summaryLines: shareSummaryLines)
+                             summaryLines: shareSummaryLines,
+                             balance: shareBalance)
         }
         .sheet(isPresented: $showManualRaceEntry) {
             ManualRaceSheet(

@@ -93,6 +93,8 @@ struct ShareCardScreen: View {
     var condition: ActivityCondition? = nil
     /// 총평 5줄 — RunSummaryBuilder로 조립돼 들어온다. "총평" 칩이 켜졌을 때만 카드에 표시.
     var summaryLines: [RunSummaryLine] = []
+    /// 밸런스 스탬프(거미줄·저울) 데이터 — 워치 폼 데이터가 있는 러닝만 값이 있음.
+    var balance: BalanceSnapshot? = nil
 
     @Environment(\.modelContext) var modelContext
     @Environment(RaceDetector.self) private var raceDetector
@@ -431,13 +433,15 @@ struct ShareCardScreen: View {
     var displayShoeName: String? { activeShoe?.displayName }
 
     init(activity: Activity, detail: ActivityDetail?, insight: InsightResult?, manager: HealthKitManager? = nil,
-         condition: ActivityCondition? = nil, summaryLines: [RunSummaryLine] = []) {
+         condition: ActivityCondition? = nil, summaryLines: [RunSummaryLine] = [],
+         balance: BalanceSnapshot? = nil) {
         self.activity = activity
         self.detail = detail
         self.insight = insight
         self.manager = manager
         self.condition = condition
         self.summaryLines = summaryLines
+        self.balance = balance
         _enabledMetrics = State(initialValue: Self.computeDefaultMetrics(activity: activity, detail: detail))
     }
 
@@ -1032,6 +1036,7 @@ struct ShareCardScreen: View {
             locationText: "KR",
             weekday: weekday
         )
+        d.balance       = balance
         d.heartRateMax  = hrMax
         d.hrZoneLabel   = hrZoneLabel
         d.hrZoneIndex   = hrZoneIndex
