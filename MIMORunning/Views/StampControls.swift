@@ -99,8 +99,10 @@ struct StampControlsView: View {
             }
             // 크기 + 데이터 테두리
             HStack(spacing: 4) {
-                sizeChip(.small)
-                sizeChip(.medium)
+                if vm.storyTemplate.supportsSmallSizes {
+                    sizeChip(.small)
+                    sizeChip(.medium)
+                }
                 sizeChip(.large)
                 if vm.storyTemplate.supportsXLarge { sizeChip(.xlarge) }
                 textOutlineChip

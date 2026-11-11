@@ -860,8 +860,9 @@ private struct StampBalanceView: View {
             HStack(alignment: .bottom, spacing: Self.gap * scale) {
                 BalanceScaleView(snapshot: snapshot, boardW: Self.boardW * scale, style: style,
                                  showCaptions: false, scale: scale)
-                BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stampSmall.scaled(scale),
-                                 style: style, scale: scale)
+                // 작은 거미줄은 라벨 없이 도형·점만 — 라벨까지 넣으면 가로가 354pt라 글자가 2~3pt로 줄었다(리뷰 2026-11-11)
+                BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stampMini.scaled(scale),
+                                 style: style, scale: scale, showLabels: false)
             }
         } else {
             // 페이스 줄은 거미줄 틀 맨 아래 빈 자리(아래 두 축 라벨 밑, 틀이 위아래 대칭이라 남는 ≈15pt)에 얹는다 —

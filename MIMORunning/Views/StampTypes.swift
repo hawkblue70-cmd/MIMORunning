@@ -197,13 +197,17 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.60, xlarge: 0.74)   // 심박 열이 붙어 폭 164 → 238. 특대는 좌우 여백에 걸려 0.76 → 0.74
         case .routeSide:    return (small: 0.38, medium: 0.53, large: 0.69, xlarge: 0.87)
         case .balanceRadar: return (small: 0.44, medium: 0.61, large: 0.80, xlarge: 0.91)   // 거미줄 190×172(페이스 줄은 틀 안). 특대는 높이 상한(158pt)에 걸려 1.00 → 0.91
-        case .balanceScaleRadar: return (small: 0.24, medium: 0.33, large: 0.43, xlarge: 0.50)   // 저울+거미줄 가로 354×140. 특대는 좌우 여백(≈177pt)에 걸려 0.54 → 0.50
+        case .balanceScaleRadar: return (small: 0.30, medium: 0.41, large: 0.54, xlarge: 0.62)   // 저울+라벨 없는 거미줄 가로 282×113(기울기 최대면 높이 133). 소·중 없음(supportsSmallSizes) — 글자가 너무 작다. 특대는 좌우 여백(≈177pt)에 걸려 0.67 → 0.62
         }
     }
 
     /// 특대 크기를 고를 수 있는가. 요약 그리드+페이스는 격자 아래 차트가 붙어 특대면 높이 상한을 넘으므로
     /// 특대 칩을 숨기고, 특대가 저장돼 있어도 대(large)로 그린다.
     var supportsXLarge: Bool { !fitsCardHeight }
+
+    /// 소·중 크기를 고를 수 있는가. 밸런스 저울은 가로로 넓어(저울 + 거미줄) 소·중이면 블록 이름이 2~3pt로 읽히지 않아
+    /// 소·중 칩을 숨기고, 소·중이 저장돼 있어도 대(large)로 그린다.
+    var supportsSmallSizes: Bool { self != .balanceScaleRadar }
 
     /// 세로로 긴 스탬프(격자 + 구간 목록·심박 곡선) — 카드 높이에 다 안 들어가면 들어갈 때까지 배율을 줄인다.
     /// 넘친 채 그리면 로고·문구와 겹치거나 잘린다. 들어가면 배율표 그대로.
@@ -220,8 +224,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
         switch level {
-        case .small:  return t.small
-        case .medium: return t.medium
+        case .small:  return supportsSmallSizes ? t.small : t.large
+        case .medium: return supportsSmallSizes ? t.medium : t.large
         case .large:  return t.large
         case .xlarge: return supportsXLarge ? t.xlarge : t.large
         }

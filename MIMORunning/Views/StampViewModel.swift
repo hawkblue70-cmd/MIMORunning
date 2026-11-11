@@ -48,9 +48,10 @@ final class StampViewModel {
         }
     }
 
-    /// 특대가 없는 스탬프로 바꾸면 크기 칩도 대(large)로 — 숨겨진 칩이 선택된 채로 남지 않게.
+    /// 특대(또는 소·중)가 없는 스탬프로 바꾸면 크기 칩도 대(large)로 — 숨겨진 칩이 선택된 채로 남지 않게.
     private func clampSizeForTemplate(_ t: StampTemplate) {
         if !t.supportsXLarge, sizeLevel == .xlarge { sizeLevel = .large }
+        if !t.supportsSmallSizes, sizeLevel == .small || sizeLevel == .medium { sizeLevel = .large }
     }
 
     /// videoTemplate — 비디오 모드 별칭 (selectedClipIndex 기반, 동일 동작)
