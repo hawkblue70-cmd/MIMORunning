@@ -109,6 +109,14 @@ struct BalanceRadarSize {
     // 바깥 크기는 그대로, 도형과 라벨 사이 여백(28 → 22pt)을 줄여 도형만 키움(2026-11-11 실기기: 96 → 108)
     static let large = BalanceRadarSize(w: 340, h: 292, r: 108, labelR: 130)
     static let medium = BalanceRadarSize(w: 290, h: 244, r: 88, labelR: 108)
+    // 스탬프 자연 크기(scale 1) — 축 글자(9·12pt)가 틀 안에 들어가는 가장 작은 틀. 실제 크기는 scaled(스탬프 배율)
+    static let stamp = BalanceRadarSize(w: 190, h: 172, r: 52, labelR: 72)        // 밸런스 거미줄 스탬프
+    static let stampSmall = BalanceRadarSize(w: 156, h: 140, r: 36, labelR: 56)   // 밸런스 저울 스탬프 오른쪽
+
+    /// 배율만큼 키우거나 줄인 크기 — 스탬프 배율(sizeScales)
+    func scaled(_ s: CGFloat) -> BalanceRadarSize {
+        BalanceRadarSize(w: w * s, h: h * s, r: r * s, labelR: labelR * s)
+    }
 }
 
 /// 거미줄 + 축 라벨·값 (+ 참고 칩). 범례·기준 페이스 줄은 쓰는 쪽에서 붙인다.
@@ -118,6 +126,8 @@ struct BalanceRadarView: View {
     let style: BalanceDrawStyle
     /// 0 → 1: 오늘 도형 펼침
     var progress: Double = 1
+    /// 점·칩 크기 배율 — 스탬프 배율(탭 1). 틀(size)·글자(style.fontScale)는 쓰는 쪽이 이미 맞춰 넘긴다
+    var scale: CGFloat = 1
 
     var body: some View {
         let m = size
@@ -162,7 +172,7 @@ struct BalanceRadarView: View {
         Text(AppLanguage.shared.s("참고", "Ref", ja: "参考"))
             .font(style.font(8, .semibold))
             .balanceText(style.chipText ?? style.secondary, style)
-            .padding(.horizontal, 6).padding(.vertical, 2)
+            .padding(.horizontal, 6 * scale).padding(.vertical, 2 * scale)
             .background(style.chipFill ?? style.band)
             .clipShape(Capsule())
     }
@@ -173,9 +183,10 @@ struct BalanceRadarView: View {
             let adverse = BalanceSnapshot.isAdverse(a.kind, a.status)
             let favorable = BalanceSnapshot.isFavorable(a.kind, a.status)
             let p = BalanceRadarGeometry.point(a.kind, r: m.r * CGFloat(radii[i] * progress), center: m.center)
+            let d: CGFloat = (adverse || favorable ? 7 : 4) * scale
             Circle()
                 .fill(adverse ? style.bad : (favorable ? style.good : style.today))
-                .frame(width: adverse || favorable ? 7 : 4, height: adverse || favorable ? 7 : 4)
+                .frame(width: d, height: d)
                 .position(p)
         }
     }
@@ -212,6 +223,8 @@ struct BalanceScaleView: View {
     /// 0 → 1: 판 기울기
     var progress: Double = 1
     var showCaptions: Bool = true // "몸 상태·부담 / 움직임"
+    /// 판 폭 외 고정 치수(블록 높이·받침·줄 높이 등) 배율 — 스탬프 배율(탭 1). boardW·글자(style.fontScale)는 쓰는 쪽이 맞춰 넘긴다
+    var scale: CGFloat = 1
 
     static let blockSlotMax: CGFloat = 26
     static let blockMaxH: CGFloat = 60
@@ -231,17 +244,28 @@ struct BalanceScaleView: View {
     }
 
     /// 캡션을 뺀 저울 높이(판 끝 이동 자리 + 받침) — 쓰는 쪽이 줄 높이를 잡을 때
-    static func drawingHeight(snapshot: BalanceSnapshot, boardW: CGFloat) -> CGFloat {
-        (pivotY + fulcrumH + 3) + 2 * tiltRoom(tilt: snapshot.tilt, boardW: boardW)
+    static func drawingHeight(snapshot: BalanceSnapshot, boardW: CGFloat, scale: CGFloat = 1) -> CGFloat {
+        (pivotY + fulcrumH + 3) * scale + 2 * tiltRoom(tilt: snapshot.tilt, boardW: boardW)
     }
 
     private var tiltRoom: CGFloat { Self.tiltRoom(tilt: snapshot.tilt, boardW: boardW) }
 
+    // 배율을 곱한 고정 치수(scale 1 = 위 static 값 그대로)
+    private var blockMaxH: CGFloat { Self.blockMaxH * scale }
+    private var boardH: CGFloat { Self.boardH * scale }
+    private var labelRowH: CGFloat { Self.labelRowH * scale }
+    private var groupSpacing: CGFloat { Self.groupSpacing * scale }
+    private var pivotY: CGFloat { Self.pivotY * scale }
+    private var groupH: CGFloat { Self.groupH * scale }
+    private var fulcrumW: CGFloat { Self.fulcrumW * scale }
+    private var fulcrumH: CGFloat { Self.fulcrumH * scale }
+
     /// 한 접시의 블록 칸 폭 — 반폭을 블록 수(최소 5칸)로 나눠 최대 blockSlotMax
     private var slotW: CGFloat {
-        let halfW = (boardW - Self.fulcrumW - 8) / 2
+        let halfW = (boardW - fulcrumW - 8 * scale) / 2
         let n = max(5, snapshot.inputBlocks.count, snapshot.outputBlocks.count)
-        return min(Self.blockSlotMax, (halfW / CGFloat(n)).rounded(.down))
+        // 정수 내림은 scale 1 기준 pt에서 — 스탬프 배율에서도 칸 비율이 탭과 같게
+        return min(Self.blockSlotMax, (halfW / scale / CGFloat(n)).rounded(.down)) * scale
     }
 
     /// 판 기울기(도) — tilt × 12. + = 왼쪽이 내려감(반시계) — 빨강 블록이 많은 쪽
@@ -249,15 +273,15 @@ struct BalanceScaleView: View {
 
     var body: some View {
         let L = AppLanguage.shared
-        return VStack(spacing: 4) {
+        return VStack(spacing: 4 * scale) {
             ZStack(alignment: .top) {
                 fulcrum
-                    .offset(y: Self.pivotY)
+                    .offset(y: pivotY)
                 beamGroup
                     .rotationEffect(.degrees(tiltDegrees),
-                                    anchor: UnitPoint(x: 0.5, y: Self.pivotY / Self.groupH))
+                                    anchor: UnitPoint(x: 0.5, y: pivotY / groupH))
             }
-            .frame(width: boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
+            .frame(width: boardW, height: pivotY + fulcrumH + 3 * scale, alignment: .top)
             // rotationEffect는 배치에 반영되지 않는다 — 판 끝이 오르내리는 만큼(반폭 × sin 각도) 위아래 자리를 비워
             // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "몸 상태·부담 / 움직임"에 겹치지 않게(내보내기도 잘리지 않음)
             .padding(.vertical, tiltRoom)
@@ -272,7 +296,7 @@ struct BalanceScaleView: View {
                 .font(style.font(11, .semibold))
                 .tracking(0.3)
                 .balanceText(style.caption ?? style.secondary, style)
-                .frame(width: boardW - 24)
+                .frame(width: boardW - 24 * scale)
             }
         }
         .fixedSize()
@@ -283,33 +307,33 @@ struct BalanceScaleView: View {
         VStack(spacing: 0) {
             FulcrumShape()
                 .fill(style.fulcrum ?? style.board)
-                .frame(width: Self.fulcrumW, height: Self.fulcrumH)
-            Capsule().fill(style.fulcrumBase ?? style.board).frame(width: 56, height: 3)
+                .frame(width: fulcrumW, height: fulcrumH)
+            Capsule().fill(style.fulcrumBase ?? style.board).frame(width: 56 * scale, height: 3 * scale)
         }
     }
 
     /// 판 + 양쪽 블록 + 블록 이름 — 한 덩어리로 기운다
     private var beamGroup: some View {
-        let halfW = (boardW - Self.fulcrumW - 8) / 2
+        let halfW = (boardW - fulcrumW - 8 * scale) / 2
         let slot = slotW
-        return VStack(spacing: Self.groupSpacing) {
+        return VStack(spacing: groupSpacing) {
             HStack(spacing: 0) {
                 blockRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
                 Spacer(minLength: 0)
                 blockRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
             }
-            .frame(height: Self.blockMaxH, alignment: .bottom)
+            .frame(height: blockMaxH, alignment: .bottom)
             Capsule()
                 .fill(style.board)
-                .frame(height: Self.boardH)
+                .frame(height: boardH)
             HStack(spacing: 0) {
                 labelRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
                 Spacer(minLength: 0)
                 labelRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
             }
-            .frame(height: Self.labelRowH, alignment: .top)
+            .frame(height: labelRowH, alignment: .top)
         }
-        .frame(width: boardW, height: Self.groupH)
+        .frame(width: boardW, height: groupH)
     }
 
     private func blockRow(_ blocks: [BalanceBlock], slotW: CGFloat) -> some View {
@@ -321,9 +345,9 @@ struct BalanceScaleView: View {
                     .balanceText(style.emptyMark ?? style.secondary, style)
             }
             ForEach(blocks, id: \.kind) { b in
-                RoundedRectangle(cornerRadius: 3)
+                RoundedRectangle(cornerRadius: 3 * scale)
                     .fill(style.toneColor(b.tone))
-                    .frame(width: (slotW * 0.6).rounded(), height: max(4, Self.blockMaxH * b.height))
+                    .frame(width: (slotW / scale * 0.6).rounded() * scale, height: max(4 * scale, blockMaxH * b.height))
                     .frame(width: slotW)
             }
         }

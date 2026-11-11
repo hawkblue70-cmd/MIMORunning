@@ -15,6 +15,8 @@ enum StampRequirement {
     case runTotals
     /// 심박 존별 시간 (요약 그리드+심박 영역) — 워치 기록
     case hrZoneRows
+    /// 밸런스 스냅샷 거미줄 모드(폼 있는 러닝, 인터벌 아님) — 밸런스 스탬프 2종
+    case balance
 }
 
 // MARK: - Position / Occupancy
@@ -61,6 +63,11 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case cadenceEq
     // 지명 1종
     case placeHeadline
+    // 밸런스 2종 — 밸런스 탭과 같은 거미줄·저울 그림(BalanceDrawing.swift)
+    /// 폼 거미줄 + 같은 페이스 줄
+    case balanceRadar
+    /// 저울 + 작은 거미줄(가로로 나란히)
+    case balanceScaleRadar
 
     var id: String { rawValue }
 
@@ -111,6 +118,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .placeHeadline: return L.s("지명 헤드라인",   "Place Headline", ja: "地名ヘッドライン")
         case .routeHero:     return L.s("루트 히어로",     "Route Hero", ja: "ルートヒーロー")
         case .routeSide:     return L.s("루트 사이드",     "Route Side", ja: "ルートサイド")
+        case .balanceRadar:  return L.s("밸런스 거미줄",   "Balance Radar", ja: "バランスレーダー")
+        case .balanceScaleRadar: return L.s("밸런스 저울", "Balance Scale", ja: "バランス天秤")
         }
     }
 
@@ -187,6 +196,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .placeHeadline: return (small: 0.64, medium: 0.88, large: 1.16, xlarge: 1.45)
         case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.60, xlarge: 0.74)   // 심박 열이 붙어 폭 164 → 238. 특대는 좌우 여백에 걸려 0.76 → 0.74
         case .routeSide:    return (small: 0.38, medium: 0.53, large: 0.69, xlarge: 0.87)
+        case .balanceRadar: return (small: 0.44, medium: 0.61, large: 0.80, xlarge: 0.91)   // 거미줄 190×172(페이스 줄은 틀 안). 특대는 높이 상한(158pt)에 걸려 1.00 → 0.91
+        case .balanceScaleRadar: return (small: 0.24, medium: 0.33, large: 0.43, xlarge: 0.50)   // 저울+거미줄 가로 354×140. 특대는 좌우 여백(≈177pt)에 걸려 0.54 → 0.50
         }
     }
 
@@ -241,6 +252,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .summaryGridHRZones:        return [.hrSamples, .hrZoneRows]
         case .summaryGridPaceZones:      return [.splits, .hrZoneRows]
         case .runTotals, .monthRecap:    return [.runTotals]
+        case .balanceRadar, .balanceScaleRadar: return [.balance]
         default:                         return [.none]
         }
     }

@@ -100,6 +100,8 @@ struct StampData {
     var hrZoneRows: [StampHRZoneRow]? = nil
     /// 기간별 누적 러닝 거리 — 누적 거리 스탬프. 없으면 그 스탬프를 고를 수 없다
     var runTotals: StampRunTotals? = nil
+    /// 밸런스 탭과 같은 판정(BalanceTabCard.snapshot) — 밸런스 스탬프 2종. mode == .full일 때만 고를 수 있다
+    var balance: BalanceSnapshot? = nil
 
     static let sample = StampData(
         distance: "10.13",
@@ -803,6 +805,82 @@ struct StampCard: View {
             StampRouteSideView(data: data, fill: fill, outline: outline, scale: scale,
                                showHeartRate: showHeartRate, showCalories: showCalories,
                                showTextOutline: showTextOutline)
+        case .balanceRadar, .balanceScaleRadar:
+            // 거미줄 없는 스냅샷(폼 없음·인터벌)은 목록에서 숨기지만, 저장된 설정으로 들어와도 빈 그림 대신 아무것도 그리지 않는다
+            if let b = data.balance, b.mode == .full {
+                StampBalanceView(snapshot: b, withScale: template == .balanceScaleRadar,
+                                 fill: fill, outline: outline, scale: scale,
+                                 showTextOutline: showTextOutline)
+            }
+        }
+    }
+}
+
+// MARK: - Balance (거미줄 · 저울 + 거미줄)
+
+/// 밸런스 스탬프 2종 — 밸런스 탭과 같은 공용 뷰(BalanceRadarView·BalanceScaleView)를 스탬프 색·배율로 그린다(§5.8).
+/// ① 거미줄 + "같은 페이스" 줄 ② 저울(캡션 없음) + 작은 거미줄을 가로로 — 스탬프 높이 상한(158pt) 때문에 쌓지 않는다.
+/// 몸 상태 막대·한 줄 해석·폼 문장은 넣지 않는다.
+private struct StampBalanceView: View {
+    let snapshot: BalanceSnapshot
+    /// true = 저울 + 작은 거미줄(밸런스 저울), false = 거미줄 + 페이스 줄(밸런스 거미줄)
+    let withScale: Bool
+    let fill: Color
+    let outline: Color
+    let scale: CGFloat
+    var showTextOutline: Bool = true
+
+    /// 저울 판 폭(scale 1) — 밸런스 탭의 가장 좁은 판(190)과 같게: 블록 이름 칸이 탭보다 좁아지지 않게
+    static let boardW: CGFloat = 190
+    /// 저울과 거미줄 사이(scale 1)
+    static let gap: CGFloat = 8
+
+    /// 스탬프 색 묶음 — 선·도형·글자는 fill, 면은 fill을 옅게. 빨강·초록·노랑은 어느 색 모드(잉크 포함)에서도 의미 색 그대로.
+    /// 글자 테두리는 다른 스탬프처럼 showTextOutline일 때 outline 색(공용 뷰가 stampOutline으로 그림)
+    private var style: BalanceDrawStyle {
+        BalanceDrawStyle(
+            primary: fill,
+            secondary: fill,
+            line: fill,
+            band: fill.opacity(0.15),       // 평소 범위 띠
+            usual: fill.opacity(0.6),       // 평소 점선
+            today: fill,
+            todayFill: fill.opacity(0.18),
+            good: Theme.positive,
+            bad: Color(hex: "FF5A5F"),
+            usualBlock: fill.opacity(0.45), // 범위 안 블록
+            normal: Color(hex: "F5C542"),
+            board: fill.opacity(0.7),       // 판·받침
+            textOutline: showTextOutline ? outline : nil,
+            fontScale: scale)
+    }
+
+    var body: some View {
+        if withScale {
+            HStack(alignment: .bottom, spacing: Self.gap * scale) {
+                BalanceScaleView(snapshot: snapshot, boardW: Self.boardW * scale, style: style,
+                                 showCaptions: false, scale: scale)
+                BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stampSmall.scaled(scale),
+                                 style: style, scale: scale)
+            }
+        } else {
+            // 페이스 줄은 거미줄 틀 맨 아래 빈 자리(아래 두 축 라벨 밑, 틀이 위아래 대칭이라 남는 ≈15pt)에 얹는다 —
+            // 아래로 붙이면 높이가 172 → 188이 되어 특대가 높이 상한(158pt)에 먼저 걸린다
+            BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stamp.scaled(scale),
+                             style: style, scale: scale)
+                .overlay(alignment: .bottom) {
+                    if let pace = snapshot.paceSecPerKm {
+                        let L = AppLanguage.shared
+                        let p = mrFormatPace(pace)
+                        // 밸런스 탭 범례의 기준 페이스 줄과 같은 문구
+                        Text(L.s("같은 페이스 \(p)/km", "same pace \(p)/km", ja: "同じペース \(p)/km"))
+                            .font(.system(size: 10 * scale, weight: .semibold))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize()
+                            .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
+                    }
+                }
         }
     }
 }
