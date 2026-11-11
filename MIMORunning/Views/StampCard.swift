@@ -568,9 +568,6 @@ struct StampCard: View {
                 if template.positionMode == .fixed {
                     stampContent(fill: fill, outline: outline, scale: scale, topClearance: topInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if sizeLevel == .xlarge, let natW = template.xlargeFillNaturalWidth {
-                    fullWidthStamp(fill: fill, outline: outline, naturalWidth: natW, topInset: topInset,
-                                   bottomInset: 12 + shoeReserve)
                 } else if template.fitsCardHeight {
                     fittedTallStamp(fill: fill, outline: outline, scale: scale, topInset: topInset,
                                     bottomInset: 12 + shoeReserve)
@@ -617,24 +614,6 @@ struct StampCard: View {
                     if !stampTextPosition.isBottom { Spacer(minLength: 0) }
                 }
             }
-        }
-    }
-
-    /// 특대에서 폭을 꽉 채우는 스탬프 — 좌우 여백(워드마크 선) 사이 폭 ÷ 자연 폭을 배율로. 9칸 위치 중 위·가운데·아래만 따른다.
-    private func fullWidthStamp(fill: Color, outline: Color, naturalWidth: CGFloat, topInset: CGFloat,
-                                bottomInset: CGFloat) -> some View {
-        let sideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
-        return GeometryReader { geo in
-            let s = max(0.1, (geo.size.width - sideInset * 2) / naturalWidth)
-            VStack(spacing: 0) {
-                if !position.isTop { Spacer(minLength: 0) }
-                stampContent(fill: fill, outline: outline, scale: s)
-                    .fixedSize()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !position.isBottom { Spacer(minLength: 0) }
-            }
-            .padding(EdgeInsets(top: position.isTop ? topInset : 12, leading: sideInset,
-                                bottom: bottomInset, trailing: sideInset))
         }
     }
 
@@ -826,35 +805,27 @@ struct StampCard: View {
             StampRouteSideView(data: data, fill: fill, outline: outline, scale: scale,
                                showHeartRate: showHeartRate, showCalories: showCalories,
                                showTextOutline: showTextOutline)
-        case .balanceRadar, .balanceScaleRadar:
+        case .balanceRadar:
             // 거미줄 없는 스냅샷(폼 없음·인터벌)은 목록에서 숨기지만, 저장된 설정으로 들어와도 빈 그림 대신 아무것도 그리지 않는다
             if let b = data.balance, b.hasRadar {
-                StampBalanceView(snapshot: b, withScale: template == .balanceScaleRadar,
-                                 fill: fill, outline: outline, scale: scale,
+                StampBalanceView(snapshot: b, fill: fill, outline: outline, scale: scale,
                                  showTextOutline: showTextOutline)
             }
         }
     }
 }
 
-// MARK: - Balance (거미줄 · 저울 + 거미줄)
+// MARK: - Balance (거미줄)
 
-/// 밸런스 스탬프 2종 — 밸런스 탭과 같은 공용 뷰(BalanceRadarView·BalanceScaleView)를 스탬프 색·배율로 그린다(§5.8).
-/// ① 거미줄 + "같은 페이스" 줄 ② 저울(캡션 없음) + 작은 거미줄을 가로로 — 스탬프 높이 상한(158pt) 때문에 쌓지 않는다.
-/// 몸 상태 막대·한 줄 해석·폼 문장은 넣지 않는다.
+/// 밸런스 거미줄 스탬프 — 밸런스 탭과 같은 공용 뷰(BalanceRadarView)를 스탬프 색·배율로 그린다(§5.8).
+/// 거미줄 + "같은 페이스" 줄. 몸 상태 막대·한 줄 해석·폼 문장은 넣지 않는다.
+/// (밸런스 저울 스탬프는 2026-11-11 사용자 요청으로 삭제 — 저장값은 resolvingLegacy가 거미줄로)
 private struct StampBalanceView: View {
     let snapshot: BalanceSnapshot
-    /// true = 저울 + 작은 거미줄(밸런스 저울), false = 거미줄 + 페이스 줄(밸런스 거미줄)
-    let withScale: Bool
     let fill: Color
     let outline: Color
     let scale: CGFloat
     var showTextOutline: Bool = true
-
-    /// 저울 판 폭(scale 1) — 밸런스 탭의 가장 좁은 판(190)과 같게: 블록 이름 칸이 탭보다 좁아지지 않게
-    static let boardW: CGFloat = 190
-    /// 저울과 거미줄 사이(scale 1)
-    static let gap: CGFloat = 8
 
     /// 스탬프 색 묶음 — 선·도형·글자는 fill, 면은 fill을 옅게. 빨강·초록·노랑은 어느 색 모드(잉크 포함)에서도 의미 색 그대로.
     /// 글자 테두리는 다른 스탬프처럼 showTextOutline일 때 outline 색(공용 뷰가 stampOutline으로 그림)
@@ -877,15 +848,6 @@ private struct StampBalanceView: View {
     }
 
     var body: some View {
-        if withScale {
-            HStack(alignment: .bottom, spacing: Self.gap * scale) {
-                BalanceScaleView(snapshot: snapshot, boardW: Self.boardW * scale, style: style,
-                                 showCaptions: false, scale: scale)
-                // 작은 거미줄은 라벨 없이 도형·점만 — 라벨까지 넣으면 가로가 354pt라 글자가 2~3pt로 줄었다(리뷰 2026-11-11)
-                BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stampMini.scaled(scale),
-                                 style: style, scale: scale, showLabels: false)
-            }
-        } else {
             // 페이스 줄은 거미줄 틀 맨 아래 빈 자리(아래 두 축 라벨 밑, 틀이 위아래 대칭이라 남는 ≈15pt)에 얹는다 —
             // 아래로 붙이면 높이가 172 → 188이 되어 특대가 높이 상한(158pt)에 먼저 걸린다
             BalanceRadarView(snapshot: snapshot, size: BalanceRadarSize.stamp.scaled(scale),
@@ -901,7 +863,6 @@ private struct StampBalanceView: View {
                             .stampTextOutline(show: showTextOutline, fill: fill, outline: outline)
                     }
                 }
-        }
     }
 }
 

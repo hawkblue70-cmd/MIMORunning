@@ -99,10 +99,8 @@ struct StampControlsView: View {
             }
             // 크기 + 데이터 테두리
             HStack(spacing: 4) {
-                if vm.storyTemplate.supportsSmallSizes {
-                    sizeChip(.small)
-                    sizeChip(.medium)
-                }
+                sizeChip(.small)
+                sizeChip(.medium)
                 sizeChip(.large)
                 if vm.storyTemplate.supportsXLarge { sizeChip(.xlarge) }
                 textOutlineChip
@@ -407,9 +405,7 @@ struct StampControlsView: View {
     }
 
     private func sizeChip(_ level: TextSizeLevel) -> some View {
-        // 작은 크기를 못 쓰는 템플릿은 저장된 소·중도 실제로는 큰 크기로 그려진다 — 칩도 그에 맞춘다
-        let shown: TextSizeLevel = (!vm.storyTemplate.supportsSmallSizes && (vm.sizeLevel == .small || vm.sizeLevel == .medium)) ? .large : vm.sizeLevel
-        let isSelected = shown == level
+        let isSelected = vm.sizeLevel == level
         return Button {
             withAnimation(.easeInOut(duration: 0.15)) { vm.sizeLevel = level }
         } label: {

@@ -190,9 +190,8 @@
 #### 스탬프 템플릿 9종
 `hud` / `receipt` / `scoreboard` / `passportStamp` / `circleBadge` / `labeledRows` / `verticalLabel` / `distanceHero` / `mixedAlign`
 
-#### 밸런스 스탬프 2종
-- `balanceRadar`: 5축 거미줄 + 같은 페이스 줄. 워치 폼 데이터가 있는 러닝만 목록에 보이며 밸런스 탭과 같은 판정(`BalanceTabCard.snapshot`).
-- `balanceScaleRadar`: 저울 + 라벨 없는 작은 거미줄. 대·특대 크기만, 같은 조건·같은 판정.
+#### 밸런스 스탬프
+- `balanceRadar`(밸런스 거미줄, 고르는 순서는 `distanceHero` 앞): 5축 거미줄 + 같은 페이스 줄. 워치 폼 데이터가 있는 러닝만 목록에 보이며 밸런스 탭과 같은 판정(`BalanceTabCard.snapshot`). (밸런스 저울 스탬프는 2026-11-11 삭제, 저장값은 거미줄로)
 
 #### 스탬프 색상 모드
 `auto` / `brand(바이올렛)` / `ink(흑백)` / `lime` / `red`

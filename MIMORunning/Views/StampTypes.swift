@@ -41,6 +41,8 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case summaryGridZones
     case summaryGridHRZones
     case summaryGridPaceZones
+    /// 밸런스 거미줄 — 밸런스 탭과 같은 거미줄 그림(BalanceDrawing.swift) + 같은 페이스 줄. 거리 몰아주기 앞(2026-11-11 사용자)
+    case balanceRadar
     case distanceHero
     case labeledRows
     case inlineTriple
@@ -63,11 +65,6 @@ enum StampTemplate: String, CaseIterable, Identifiable {
     case cadenceEq
     // 지명 1종
     case placeHeadline
-    // 밸런스 2종 — 밸런스 탭과 같은 거미줄·저울 그림(BalanceDrawing.swift)
-    /// 폼 거미줄 + 같은 페이스 줄
-    case balanceRadar
-    /// 저울 + 작은 거미줄(가로로 나란히)
-    case balanceScaleRadar
 
     var id: String { rawValue }
 
@@ -78,6 +75,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         switch raw {
         case "verticalLabel", "mixedAlign": return .labeledRows
         case "vitals":                      return .hrWave
+        case "balanceScaleRadar":           return .balanceRadar   // 밸런스 저울 스탬프 삭제(2026-11-11 사용자)
         case "pinInline":                   return .placeHeadline
         case "routeRows", "routeVertical":  return .routeSide
         case "receipt":                     return .scoreboard   // 영수증 → 전광판 (같은 행 점유 타입)
@@ -119,7 +117,6 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .routeHero:     return L.s("루트 히어로",     "Route Hero", ja: "ルートヒーロー")
         case .routeSide:     return L.s("루트 사이드",     "Route Side", ja: "ルートサイド")
         case .balanceRadar:  return L.s("밸런스 거미줄",   "Balance Radar", ja: "バランスレーダー")
-        case .balanceScaleRadar: return L.s("밸런스 저울", "Balance Scale", ja: "バランス天秤")
         }
     }
 
@@ -197,17 +194,12 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .routeHero:    return (small: 0.34, medium: 0.46, large: 0.60, xlarge: 0.74)   // 심박 열이 붙어 폭 164 → 238. 특대는 좌우 여백에 걸려 0.76 → 0.74
         case .routeSide:    return (small: 0.38, medium: 0.53, large: 0.69, xlarge: 0.87)
         case .balanceRadar: return (small: 0.44, medium: 0.61, large: 0.80, xlarge: 0.91)   // 거미줄 190×172(페이스 줄은 틀 안). 특대는 높이 상한(158pt)에 걸려 1.00 → 0.91
-        case .balanceScaleRadar: return (small: 0.30, medium: 0.41, large: 0.54, xlarge: 0.62)   // 저울+라벨 없는 거미줄 가로 282×113(기울기 최대면 높이 133). 소·중 없음(supportsSmallSizes) — 글자가 너무 작다. 특대는 좌우 여백(≈177pt)에 걸려 0.67 → 0.62
         }
     }
 
     /// 특대 크기를 고를 수 있는가. 요약 그리드+페이스는 격자 아래 차트가 붙어 특대면 높이 상한을 넘으므로
     /// 특대 칩을 숨기고, 특대가 저장돼 있어도 대(large)로 그린다.
     var supportsXLarge: Bool { !fitsCardHeight }
-
-    /// 소·중 크기를 고를 수 있는가. 밸런스 저울은 가로로 넓어(저울 + 거미줄) 소·중이면 블록 이름이 2~3pt로 읽히지 않아
-    /// 소·중 칩을 숨기고, 소·중이 저장돼 있어도 대(large)로 그린다.
-    var supportsSmallSizes: Bool { self != .balanceScaleRadar }
 
     /// 세로로 긴 스탬프(격자 + 구간 목록·심박 곡선) — 카드 높이에 다 안 들어가면 들어갈 때까지 배율을 줄인다.
     /// 넘친 채 그리면 로고·문구와 겹치거나 잘린다. 들어가면 배율표 그대로.
@@ -221,20 +213,11 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         }
     }
 
-    /// 특대에서 카드 폭(좌우 여백 안)을 꽉 채우는 스탬프의 자연 폭(scale 1, pt) — 배율표 대신 카드 폭으로 배율을 정한다.
-    /// 밸런스 저울: 사진 카드(약 307pt)에서 표의 0.62가 폭의 57%밖에 안 됐다(2026-11-11 실기기 "특대는 폭에 꽉차게").
-    var xlargeFillNaturalWidth: CGFloat? {
-        switch self {
-        case .balanceScaleRadar: return 282
-        default:                 return nil
-        }
-    }
-
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
         switch level {
-        case .small:  return supportsSmallSizes ? t.small : t.large
-        case .medium: return supportsSmallSizes ? t.medium : t.large
+        case .small:  return t.small
+        case .medium: return t.medium
         case .large:  return t.large
         case .xlarge: return supportsXLarge ? t.xlarge : t.large
         }
@@ -265,7 +248,7 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         case .summaryGridHRZones:        return [.hrSamples, .hrZoneRows]
         case .summaryGridPaceZones:      return [.splits, .hrZoneRows]
         case .runTotals, .monthRecap:    return [.runTotals]
-        case .balanceRadar, .balanceScaleRadar: return [.balance]
+        case .balanceRadar:              return [.balance]
         default:                         return [.none]
         }
     }

@@ -118,8 +118,6 @@ struct BalanceRadarSize {
     static let medium = BalanceRadarSize(w: 290, h: 244, r: 88, labelR: 108)
     // 스탬프 자연 크기(scale 1) — 축 글자(9·12pt)가 틀 안에 들어가는 가장 작은 틀. 실제 크기는 scaled(스탬프 배율)
     static let stamp = BalanceRadarSize(w: 190, h: 172, r: 52, labelR: 72)        // 밸런스 거미줄 스탬프
-    // 밸런스 저울 스탬프 오른쪽 — 라벨 없이(showLabels false) 도형·점만. 틀 = 도형 + 점(7pt) 반폭 여유
-    static let stampMini = BalanceRadarSize(w: 84, h: 84, r: 36, labelR: 36)
 
     /// 배율만큼 키우거나 줄인 크기 — 스탬프 배율(sizeScales)
     func scaled(_ s: CGFloat) -> BalanceRadarSize {
@@ -136,8 +134,6 @@ struct BalanceRadarView: View {
     var progress: Double = 1
     /// 점·칩 크기 배율 — 스탬프 배율(탭 1). 틀(size)·글자(style.fontScale)는 쓰는 쪽이 이미 맞춰 넘긴다
     var scale: CGFloat = 1
-    /// false = 축 이름·값·참고 칩 없이 도형(띠·평소 점선·오늘 도형)과 빨강·초록 점만 — 밸런스 저울 스탬프의 작은 거미줄(탭 true)
-    var showLabels: Bool = true
 
     var body: some View {
         let m = size
@@ -169,11 +165,11 @@ struct BalanceRadarView: View {
             RadarPolygon(kinds: kinds, radii: todayR, maxR: m.r, progress: progress)
                 .stroke(style.today, lineWidth: 1.5)
             vertexDots(axes: axes, radii: todayR, m: m)
-            if showLabels { axisLabels(axes: axes, m: m) }
+            axisLabels(axes: axes, m: m)
         }
         .frame(width: m.w, height: m.h)
         .overlay(alignment: .topLeading) {
-            if snapshot.isReference && showLabels { referenceChip }
+            if snapshot.isReference { referenceChip }
         }
     }
 
