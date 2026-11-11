@@ -117,23 +117,16 @@ struct BalanceTabCard: View {
         switch snapshot.mode {
         case .full:
             if let recordLine { recordHeader(recordLine) }
-            scale
-            if radarAxes.count >= 3 || !snapshot.bodies.isEmpty {
+            // 위: 저울 + 몸 상태 세로 막대 한 줄, 아래: 거미줄 크게(2026-11-11 실기기 요청)
+            scaleAndBodies
+            if radarAxes.count >= 3 {
                 divider
-                // 거미줄을 가운데 크게, 몸 상태 막대는 아래 두 줄(2026-11-11 실기기: 옆에 두면 거미줄이 작고 막대가 좁았다)
-                if radarAxes.count >= 3 {
-                    radar.frame(maxWidth: .infinity)
-                    radarLegend
-                }
-                if !snapshot.bodies.isEmpty { bodyBars }
+                radar.frame(maxWidth: .infinity)
+                radarLegend
             }
         case .scaleOnly:
             if let recordLine { recordHeader(recordLine) }
-            scale
-            if !snapshot.bodies.isEmpty {
-                divider
-                bodyBars
-            }
+            scaleAndBodies
         case .bodyOnly:
             if let recordLine { recordHeader(recordLine) }
             bodyBars
@@ -147,6 +140,26 @@ struct BalanceTabCard: View {
             .monospacedDigit()
             .foregroundStyle(ink.primary)
             .frame(maxWidth: .infinity)
+    }
+
+    /// 저울 옆에 몸 상태 세로 막대 — 폭이 모자라면(작은 폰) 막대를 저울 아래 한 줄로
+    @ViewBuilder
+    private var scaleAndBodies: some View {
+        if snapshot.bodies.isEmpty {
+            scale
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    scale(boardW: Self.boardNarrow).fixedSize()
+                    bodyBars.frame(minWidth: Self.bodyColumnsMinW)
+                }
+                VStack(spacing: compact ? 8 : 12) {
+                    scale
+                    bodyBars
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     private var divider: some View {
@@ -224,11 +237,12 @@ struct BalanceTabCard: View {
 
     // MARK: - 저울
 
-    /// 판 폭 — 넓은 화면 340 · 보통 316 · 좁은 화면(SE 등) 288로 내려간다(`scale`의 ViewThatFits). 2026-11-11 실기기 요청으로 크게.
-    private static let boardWide: CGFloat = 340
-    private static let boardMid: CGFloat = 316      // 393pt 폭 폰(카드 안 약 329pt)
-    private static let boardNarrow: CGFloat = 288
-    private static let blockSlotMax: CGFloat = 30
+    /// 판 폭 — 막대 옆이면 236, 막대가 아래로 내려간 작은 화면은 300 · 270(`scale`의 ViewThatFits).
+    private static let boardWide: CGFloat = 300
+    private static let boardMid: CGFloat = 270
+    /// 몸 상태 막대 옆에 둘 때의 판 폭(2026-11-11 실기기: 저울 폭을 줄이고 옆에 세로 막대)
+    private static let boardNarrow: CGFloat = 236
+    private static let blockSlotMax: CGFloat = 26
     private static let blockMaxH: CGFloat = 60
     private static let boardH: CGFloat = 4
     private static let labelRowH: CGFloat = 18
@@ -360,10 +374,13 @@ struct BalanceTabCard: View {
     // MARK: - 폼 거미줄
 
     // 2026-11-11 실기기 요청으로 크게 — 전체 폭 가운데에 둔다(R 52 → 72)
-    private static let radarW: CGFloat = 280
-    private static let radarH: CGFloat = 230
-    private static let radarR: CGFloat = 72
-    private static let labelR: CGFloat = 96
+    /// 거미줄 크기 — 큰 화면 R 96, 그 외 R 76(`radar`의 ViewThatFits). 2026-11-11 실기기 요청으로 두 번 키움(52 → 72 → 96).
+    private struct RadarSize {
+        let w: CGFloat, h: CGFloat, r: CGFloat, labelR: CGFloat
+        var center: CGPoint { CGPoint(x: w / 2, y: h / 2) }
+        static let large = RadarSize(w: 340, h: 292, r: 96, labelR: 124)
+        static let medium = RadarSize(w: 290, h: 244, r: 76, labelR: 100)
+    }
 
     /// 그릴 축 — 스냅샷 순서(심박·케이던스·보폭·접지·수직 진폭) 중 있는 것만
     private var radarAxes: [BalanceAxis] { snapshot.axes }
@@ -374,39 +391,44 @@ struct BalanceTabCard: View {
         return CGPoint(x: center.x + r * CGFloat(cos(a)), y: center.y + r * CGFloat(sin(a)))
     }
 
-    private var radarCenter: CGPoint { CGPoint(x: Self.radarW / 2, y: Self.radarH / 2) }
-
     private var radar: some View {
+        ViewThatFits(in: .horizontal) {
+            radar(.large)
+            radar(.medium)
+        }
+    }
+
+    private func radar(_ m: RadarSize) -> some View {
         let axes = radarAxes
         let kinds = axes.map(\.kind)
         let todayR = axes.map { BalanceSnapshot.radius(value: $0.value, stat: $0.stat) }
         return ZStack {
             // 바탕 — 바깥 고리(1.0)와 축선
             RadarPolygon(kinds: kinds, radii: Array(repeating: 1.0, count: kinds.count),
-                         maxR: Self.radarR, progress: 1)
+                         maxR: m.r, progress: 1)
                 .stroke(ink.fg(0.10), lineWidth: 0.5)
-            RadarSpokes(kinds: kinds, maxR: Self.radarR)
+            RadarSpokes(kinds: kinds, maxR: m.r)
                 .stroke(ink.fg(0.10), lineWidth: 0.5)
             // 평소 범위 띠(0.25…0.75 = stat 하한…상한) — 회색. 참고(빌린 구간·판정 불가·장거리)는 옅은 띠 + 점선 테두리(폼 탭 참고 띠와 같은 표기)
-            RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: Self.radarR)
+            RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: m.r)
                 .fill(ink.fg(snapshot.isReference ? 0.05 : 0.10), style: FillStyle(eoFill: true))
             if snapshot.isReference {
-                RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: Self.radarR)
+                RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: m.r)
                     .stroke(ink.fg(0.32), style: StrokeStyle(lineWidth: 0.8, dash: [2.5, 2.5]))
             }
             // 평소(띠 가운데 = 중앙값) — 회색 도형
             RadarPolygon(kinds: kinds, radii: Array(repeating: 0.5, count: kinds.count),
-                         maxR: Self.radarR, progress: 1)
+                         maxR: m.r, progress: 1)
                 .stroke(ink.fg(0.40), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             // 오늘 — 보라 도형(펼쳐짐)
-            RadarPolygon(kinds: kinds, radii: todayR, maxR: Self.radarR, progress: progress)
+            RadarPolygon(kinds: kinds, radii: todayR, maxR: m.r, progress: progress)
                 .fill(ink.violet.opacity(0.22))
-            RadarPolygon(kinds: kinds, radii: todayR, maxR: Self.radarR, progress: progress)
+            RadarPolygon(kinds: kinds, radii: todayR, maxR: m.r, progress: progress)
                 .stroke(ink.violet, lineWidth: 1.5)
-            vertexDots(axes: axes, radii: todayR)
-            axisLabels(axes: axes)
+            vertexDots(axes: axes, radii: todayR, m: m)
+            axisLabels(axes: axes, m: m)
         }
-        .frame(width: Self.radarW, height: Self.radarH)
+        .frame(width: m.w, height: m.h)
         .overlay(alignment: .topLeading) {
             if snapshot.isReference { referenceChip }
         }
@@ -423,10 +445,10 @@ struct BalanceTabCard: View {
     }
 
     /// 꼭짓점 점 — 나쁜 방향으로 범위를 벗어난 축만 빨간 점(참고 모드는 상태 .unknown이라 없음)
-    private func vertexDots(axes: [BalanceAxis], radii: [Double]) -> some View {
+    private func vertexDots(axes: [BalanceAxis], radii: [Double], m: RadarSize) -> some View {
         ForEach(Array(axes.enumerated()), id: \.element.kind) { i, a in
             let adverse = BalanceSnapshot.isAdverse(a.kind, a.status)
-            let p = Self.point(a.kind, r: Self.radarR * CGFloat(radii[i] * progress), center: radarCenter)
+            let p = Self.point(a.kind, r: m.r * CGFloat(radii[i] * progress), center: m.center)
             Circle()
                 .fill(adverse ? badColor : ink.violet)
                 .frame(width: adverse ? 7 : 4, height: adverse ? 7 : 4)
@@ -434,9 +456,9 @@ struct BalanceTabCard: View {
         }
     }
 
-    private func axisLabels(axes: [BalanceAxis]) -> some View {
+    private func axisLabels(axes: [BalanceAxis], m: RadarSize) -> some View {
         ForEach(axes, id: \.kind) { a in
-            let p = Self.point(a.kind, r: Self.labelR, center: radarCenter)
+            let p = Self.point(a.kind, r: m.labelR, center: m.center)
             VStack(spacing: 0) {
                 // 축 이름은 회색 — 빨강은 평소 범위 밖 값에만(지표 의미색 빨강 "심박"이 나쁜 값처럼 읽혔다, 2026-11-11)
                 Text(axisLabel(a.kind))
@@ -487,45 +509,43 @@ struct BalanceTabCard: View {
 
     // MARK: - 몸 상태 막대
 
-    /// 몸 상태 — 두 칸 격자. 막대는 모두 같은 길이, 색으로만 좋음·보통·나쁨
-    /// (길이로 부담을 나타내니 초록 "6.8h"가 짧은 막대라 모자람처럼 읽혔다, 2026-11-11 실기기)
+    /// 몸 상태 — 세로 막대 4개. 막대 높이는 모두 같고 색으로만 좋음·보통·나쁨(길이로 부담을 나타내면 짧은 초록이 모자람처럼 읽혔다)
+    private static let bodyColumnsMinW: CGFloat = 116
+    private static let bodyBarH: CGFloat = 56
+
     private var bodyBars: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
-                  alignment: .leading, spacing: compact ? 8 : 12) {
+        HStack(alignment: .bottom, spacing: 6) {
             ForEach(snapshot.bodies, id: \.kind) { b in
-                bodyRow(b)
+                bodyColumn(b)
             }
         }
     }
 
-    private func bodyRow(_ b: BalanceBody) -> some View {
+    private func bodyColumn(_ b: BalanceBody) -> some View {
         let c = levelColor(b.level)
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(bodyLabel(b.kind))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(ink.fg(0.70))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
-                Text(b.display)
-                    .font(.system(size: 12, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(ink.metricText(c))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+        return VStack(spacing: 4) {
+            Text(b.display)
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(ink.metricText(c))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Capsule()
                 .fill(ink.fg(0.08))
-                .frame(height: 5)
-                .overlay(alignment: .leading) {
-                    GeometryReader { g in
-                        Capsule()
-                            .fill(c)
-                            .frame(width: g.size.width * CGFloat(progress))
-                    }
+                .frame(width: 10, height: Self.bodyBarH)
+                .overlay(alignment: .bottom) {
+                    Capsule().fill(c)
+                        .frame(width: 10, height: Self.bodyBarH * CGFloat(progress))
                 }
+            Text(bodyLabel(b.kind))
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(ink.fg(0.60))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .frame(height: 20, alignment: .top)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
