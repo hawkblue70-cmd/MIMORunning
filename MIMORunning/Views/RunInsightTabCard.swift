@@ -19,6 +19,57 @@ enum InsightTabKind: CaseIterable, Hashable {
     }
 }
 
+// MARK: - 총평 Context 공용
+
+/// 총평 `RunSummaryBuilder.Context`를 만드는 재료 — 리듬 카드(총평)·인사이트 탭 카드(밸런스)·내보내기 시트가
+/// 같은 이름의 프로퍼티를 가지므로 Context 조립을 한곳에 둔다(탭끼리 입력이 어긋나지 않게).
+private protocol InsightSummaryContextSource {
+    var activity: Activity { get }
+    var detail: ActivityDetail? { get }
+    var history: [Activity] { get }
+    var hrZones: [HRZoneData] { get }
+    var hrSamples: [(offset: TimeInterval, bpm: Int)] { get }
+    var formBaseline: RunningFormBaseline? { get }
+    var formShifts: [MRFormShift] { get }
+    var workoutTypeFn: ((UUID) -> WorkoutType?)? { get }
+    var effortIndex: EffortIndex? { get }
+    var heatHRModel: MRHeatHRModel? { get }
+    var age: Int? { get }
+    var isMale: Bool? { get }
+    var easyPaceLookup: MRHRPaceLookup? { get }
+    var planPhase: String? { get }
+    var raceDetailFn: ((UUID) -> ActivityDetail?)? { get }
+    var hrZonesFn: ((UUID) -> [HRZoneData]?)? { get }
+    var hrvNights: [(date: Date, value: Double)] { get }
+    var hrMax: Double? { get }
+    var planWeekKm: Double? { get }
+    var plannedPointToday: Bool { get }
+    var planWeekHasPoint: Bool { get }
+}
+
+extension InsightSummaryContextSource {
+    /// 유형 = 리듬 카드 `rhythmWorkoutType`과 같은 `workoutTypeFn ?? .general`
+    var summaryContext: RunSummaryBuilder.Context {
+        RunSummaryBuilder.Context(
+            activity: activity, detail: detail, history: history,
+            hrZones: hrZones, hrSamples: hrSamples,
+            formBaseline: formBaseline, formShifts: formShifts,
+            workoutType: workoutTypeFn?(activity.id) ?? .general, workoutTypeFn: workoutTypeFn,
+            effortIndex: effortIndex, heatHRModel: heatHRModel,
+            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
+            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
+            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
+            plannedPointToday: plannedPointToday,
+            planWeekHasPoint: planWeekHasPoint
+        )
+
+    }
+}
+
+extension RunInsightTabCard: InsightSummaryContextSource {}
+extension RhythmInsightCard: InsightSummaryContextSource {}
+extension InsightExportSheet: InsightSummaryContextSource {}
+
 // MARK: - Insight Colors
 
 private enum IC {
@@ -1052,21 +1103,9 @@ struct RunInsightTabCard: View {
         }
     }
 
-    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평(리듬 카드 summaryLines)과 같은 Context.
-    /// 내보내기 시트도 같은 식(미리보기 = 출력).
+    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평과 같은 Context(`summaryContext` 하나).
     private var balanceSnapshot: BalanceSnapshot? {
-        BalanceTabCard.snapshot(context: RunSummaryBuilder.Context(
-            activity: activity, detail: detail, history: history,
-            hrZones: hrZones, hrSamples: hrSamples,
-            formBaseline: formBaseline, formShifts: formShifts,
-            workoutType: workoutTypeFn?(activity.id) ?? .general, workoutTypeFn: workoutTypeFn,
-            effortIndex: effortIndex, heatHRModel: heatHRModel,
-            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
-            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
-            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
-            plannedPointToday: plannedPointToday,
-            planWeekHasPoint: planWeekHasPoint
-        ), vo2Points: vo2Points)
+        BalanceTabCard.snapshot(context: summaryContext, vo2Points: vo2Points)
     }
 
     private var visibleTabs: [InsightTabKind] {
@@ -1078,7 +1117,12 @@ struct RunInsightTabCard: View {
         }
     }
 
+    /// 탭 5개(대회 포함)·일본어에서 폭을 넘으면 가로로 밀어 본다 — 글자가 줄바꿈·압축되지 않게
     private var tabPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) { tabPickerRow }
+    }
+
+    private var tabPickerRow: some View {
         HStack(spacing: 6) {
             ForEach(visibleTabs, id: \.self) { t in
                 Button {
@@ -1086,6 +1130,8 @@ struct RunInsightTabCard: View {
                 } label: {
                     Text(t.title)
                         .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(tab == t ? ink.violetText : ink.fg(0.50))
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(tab == t ? ink.violet.opacity(0.22) : Color.clear)
@@ -2595,18 +2641,7 @@ private struct RhythmInsightCard: View {
     /// 총평 줄 — 입력 조립은 `RunSummaryBuilder` 하나만 쓴다(§5.8: 리듬 카드·공유 카드가 같은 문장을 보게).
     /// 2줄 미만이면 기존 한 줄 칩으로 폴백(그 판단은 body에서).
     private var summaryLines: [RunSummaryLine] {
-        RunSummaryBuilder.lines(RunSummaryBuilder.Context(
-            activity: activity, detail: detail, history: history,
-            hrZones: hrZones, hrSamples: hrSamples,
-            formBaseline: formBaseline, formShifts: formShifts,
-            workoutType: rhythmWorkoutType, workoutTypeFn: workoutTypeFn,
-            effortIndex: effortIndex, heatHRModel: heatHRModel,
-            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
-            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
-            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
-            plannedPointToday: plannedPointToday,
-            planWeekHasPoint: planWeekHasPoint
-        ))
+        RunSummaryBuilder.lines(summaryContext)
     }
 
     private var oneLiner: String? {
@@ -5647,21 +5682,9 @@ struct InsightExportSheet: View {
         }
     }
 
-    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평(리듬 카드 summaryLines)과 같은 Context.
-    /// 내보내기 시트도 같은 식(미리보기 = 출력).
+    /// 밸런스 탭 스냅샷 — 인사이트 탭 카드(`RunInsightTabCard.balanceSnapshot`)와 같은 식(미리보기 = 출력).
     private var balanceSnapshot: BalanceSnapshot? {
-        BalanceTabCard.snapshot(context: RunSummaryBuilder.Context(
-            activity: activity, detail: detail, history: history,
-            hrZones: hrZones, hrSamples: hrSamples,
-            formBaseline: formBaseline, formShifts: formShifts,
-            workoutType: workoutTypeFn?(activity.id) ?? .general, workoutTypeFn: workoutTypeFn,
-            effortIndex: effortIndex, heatHRModel: heatHRModel,
-            age: age, isMale: isMale, easyPaceLookup: easyPaceLookup,
-            planPhase: planPhase, raceDetailFn: raceDetailFn, hrZonesFn: hrZonesFn,
-            hrvNights: hrvNights, hrMax: hrMax, planWeekKm: planWeekKm,
-            plannedPointToday: plannedPointToday,
-            planWeekHasPoint: planWeekHasPoint
-        ), vo2Points: vo2Points)
+        BalanceTabCard.snapshot(context: summaryContext, vo2Points: vo2Points)
     }
 
     private var visibleTabs: [InsightTabKind] {
@@ -5673,7 +5696,12 @@ struct InsightExportSheet: View {
         }
     }
 
+    /// 카드 탭 줄과 같은 규칙 — 넘치면 가로 스크롤, 글자는 한 줄
     private var tabSwitcher: some View {
+        ScrollView(.horizontal, showsIndicators: false) { tabSwitcherRow }
+    }
+
+    private var tabSwitcherRow: some View {
         HStack(spacing: 8) {
             ForEach(visibleTabs, id: \.self) { t in
                 Button {
@@ -5681,6 +5709,8 @@ struct InsightExportSheet: View {
                 } label: {
                     Text(t.title)
                         .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(tab == t ? Theme.violet : Color.white.opacity(0.50))
                         .padding(.horizontal, 16).padding(.vertical, 8)
                         .background(tab == t ? Theme.violet.opacity(0.22) : Color.white.opacity(0.06))

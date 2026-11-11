@@ -29,6 +29,20 @@ extension BalanceSnapshot.Input {
             ?? activity.date.addingTimeInterval(-182 * 86_400)
         let vo2Six = vo2Points.filter { $0.date >= sixMonthsAgo && $0.date < activity.date }.map(\.value)
 
+        // HRV — 총평과 같은 출처: 어젯밤 값이 4주 기준보다 15% 넘게 낮으면 어젯밤 낮음
+        let trend = summary.hrvTrend
+        let hrvLastNightLow: Bool = {
+            guard let t = trend, let v = summary.lastNightHRV else { return false }
+            return MRReadiness.lastNightDeviation(v, trend: t) < 0
+        }()
+        // 막대 색(나쁨)과 글자가 엇갈리지 않게 — 7일 추세가 낮음·불안정이 아닌데 어젯밤만 낮으면 그 사실을 쓴다
+        let hrvDisplay: String? = trend.map { t in
+            if hrvLastNightLow && !t.isVolatile && t.state != .below {
+                return AppLanguage.shared.s("어젯밤 낮음", "low last night", ja: "昨夜低め")
+            }
+            return t.gradeLabel
+        }
+
         return BalanceSnapshot.Input(
             workoutType: form.workoutType,
             paceSecPerKm: activity.paceSecPerKm,
@@ -43,9 +57,8 @@ extension BalanceSnapshot.Input {
             effort: effort, effortTypeMedian: effortMedian,
             sleepHours: summary.lastNightSleepHours,
             usualSleepHours: MREngineStore.persistedUsualSleepHours(asOf: activity.date),
-            hrvLevel: BalanceSnapshot.hrvLevel(summary.hrvTrend,
-                                               lastNightLow: MREngineStore.persistedLastNightHRVLow(asOf: activity.date)),
-            hrvDisplay: summary.hrvTrend?.gradeLabel,
+            hrvLevel: BalanceSnapshot.hrvLevel(summary.hrvTrend, lastNightLow: hrvLastNightLow),
+            hrvDisplay: hrvDisplay,
             load: summary.acuteChronic,
             vo2: summary.vo2, vo2SixMonths: vo2Six)
     }
@@ -152,7 +165,7 @@ struct BalanceTabCard: View {
         let L = AppLanguage.shared
         switch k {
         case .heartRate: return L.s("심박", "Heart rate", ja: "心拍")
-        case .effort: return L.s("체감", "Effort", ja: "体感")
+        case .effort: return L.s("체감", "RPE", ja: "体感")   // 영어는 저울 "Effort in"과 겹치지 않게
         case .sleep: return L.s("수면", "Sleep", ja: "睡眠")
         case .hrv: return "HRV"
         case .load: return L.s("7일 부하", "7-day load", ja: "7日負荷")
