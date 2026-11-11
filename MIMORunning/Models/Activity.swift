@@ -39,13 +39,23 @@ func mrRunKmInText(_ km: Double) -> String {
     return s
 }
 
-/// 소수 첫째 자리 거리(월말 결산 총 거리) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(203.19 → 203.1)
-func mrTenthKm(_ km: Double) -> String {
+/// 천 단위 쉼표 거리 포맷터 — 로케일 고정(en_US_POSIX: 소수점 '.'이 기기 로케일에 흔들리지 않게).
+/// ⚠ en_US_POSIX는 그룹 구분자를 스스로 켜지 않는다 — 명시하지 않으면 "5052.37"로 쉼표가 빠진다(2026-11-11 테스트로 발견).
+func mrGroupedKmFormatter(fractionDigits: Int) -> NumberFormatter {
     let f = NumberFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
     f.numberStyle = .decimal
-    f.minimumFractionDigits = 1
-    f.maximumFractionDigits = 1
+    f.usesGroupingSeparator = true
+    f.groupingSeparator = ","
+    f.groupingSize = 3
+    f.minimumFractionDigits = fractionDigits
+    f.maximumFractionDigits = fractionDigits
+    return f
+}
+
+/// 소수 첫째 자리 거리(월말 결산 총 거리) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(203.19 → 203.1)
+func mrTenthKm(_ km: Double) -> String {
+    let f = mrGroupedKmFormatter(fractionDigits: 1)
     // 1e-9: 203.1처럼 딱 떨어지는 값이 부동소수 오차로 203.0이 되지 않게
     let v = ((km * 10 + 1e-9).rounded(.down)) / 10
     return f.string(from: NSNumber(value: v)) ?? String(format: "%.1f", v)
@@ -53,10 +63,7 @@ func mrTenthKm(_ km: Double) -> String {
 
 /// 소수점 없는 거리(홈의 올해·누적 칸) — 뛴 거리보다 크게 보이지 않게 버림, 천 단위 쉼표(5,052)
 func mrWholeKm(_ km: Double) -> String {
-    let f = NumberFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.numberStyle = .decimal
-    f.maximumFractionDigits = 0
+    let f = mrGroupedKmFormatter(fractionDigits: 0)
     return f.string(from: NSNumber(value: km.rounded(.down))) ?? String(Int(km))
 }
 
@@ -65,11 +72,7 @@ func mrWholeKm(_ km: Double) -> String {
 func mrTotalKm(_ km: Double) -> String {
     guard km >= 1000 else { return mrRunKm(km) }
     let km = mrKmFloor2(km)
-    let f = NumberFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.numberStyle = .decimal
-    f.minimumFractionDigits = 2
-    f.maximumFractionDigits = 2
+    let f = mrGroupedKmFormatter(fractionDigits: 2)
     return f.string(from: NSNumber(value: km)) ?? mrRunKm(km)
 }
 
