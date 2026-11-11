@@ -47,7 +47,11 @@ struct MRStructuredSession {
         guard s.count >= minMainSplits + 2 else { return nil }
         var best: (i: Int, j: Int, contrast: Double)? = nil
         for i in 1..<s.count {
-            for j in (i + minMainSplits - 1)..<s.count where j < s.count - 1 {
+            // 본 구간 끝 후보의 시작 — 뒤에 마무리 구간이 하나 이상 남아야 한다. 넘으면 이후 i도 모두 넘으니 끝낸다.
+            // ⚠ 이 확인 없이 `(i + minMainSplits - 1)..<s.count`로 쓰면 minMainSplits가 3 이상일 때 범위가 뒤집혀 종료된다.
+            let jStart = i + minMainSplits - 1
+            guard jStart < s.count - 1 else { break }
+            for j in jStart..<(s.count - 1) {
                 let main = Array(s[i...j]), before = Array(s[..<i]), after = Array(s[(j + 1)...])
                 guard main.allSatisfy({ $0.distanceM >= 900 }),
                       km(before) >= 0.9, km(after) >= 0.4 else { continue }
