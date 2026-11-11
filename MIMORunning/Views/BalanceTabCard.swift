@@ -119,6 +119,7 @@ struct BalanceTabCard: View {
             if let recordLine { recordHeader(recordLine) }
             // 위: 저울 + 몸 상태 세로 막대 한 줄, 아래: 거미줄 크게(2026-11-11 실기기 요청)
             scaleAndBodies
+            summaryCaption
             if radarAxes.count >= 3 {
                 divider
                 radar.frame(maxWidth: .infinity)
@@ -127,6 +128,7 @@ struct BalanceTabCard: View {
         case .scaleOnly:
             if let recordLine { recordHeader(recordLine) }
             scaleAndBodies
+            summaryCaption
         case .bodyOnly:
             if let recordLine { recordHeader(recordLine) }
             bodyBars
@@ -159,6 +161,18 @@ struct BalanceTabCard: View {
                 }
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// 저울 아래 한 줄 해석 — 빨강 블록만 사실로(`BalanceSnapshot.summaryLine`)
+    @ViewBuilder
+    private var summaryCaption: some View {
+        if let line = snapshot.summaryLine {
+            Text(line)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ink.fg(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

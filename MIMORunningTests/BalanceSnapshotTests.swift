@@ -272,4 +272,34 @@ struct BalanceSnapshotTests {
         #expect(s.axes.first { $0.kind == .heartRate }?.status == .unknown)
         #expect(s.inputScore == 0)
     }
+
+    // MARK: 한 줄 해석
+
+    @Test func summaryLineHeavyLegs() throws {
+        // 11/9 이지런 모양 — 들인 것 평소, 케이던스 낮고 접지 김
+        var i = base()
+        i.cadence = 166
+        i.groundContact = 270
+        let s = try #require(S.make(i))
+        #expect(s.summaryLine == "심박·몸 상태는 평소였지만, 같은 페이스에서 케이던스가 낮았고 접지가 길었습니다.")
+    }
+
+    @Test func summaryLineAllUsualAndBothSides() throws {
+        #expect(try #require(S.make(base())).summaryLine == "들인 것도 나온 것도 평소 범위였습니다.")
+        var i = base()
+        i.sleepHours = 5
+        i.heartRate = 160
+        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았지만, 폼은 평소 범위였습니다.")
+        i.cadence = 166
+        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았고, 같은 페이스에서 케이던스가 낮았습니다.")
+    }
+
+    @Test func summaryLineReferenceAndInterval() throws {
+        var i = base()
+        i.isReferenceBand = true
+        #expect(try #require(S.make(i)).summaryLine == "폼·심박은 참고로 표시합니다. 몸 상태는 평소였습니다.")
+        var iv = base()
+        iv.workoutType = .interval
+        #expect(try #require(S.make(iv)).summaryLine == nil)
+    }
 }

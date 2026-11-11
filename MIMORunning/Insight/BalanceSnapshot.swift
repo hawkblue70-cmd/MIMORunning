@@ -305,3 +305,82 @@ struct BalanceSnapshot: Equatable {
         }
     }
 }
+
+// MARK: - 한 줄 해석 (2026-11-11 사용자 요청: "들인 것·나온 것" 해석을 탭에 한 줄)
+//
+// 저울에서 빨강(평소보다 더 든 쪽·덜 나온 쪽)인 블록만 사실로 적는다. 판정어("나쁨·좋아짐")·"부상/위험" 없음, 합쇼체.
+// 예: "심박·몸 상태는 평소였지만, 같은 페이스에서 케이던스가 낮았고 접지가 길었습니다."
+
+extension BalanceSnapshot {
+    /// 몸 상태 막대만 있는 러닝(인터벌)은 nil.
+    var summaryLine: String? {
+        guard mode != .bodyOnly else { return nil }
+        let L = AppLanguage.shared
+        let inBad = inputBlocks.filter { $0.tone == .bad }.map(\.kind)
+        let outBad = outputBlocks.filter { $0.tone == .bad }.map(\.kind)
+        let hrvUnstable = bodies.first { $0.kind == .hrv }.map {
+            ["불안정", "unstable", "不安定"].contains($0.display)
+        } ?? false
+
+        func stem(_ k: BalanceBlockKind) -> (ko: String, en: String, jaTe: String, jaPast: String) {
+            switch k {
+            case .heartRate: return ("심박이 높았", "heart rate was high", "心拍が高く", "心拍が高かった")
+            case .effort: return ("체감이 높았", "effort felt high", "体感が高く", "体感が高かった")
+            case .sleep: return ("잠이 짧았", "sleep was short", "睡眠が短く", "睡眠が短かった")
+            case .hrv: return hrvUnstable
+                ? ("HRV가 불안정했", "HRV was unstable", "HRVが不安定で", "HRVが不安定だった")
+                : ("HRV가 낮았", "HRV was low", "HRVが低く", "HRVが低かった")
+            case .load: return ("7일 부하가 높았", "7-day load was high", "7日負荷が高く", "7日負荷が高かった")
+            case .cadence: return ("케이던스가 낮았", "cadence was low", "ケイデンスが低く", "ケイデンスが低かった")
+            case .stride: return ("보폭이 짧았", "stride was short", "ストライドが短く", "ストライドが短かった")
+            case .groundContact: return ("접지가 길었", "ground contact was long", "接地が長く", "接地が長かった")
+            }
+        }
+        /// "A였고 B였" / "A and B" / "Aく、B" (마지막은 과거형)
+        func joined(_ ks: [BalanceBlockKind]) -> (ko: String, en: String, ja: String) {
+            let s = ks.map(stem)
+            let ko = s.map(\.ko).joined(separator: "고 ")
+            let en = s.map(\.en).joined(separator: " and ")
+            let ja = (s.dropLast().map(\.jaTe) + [s.last!.jaPast]).joined(separator: "、")
+            return (ko, en, ja)
+        }
+
+        if isReference {
+            guard !inBad.isEmpty else {
+                return L.s("폼·심박은 참고로 표시합니다. 몸 상태는 평소였습니다.",
+                           "Form and heart rate are shown for reference. Your body was as usual.",
+                           ja: "フォーム・心拍は参考表示です。体の状態はいつも通りでした。")
+            }
+            let j = joined(inBad)
+            return L.s("폼·심박은 참고로 표시합니다. \(j.ko)습니다.",
+                       "Form and heart rate are shown for reference. \(j.en.prefix(1).uppercased() + j.en.dropFirst()).",
+                       ja: "フォーム・心拍は参考表示です。\(j.ja)です。")
+        }
+
+        let hasOutput = !outputBlocks.isEmpty
+        switch (inBad.isEmpty, outBad.isEmpty || !hasOutput) {
+        case (true, true):
+            return hasOutput
+                ? L.s("들인 것도 나온 것도 평소 범위였습니다.", "Both effort in and output were in your usual range.",
+                      ja: "かけたものも出たものもいつもの範囲でした。")
+                : L.s("심박·몸 상태는 평소였습니다.", "Heart rate and body were as usual.", ja: "心拍・体の状態はいつも通りでした。")
+        case (true, false):
+            let o = joined(outBad)
+            return L.s("심박·몸 상태는 평소였지만, 같은 페이스에서 \(o.ko)습니다.",
+                       "Heart rate and body were as usual, but at the same pace \(o.en).",
+                       ja: "心拍・体の状態はいつも通りでしたが、同じペースで\(o.ja)です。")
+        case (false, true):
+            let i = joined(inBad)
+            return hasOutput
+                ? L.s("\(i.ko)지만, 폼은 평소 범위였습니다.",
+                      "\(i.en.prefix(1).uppercased() + i.en.dropFirst()), but your form was in its usual range.",
+                      ja: "\(i.ja)ですが、フォームはいつもの範囲でした。")
+                : L.s("\(i.ko)습니다.", "\(i.en.prefix(1).uppercased() + i.en.dropFirst()).", ja: "\(i.ja)です。")
+        case (false, false):
+            let i = joined(inBad), o = joined(outBad)
+            return L.s("\(i.ko)고, 같은 페이스에서 \(o.ko)습니다.",
+                       "\(i.en.prefix(1).uppercased() + i.en.dropFirst()), and at the same pace \(o.en).",
+                       ja: "\(i.ja)うえ、同じペースで\(o.ja)です。")
+        }
+    }
+}
