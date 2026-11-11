@@ -313,10 +313,12 @@ struct BalanceSnapshot: Equatable {
     }
 }
 
-// MARK: - 한 줄 해석 (2026-11-11 사용자 요청: "들인 것·나온 것" 해석을 탭에 한 줄)
+// MARK: - 한 줄 해석 (2026-11-11 사용자 요청: 저울 해석을 탭에 한 줄)
 //
-// 저울에서 빨강(평소보다 더 든 쪽·덜 나온 쪽)인 블록만 사실로 적는다. 판정어("나쁨·좋아짐")·"부상/위험" 없음, 합쇼체.
-// 예: "심박·몸 상태는 평소였지만, 같은 페이스에서 케이던스가 낮았고 접지가 길었습니다."
+// 저울에서 빨강(평소보다 부담이 컸던 쪽·평소와 다르게 움직인 쪽)인 블록만 사실로 적는다. 판정어·"부상/위험" 없음, 합쇼체.
+// 왼쪽 = 몸 상태·부담(러닝 중 심박·체감 + 출발 전 수면·HRV·부하), 오른쪽 = 움직임(같은 페이스를 만든 케이던스·보폭·접지).
+// 같은 페이스라 속도는 같다 — 움직임은 "덜 나옴"이 아니라 "어떤 방식으로 달렸나"로 적는다.
+// 예: "심박·몸 상태는 평소였지만, 같은 페이스를 낮은 케이던스·긴 접지로 달렸습니다."
 
 extension BalanceSnapshot {
     /// 몸 상태 막대만 있는 러닝(인터벌)은 nil.
@@ -338,19 +340,33 @@ extension BalanceSnapshot {
                 ? ("HRV가 불안정했", "HRV was unstable", "HRVが不安定で", "HRVが不安定だった")
                 : ("HRV가 낮았", "HRV was low", "HRVが低く", "HRVが低かった")
             case .load: return ("7일 부하가 높았", "7-day load was high", "7日負荷が高く", "7日負荷が高かった")
-            case .cadence: return ("케이던스가 낮았", "cadence was low", "ケイデンスが低く", "ケイデンスが低かった")
-            case .stride: return ("보폭이 짧았", "stride was short", "ストライドが短く", "ストライドが短かった")
-            case .groundContact: return ("접지가 길었", "ground contact was long", "接地が長く", "接地が長かった")
+            case .cadence, .stride, .groundContact: return ("", "", "", "")
             }
         }
-        /// "A였고 B였" / "A and B" / "Aく、B" (마지막은 과거형)
-        func joined(_ ks: [BalanceBlockKind]) -> (ko: String, en: String, ja: String) {
-            let s = ks.map(stem)
-            let ko = s.map(\.ko).joined(separator: "고 ")
-            let en = s.map(\.en).joined(separator: " and ")
-            let ja = (s.dropLast().map(\.jaTe) + [s.last!.jaPast]).joined(separator: "、")
-            return (ko, en, ja)
+        /// 움직임 — "낮은 케이던스" / "low cadence" / "低いケイデンス"
+        func moveNoun(_ k: BalanceBlockKind) -> (ko: String, en: String, ja: String) {
+            switch k {
+            case .cadence: return ("낮은 케이던스", "low cadence", "低いケイデンス")
+            case .stride: return ("짧은 보폭", "short stride", "短いストライド")
+            case .groundContact: return ("긴 접지", "long ground contact", "長い接地")
+            default: return ("", "", "")
+            }
         }
+        /// 부담 쪽 — "A였고 B였" / "A and B" / "Aく、Bかった"
+        func strain(_ ks: [BalanceBlockKind]) -> (ko: String, en: String, ja: String) {
+            let s = ks.map(stem)
+            let ja = (s.dropLast().map(\.jaTe) + [s.last!.jaPast]).joined(separator: "、")
+            return (s.map(\.ko).joined(separator: "고 "), s.map(\.en).joined(separator: " and "), ja)
+        }
+        /// 움직임 쪽 — "같은 페이스를 낮은 케이던스·긴 접지로 달렸"
+        func movement(_ ks: [BalanceBlockKind]) -> (ko: String, en: String, ja: String) {
+            let n = ks.map(moveNoun)
+            let ko = n.map(\.ko).joined(separator: "·")
+            return ("같은 페이스를 \(ko)\(KoreanParticle.instrumental(after: ko)) 달렸",
+                    "you ran the same pace with \(n.map(\.en).joined(separator: " and "))",
+                    "同じペースを\(n.map(\.ja).joined(separator: "・"))で走りました")
+        }
+        func cap(_ t: String) -> String { t.prefix(1).uppercased() + t.dropFirst() }
 
         if isReference {
             guard !inBad.isEmpty else {
@@ -358,36 +374,36 @@ extension BalanceSnapshot {
                            "Form and heart rate are shown for reference. Your body was as usual.",
                            ja: "フォーム・心拍は参考表示です。体の状態はいつも通りでした。")
             }
-            let j = joined(inBad)
+            let j = strain(inBad)
             return L.s("폼·심박은 참고로 표시합니다. \(j.ko)습니다.",
-                       "Form and heart rate are shown for reference. \(j.en.prefix(1).uppercased() + j.en.dropFirst()).",
+                       "Form and heart rate are shown for reference. \(cap(j.en)).",
                        ja: "フォーム・心拍は参考表示です。\(j.ja)です。")
         }
 
-        let hasOutput = !outputBlocks.isEmpty
-        switch (inBad.isEmpty, outBad.isEmpty || !hasOutput) {
+        let hasMove = !outputBlocks.isEmpty
+        switch (inBad.isEmpty, outBad.isEmpty || !hasMove) {
         case (true, true):
-            return hasOutput
-                ? L.s("들인 것도 나온 것도 평소 범위였습니다.", "Both effort in and output were in your usual range.",
-                      ja: "かけたものも出たものもいつもの範囲でした。")
+            return hasMove
+                ? L.s("몸 상태·부담도 움직임도 평소 범위였습니다.", "Body, strain and movement were all in your usual range.",
+                      ja: "体の状態・負担も動きもいつもの範囲でした。")
                 : L.s("심박·몸 상태는 평소였습니다.", "Heart rate and body were as usual.", ja: "心拍・体の状態はいつも通りでした。")
         case (true, false):
-            let o = joined(outBad)
-            return L.s("심박·몸 상태는 평소였지만, 같은 페이스에서 \(o.ko)습니다.",
-                       "Heart rate and body were as usual, but at the same pace \(o.en).",
-                       ja: "心拍・体の状態はいつも通りでしたが、同じペースで\(o.ja)です。")
+            let m = movement(outBad)
+            return L.s("심박·몸 상태는 평소였지만, \(m.ko)습니다.",
+                       "Heart rate and body were as usual, but \(m.en).",
+                       ja: "心拍・体の状態はいつも通りでしたが、\(m.ja)。")
         case (false, true):
-            let i = joined(inBad)
-            return hasOutput
-                ? L.s("\(i.ko)지만, 폼은 평소 범위였습니다.",
-                      "\(i.en.prefix(1).uppercased() + i.en.dropFirst()), but your form was in its usual range.",
-                      ja: "\(i.ja)ですが、フォームはいつもの範囲でした。")
-                : L.s("\(i.ko)습니다.", "\(i.en.prefix(1).uppercased() + i.en.dropFirst()).", ja: "\(i.ja)です。")
+            let i = strain(inBad)
+            return hasMove
+                ? L.s("\(i.ko)지만, 움직임은 평소 범위였습니다.",
+                      "\(cap(i.en)), but your movement was in its usual range.",
+                      ja: "\(i.ja)ですが、動きはいつもの範囲でした。")
+                : L.s("\(i.ko)습니다.", "\(cap(i.en)).", ja: "\(i.ja)です。")
         case (false, false):
-            let i = joined(inBad), o = joined(outBad)
-            return L.s("\(i.ko)고, 같은 페이스에서 \(o.ko)습니다.",
-                       "\(i.en.prefix(1).uppercased() + i.en.dropFirst()), and at the same pace \(o.en).",
-                       ja: "\(i.ja)うえ、同じペースで\(o.ja)です。")
+            let i = strain(inBad), m = movement(outBad)
+            return L.s("\(i.ko)고, \(m.ko)습니다.",
+                       "\(cap(i.en)), and \(m.en).",
+                       ja: "\(i.ja)うえ、\(m.ja)。")
         }
     }
 }

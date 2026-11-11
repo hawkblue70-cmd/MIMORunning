@@ -281,17 +281,17 @@ struct BalanceSnapshotTests {
         i.cadence = 166
         i.groundContact = 270
         let s = try #require(S.make(i))
-        #expect(s.summaryLine == "심박·몸 상태는 평소였지만, 같은 페이스에서 케이던스가 낮았고 접지가 길었습니다.")
+        #expect(s.summaryLine == "심박·몸 상태는 평소였지만, 같은 페이스를 낮은 케이던스·긴 접지로 달렸습니다.")
     }
 
     @Test func summaryLineAllUsualAndBothSides() throws {
-        #expect(try #require(S.make(base())).summaryLine == "들인 것도 나온 것도 평소 범위였습니다.")
+        #expect(try #require(S.make(base())).summaryLine == "몸 상태·부담도 움직임도 평소 범위였습니다.")
         var i = base()
         i.sleepHours = 5
         i.heartRate = 160
-        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았지만, 폼은 평소 범위였습니다.")
+        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았지만, 움직임은 평소 범위였습니다.")
         i.cadence = 166
-        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았고, 같은 페이스에서 케이던스가 낮았습니다.")
+        #expect(try #require(S.make(i)).summaryLine == "심박이 높았고 잠이 짧았고, 같은 페이스를 낮은 케이던스로 달렸습니다.")
     }
 
     @Test func summaryLineReferenceAndInterval() throws {

@@ -208,7 +208,7 @@ struct BalanceTabCard: View {
         let L = AppLanguage.shared
         switch k {
         case .heartRate: return L.s("심박", "Heart rate", ja: "心拍")
-        case .effort: return L.s("체감", "RPE", ja: "体感")   // 영어는 저울 "Effort in"과 겹치지 않게
+        case .effort: return L.s("체감", "RPE", ja: "体感")   // 영어 약어(블록 칸이 좁다)
         case .sleep: return L.s("수면", "Sleep", ja: "睡眠")
         case .hrv: return "HRV"
         case .load: return L.s("7일 부하", "7-day load", ja: "7日負荷")
@@ -305,12 +305,14 @@ struct BalanceTabCard: View {
             }
             .frame(width: boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
             // rotationEffect는 배치에 반영되지 않는다 — 판 끝이 오르내리는 만큼(반폭 × sin 각도) 위아래 자리를 비워
-            // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "들인 것 / 나온 것"에 겹치지 않게(내보내기도 잘리지 않음)
+            // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "몸 상태·부담 / 움직임"에 겹치지 않게(내보내기도 잘리지 않음)
             .padding(.vertical, tiltRoom(boardW))
             HStack {
-                Text(L.s("들인 것", "Effort in", ja: "かけたもの"))
+                // 이름 변경(2026-11-11): 왼쪽은 러닝 중 부담 + 출발 전 몸 상태, 오른쪽은 같은 페이스를 만든 방식(폼)이라
+                // "들인 것 / 나온 것"은 정확하지 않았다
+                Text(L.s("몸 상태·부담", "Body & strain", ja: "体の状態・負担"))
                 Spacer(minLength: 0)
-                Text(L.s("나온 것", "Output", ja: "出たもの"))
+                Text(L.s("움직임", "Movement", ja: "動き"))
             }
             .font(.system(size: 11, weight: .semibold))
             .tracking(0.3)
