@@ -73,6 +73,8 @@ struct BalanceSnapshot: Equatable {
         var isReferenceBand: Bool          // 판정 불가 → 참고 모드
         /// 장거리 문맥(`TabDigestForm.Inputs.isLongDistanceContext`) — 폼 탭처럼 판단 유보: 심박·폼 축 판정·점수 없음
         var isLongDistance: Bool = false
+        /// 구성 러닝(몸 풀기 → 본 구간 → 마무리) — 페이스가 섞인 평균이라 폼 탭처럼 평소 범위와 비교하지 않는다(2026-11-11)
+        var isMixedPace: Bool = false
         var heartRate: Double?;  var heartRateStat: FormStat?
         var cadence: Double?;    var cadenceStat: FormStat?
         var stride: Double?;     var strideStat: FormStat?
@@ -152,7 +154,7 @@ struct BalanceSnapshot: Equatable {
         }
 
         // 판정 — 참고 모드·장거리 문맥·폭 없는 기준(상한 ≤ 하한)은 .unknown(빨간 점·점수 없음)
-        let noJudge = i.isReferenceBand || i.isLongDistance
+        let noJudge = i.isReferenceBand || i.isLongDistance || i.isMixedPace
         func status(_ v: Double?, _ s: FormStat?, _ m: FormNarrative.Metric) -> FormNarrative.Status {
             guard !noJudge, let s, s.upper - s.lower > 0 else { return .unknown }
             return FormNarrative.status(rawValue: v, stat: s, metric: m)

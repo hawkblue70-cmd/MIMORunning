@@ -221,6 +221,15 @@ enum StampTemplate: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 특대에서 카드 폭(좌우 여백 안)을 꽉 채우는 스탬프의 자연 폭(scale 1, pt) — 배율표 대신 카드 폭으로 배율을 정한다.
+    /// 밸런스 저울: 사진 카드(약 307pt)에서 표의 0.62가 폭의 57%밖에 안 됐다(2026-11-11 실기기 "특대는 폭에 꽉차게").
+    var xlargeFillNaturalWidth: CGFloat? {
+        switch self {
+        case .balanceScaleRadar: return 282
+        default:                 return nil
+        }
+    }
+
     func stampScale(for level: TextSizeLevel) -> CGFloat {
         let t = sizeScales
         switch level {

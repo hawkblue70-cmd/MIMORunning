@@ -259,6 +259,14 @@ enum TabDigestForm {
                      "Cadence \(cadStr) spm and stride \($0) m produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spm、ストライド\($0)mで\(paceStr)のペースになりました。")
             } ?? L.s("케이던스 \(cadStr)spm으로 \(paceStr) 페이스가 나왔습니다.",
                       "A cadence of \(cadStr) spm produced a \(paceStr) pace.", ja: "ケイデンス\(cadStr)spmで\(paceStr)のペースになりました。")
+            // 구성 러닝(몸 풀기 → 본 구간 → 마무리)도 같은 갈래지만 인터벌이 아니다 — 인터벌 문장을 쓰면 템포런에
+            // "인터벌은 회복 구간이 섞여"가 나왔다(2026-11-11 실기기)
+            if x.isStructured && !x.isInterval {
+                return base + " " + L.s(
+                    "몸 풀기·본 구간·마무리가 섞인 평균이라 평소 범위와 비교하지 않았습니다.",
+                    "This average mixes warm-up, main block and cool-down, so it isn't compared with your usual range.",
+                    ja: "ウォームアップ・本練習・クールダウンが混ざった平均のため、普段の範囲とは比べていません。")
+            }
             return base + " " + L.s(
                 "인터벌은 회복 구간이 섞여 평균만으로는 폼을 판단하기 어렵습니다.",
                 "Mixed with recovery intervals — averages alone don't reflect form.", ja: "インターバルは回復区間が混ざるため、平均だけではフォームを判断しにくいです。"

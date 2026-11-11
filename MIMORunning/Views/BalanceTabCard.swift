@@ -49,6 +49,7 @@ extension BalanceSnapshot.Input {
             hasForm: form.avgCadence != nil,
             isReferenceBand: ref || notJudgeable,
             isLongDistance: form.isLongDistanceContext,
+            isMixedPace: form.isStructured,
             heartRate: activity.avgHeartRate.map(Double.init), heartRateStat: band?.heartRate,
             cadence: form.avgCadence.map(Double.init), cadenceStat: band?.cadence,
             stride: form.avgStrideLength, strideStat: ref ? form.displayStrideStat : form.strideStat,

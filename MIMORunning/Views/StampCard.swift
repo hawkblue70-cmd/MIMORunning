@@ -568,6 +568,9 @@ struct StampCard: View {
                 if template.positionMode == .fixed {
                     stampContent(fill: fill, outline: outline, scale: scale, topClearance: topInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if sizeLevel == .xlarge, let natW = template.xlargeFillNaturalWidth {
+                    fullWidthStamp(fill: fill, outline: outline, naturalWidth: natW, topInset: topInset,
+                                   bottomInset: 12 + shoeReserve)
                 } else if template.fitsCardHeight {
                     fittedTallStamp(fill: fill, outline: outline, scale: scale, topInset: topInset,
                                     bottomInset: 12 + shoeReserve)
@@ -614,6 +617,24 @@ struct StampCard: View {
                     if !stampTextPosition.isBottom { Spacer(minLength: 0) }
                 }
             }
+        }
+    }
+
+    /// 특대에서 폭을 꽉 채우는 스탬프 — 좌우 여백(워드마크 선) 사이 폭 ÷ 자연 폭을 배율로. 9칸 위치 중 위·가운데·아래만 따른다.
+    private func fullWidthStamp(fill: Color, outline: Color, naturalWidth: CGFloat, topInset: CGFloat,
+                                bottomInset: CGFloat) -> some View {
+        let sideInset = 14 + MIMOWordmark.inkLeadingInset(size: 11)
+        return GeometryReader { geo in
+            let s = max(0.1, (geo.size.width - sideInset * 2) / naturalWidth)
+            VStack(spacing: 0) {
+                if !position.isTop { Spacer(minLength: 0) }
+                stampContent(fill: fill, outline: outline, scale: s)
+                    .fixedSize()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !position.isBottom { Spacer(minLength: 0) }
+            }
+            .padding(EdgeInsets(top: position.isTop ? topInset : 12, leading: sideInset,
+                                bottom: bottomInset, trailing: sideInset))
         }
     }
 
