@@ -5913,7 +5913,8 @@ struct InsightExportSheet: View {
             )
         case .balance:
             if let snap = exportBalance {
-                BalanceTabCard(snapshot: snap, isExport: true)
+                BalanceTabCard(snapshot: snap, isExport: true,
+                               recordLine: "\(activity.formattedDistance) · \(activity.formattedDuration)")
             }
         case .race:
             RaceInsightCard(

@@ -86,6 +86,8 @@ extension BalanceTabCard {
 struct BalanceTabCard: View {
     let snapshot: BalanceSnapshot
     var isExport: Bool = false   // 내보내기: 애니메이션 없이 최종 상태
+    /// 내보내기 이미지 맨 위 기본 기록("8.42 km · 53:23") — 이미지만 보고도 어떤 러닝인지(앱 화면은 위 종합 카드가 보여 주므로 nil)
+    var recordLine: String? = nil
 
     @Environment(\.insightLight) private var insightLight
     @Environment(\.insightCompact) private var compact
@@ -114,25 +116,37 @@ struct BalanceTabCard: View {
     private var content: some View {
         switch snapshot.mode {
         case .full:
+            if let recordLine { recordHeader(recordLine) }
             scale
             if radarAxes.count >= 3 || !snapshot.bodies.isEmpty {
                 divider
-                // 거미줄은 고정 크기, 몸 상태 막대가 남은 폭을 쓴다(좁은 화면에서도 넘치지 않게)
-                HStack(alignment: .center, spacing: 10) {
-                    if radarAxes.count >= 3 { radar }
-                    if !snapshot.bodies.isEmpty { bodyBars.frame(maxWidth: .infinity) }
+                // 거미줄을 가운데 크게, 몸 상태 막대는 아래 두 줄(2026-11-11 실기기: 옆에 두면 거미줄이 작고 막대가 좁았다)
+                if radarAxes.count >= 3 {
+                    radar.frame(maxWidth: .infinity)
+                    radarLegend
                 }
-                .frame(maxWidth: .infinity)
+                if !snapshot.bodies.isEmpty { bodyBars }
             }
         case .scaleOnly:
+            if let recordLine { recordHeader(recordLine) }
             scale
             if !snapshot.bodies.isEmpty {
                 divider
                 bodyBars
             }
         case .bodyOnly:
+            if let recordLine { recordHeader(recordLine) }
             bodyBars
         }
+    }
+
+    /// 내보내기 맨 위 기본 기록 한 줄
+    private func recordHeader(_ line: String) -> some View {
+        Text(line)
+            .font(.system(size: 13, weight: .semibold))
+            .monospacedDigit()
+            .foregroundStyle(ink.primary)
+            .frame(maxWidth: .infinity)
     }
 
     private var divider: some View {
@@ -208,23 +222,14 @@ struct BalanceTabCard: View {
         }
     }
 
-    /// 축 이름 색 — 폼 카드 행 라벨과 같은 지표 의미색(심박 빨강·케이던스 노랑 …)
-    private func axisColor(_ k: BalanceAxisKind) -> Color {
-        switch k {
-        case .heartRate: return ink.heartRate
-        case .cadence: return ink.metricText(ink.cadence)
-        case .stride: return ink.metricText(ink.strideLength)
-        case .groundContact: return ink.groundContact
-        case .verticalOsc: return ink.metricText(ink.verticalOsc)
-        }
-    }
-
     // MARK: - 저울
 
-    private static let boardW: CGFloat = 288
-    private static let blockSlotW: CGFloat = 25
-    private static let blockW: CGFloat = 15
-    private static let blockMaxH: CGFloat = 44
+    /// 판 폭 — 넓은 화면 340 · 보통 316 · 좁은 화면(SE 등) 288로 내려간다(`scale`의 ViewThatFits). 2026-11-11 실기기 요청으로 크게.
+    private static let boardWide: CGFloat = 340
+    private static let boardMid: CGFloat = 316      // 393pt 폭 폰(카드 안 약 329pt)
+    private static let boardNarrow: CGFloat = 288
+    private static let blockSlotMax: CGFloat = 30
+    private static let blockMaxH: CGFloat = 60
     private static let boardH: CGFloat = 4
     private static let labelRowH: CGFloat = 18
     private static let groupSpacing: CGFloat = 2
@@ -235,39 +240,55 @@ struct BalanceTabCard: View {
     private static let fulcrumH: CGFloat = 20
 
     /// 기울어진 판 끝의 위아래 이동량 + 2pt — 최종 기울기 기준(애니메이션 중 배치가 흔들리지 않게)
-    private var tiltRoom: CGFloat {
+    private func tiltRoom(_ boardW: CGFloat) -> CGFloat {
         let rad = abs(snapshot.tilt) * 12 * Double.pi / 180
-        return (Self.boardW / 2 * CGFloat(sin(rad))).rounded(.up) + 2
+        return (boardW / 2 * CGFloat(sin(rad))).rounded(.up) + 2
+    }
+
+    /// 한 접시의 블록 칸 폭 — 반폭을 블록 수(최소 5칸)로 나눠 최대 30
+    private func slotW(_ boardW: CGFloat) -> CGFloat {
+        let halfW = (boardW - Self.fulcrumW - 8) / 2
+        let n = max(5, snapshot.inputBlocks.count, snapshot.outputBlocks.count)
+        return min(Self.blockSlotMax, (halfW / CGFloat(n)).rounded(.down))
     }
 
     /// 판 기울기(도) — tilt × 12. + = 왼쪽(들인 것)이 내려감 = 반시계 방향
     private var tiltDegrees: Double { -snapshot.tilt * 12 * progress }
 
     private var scale: some View {
+        ViewThatFits(in: .horizontal) {
+            scale(boardW: Self.boardWide)
+            scale(boardW: Self.boardMid)
+            scale(boardW: Self.boardNarrow)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func scale(boardW: CGFloat) -> some View {
         let L = AppLanguage.shared
         return VStack(spacing: 4) {
             ZStack(alignment: .top) {
                 fulcrum
                     .offset(y: Self.pivotY)
-                beamGroup
+                beamGroup(boardW: boardW)
                     .rotationEffect(.degrees(tiltDegrees),
                                     anchor: UnitPoint(x: 0.5, y: Self.pivotY / Self.groupH))
             }
-            .frame(width: Self.boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
+            .frame(width: boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
             // rotationEffect는 배치에 반영되지 않는다 — 판 끝이 오르내리는 만큼(반폭 × sin 각도) 위아래 자리를 비워
             // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "들인 것 / 나온 것"에 겹치지 않게(내보내기도 잘리지 않음)
-            .padding(.vertical, tiltRoom)
+            .padding(.vertical, tiltRoom(boardW))
             HStack {
                 Text(L.s("들인 것", "Effort in", ja: "かけたもの"))
                 Spacer(minLength: 0)
                 Text(L.s("나온 것", "Output", ja: "出たもの"))
             }
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .tracking(0.3)
             .foregroundStyle(ink.fg(0.75))
-            .frame(width: Self.boardW - 24)
+            .frame(width: boardW - 24)
         }
-        .frame(maxWidth: .infinity)
+        .fixedSize()
     }
 
     /// 받침 — 꼭짓점이 판 가운데 아래에 닿는 삼각형 + 바닥 선
@@ -281,29 +302,30 @@ struct BalanceTabCard: View {
     }
 
     /// 판 + 양쪽 블록 + 블록 이름 — 한 덩어리로 기운다
-    private var beamGroup: some View {
-        let halfW = (Self.boardW - Self.fulcrumW - 8) / 2
+    private func beamGroup(boardW: CGFloat) -> some View {
+        let halfW = (boardW - Self.fulcrumW - 8) / 2
+        let slot = slotW(boardW)
         return VStack(spacing: Self.groupSpacing) {
             HStack(spacing: 0) {
-                blockRow(snapshot.inputBlocks).frame(width: halfW)
+                blockRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
                 Spacer(minLength: 0)
-                blockRow(snapshot.outputBlocks).frame(width: halfW)
+                blockRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
             }
             .frame(height: Self.blockMaxH, alignment: .bottom)
             Capsule()
                 .fill(ink.fg(0.45))
                 .frame(height: Self.boardH)
             HStack(spacing: 0) {
-                labelRow(snapshot.inputBlocks).frame(width: halfW)
+                labelRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
                 Spacer(minLength: 0)
-                labelRow(snapshot.outputBlocks).frame(width: halfW)
+                labelRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
             }
             .frame(height: Self.labelRowH, alignment: .top)
         }
-        .frame(width: Self.boardW, height: Self.groupH)
+        .frame(width: boardW, height: Self.groupH)
     }
 
-    private func blockRow(_ blocks: [BalanceBlock]) -> some View {
+    private func blockRow(_ blocks: [BalanceBlock], slotW: CGFloat) -> some View {
         HStack(alignment: .bottom, spacing: 0) {
             // 올릴 블록이 없는 접시(폼 없는 러닝의 나온 것 등)는 "—"
             if blocks.isEmpty {
@@ -314,33 +336,34 @@ struct BalanceTabCard: View {
             ForEach(blocks, id: \.kind) { b in
                 RoundedRectangle(cornerRadius: 3)
                     .fill(toneColor(b.tone))
-                    .frame(width: Self.blockW, height: max(4, Self.blockMaxH * b.height))
-                    .frame(width: Self.blockSlotW)
+                    .frame(width: (slotW * 0.6).rounded(), height: max(4, Self.blockMaxH * b.height))
+                    .frame(width: slotW)
             }
         }
         .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
-    private func labelRow(_ blocks: [BalanceBlock]) -> some View {
+    private func labelRow(_ blocks: [BalanceBlock], slotW: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(blocks, id: \.kind) { b in
                 Text(blockLabel(b.kind))
-                    .font(.system(size: 7, weight: .medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(ink.fg(0.60))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
-                    .frame(width: Self.blockSlotW)
+                    .frame(width: slotW)
             }
         }
     }
 
     // MARK: - 폼 거미줄
 
-    private static let radarW: CGFloat = 210
-    private static let radarH: CGFloat = 190
-    private static let radarR: CGFloat = 52
-    private static let labelR: CGFloat = 72
+    // 2026-11-11 실기기 요청으로 크게 — 전체 폭 가운데에 둔다(R 52 → 72)
+    private static let radarW: CGFloat = 280
+    private static let radarH: CGFloat = 230
+    private static let radarR: CGFloat = 72
+    private static let labelR: CGFloat = 96
 
     /// 그릴 축 — 스냅샷 순서(심박·케이던스·보폭·접지·수직 진폭) 중 있는 것만
     private var radarAxes: [BalanceAxis] { snapshot.axes }
@@ -382,7 +405,6 @@ struct BalanceTabCard: View {
                 .stroke(ink.violet, lineWidth: 1.5)
             vertexDots(axes: axes, radii: todayR)
             axisLabels(axes: axes)
-            paceCenter
         }
         .frame(width: Self.radarW, height: Self.radarH)
         .overlay(alignment: .topLeading) {
@@ -416,11 +438,12 @@ struct BalanceTabCard: View {
         ForEach(axes, id: \.kind) { a in
             let p = Self.point(a.kind, r: Self.labelR, center: radarCenter)
             VStack(spacing: 0) {
+                // 축 이름은 회색 — 빨강은 평소 범위 밖 값에만(지표 의미색 빨강 "심박"이 나쁜 값처럼 읽혔다, 2026-11-11)
                 Text(axisLabel(a.kind))
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(axisColor(a.kind))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(ink.fg(0.55))
                 Text(axisValue(a))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(BalanceSnapshot.isAdverse(a.kind, a.status) ? badColor : ink.primary)
             }
@@ -430,37 +453,45 @@ struct BalanceTabCard: View {
         }
     }
 
-    /// 가운데 페이스 — 기준이 "같은 페이스"라 축이 아니라 숫자로
-    @ViewBuilder
-    private var paceCenter: some View {
-        if let pace = snapshot.paceSecPerKm {
-            VStack(spacing: 0) {
-                Text(mrFormatPace(pace))
-                    .font(.system(size: 12, weight: .bold))
+    /// 거미줄 아래 범례 + 기준 페이스 — 가운데 숫자는 찌그러진 오늘 도형에 가려졌다(2026-11-11 실기기)
+    private var radarLegend: some View {
+        let L = AppLanguage.shared
+        return HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 2).fill(ink.fg(snapshot.isReference ? 0.05 : 0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(ink.fg(snapshot.isReference ? 0.32 : 0), style: StrokeStyle(lineWidth: 0.8, dash: [2, 2])))
+                    .frame(width: 12, height: 8)
+                Text(L.s("평소 범위", "Usual range", ja: "普段の範囲"))
+            }
+            HStack(spacing: 4) {
+                Rectangle().stroke(ink.fg(0.40), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    .frame(width: 12, height: 0.5)
+                Text(L.s("평소", "Usual", ja: "普段"))
+            }
+            HStack(spacing: 4) {
+                Capsule().fill(ink.violet).frame(width: 12, height: 2)
+                Text(L.s("오늘", "Today", ja: "今日"))
+            }
+            if let pace = snapshot.paceSecPerKm {
+                Text(L.s("같은 페이스 \(mrFormatPace(pace))/km", "same pace \(mrFormatPace(pace))/km", ja: "同じペース \(mrFormatPace(pace))/km"))
                     .monospacedDigit()
                     .foregroundStyle(ink.pace)
-                Text("/km")
-                    .font(.system(size: 7))
-                    .foregroundStyle(ink.fg(0.55))
             }
-            .fixedSize()
-            .position(radarCenter)
         }
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(ink.fg(0.60))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 몸 상태 막대
 
-    /// 막대 길이 = 부담(좋음 ⅓ · 보통 ⅔ · 나쁨 가득) — 저울 블록 높이와 같은 방향
-    private func bodyFill(_ l: BalanceLevel) -> Double {
-        switch l {
-        case .good: return 0.34
-        case .normal: return 0.67
-        case .bad: return 1.0
-        }
-    }
-
+    /// 몸 상태 — 두 칸 격자. 막대는 모두 같은 길이, 색으로만 좋음·보통·나쁨
+    /// (길이로 부담을 나타내니 초록 "6.8h"가 짧은 막대라 모자람처럼 읽혔다, 2026-11-11 실기기)
     private var bodyBars: some View {
-        VStack(alignment: .leading, spacing: compact ? 7 : 10) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
+                  alignment: .leading, spacing: compact ? 8 : 12) {
             ForEach(snapshot.bodies, id: \.kind) { b in
                 bodyRow(b)
             }
@@ -472,13 +503,13 @@ struct BalanceTabCard: View {
         return VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(bodyLabel(b.kind))
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(ink.fg(0.70))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 Text(b.display)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(ink.metricText(c))
                     .lineLimit(1)
@@ -491,7 +522,7 @@ struct BalanceTabCard: View {
                     GeometryReader { g in
                         Capsule()
                             .fill(c)
-                            .frame(width: g.size.width * CGFloat(bodyFill(b.level) * progress))
+                            .frame(width: g.size.width * CGFloat(progress))
                     }
                 }
         }
