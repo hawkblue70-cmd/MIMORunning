@@ -151,9 +151,10 @@ struct BalanceTabCard: View {
             scale
         } else {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .bottom, spacing: 12) {
+                // 막대 영역은 고정 폭 — 글자 이상 폭(약 160pt)으로 재면 ViewThatFits가 늘 아래 배치로 넘어갔다(2026-11-11 실기기)
+                HStack(alignment: .bottom, spacing: 10) {
                     scale(boardW: Self.boardNarrow).fixedSize()
-                    bodyBars.frame(minWidth: Self.bodyColumnsMinW)
+                    bodyBars.frame(width: Self.bodyColumnsW)
                 }
                 VStack(spacing: compact ? 8 : 12) {
                     scale
@@ -524,11 +525,11 @@ struct BalanceTabCard: View {
     // MARK: - 몸 상태 막대
 
     /// 몸 상태 — 세로 막대 4개. 막대 높이는 모두 같고 색으로만 좋음·보통·나쁨(길이로 부담을 나타내면 짧은 초록이 모자람처럼 읽혔다)
-    private static let bodyColumnsMinW: CGFloat = 116
+    private static let bodyColumnsW: CGFloat = 116
     private static let bodyBarH: CGFloat = 56
 
     private var bodyBars: some View {
-        HStack(alignment: .bottom, spacing: 6) {
+        HStack(alignment: .bottom, spacing: 4) {
             ForEach(snapshot.bodies, id: \.kind) { b in
                 bodyColumn(b)
             }
