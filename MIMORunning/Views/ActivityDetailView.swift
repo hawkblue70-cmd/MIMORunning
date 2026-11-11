@@ -731,9 +731,13 @@ struct ActivityDetailView: View {
             }
         }
         .navigationDestination(isPresented: $showShareCard) {
-            ShareCardScreen(activity: activity, detail: detail, insight: shareInsight, manager: manager, condition: condition,
-                             summaryLines: shareSummaryLines,
-                             balance: shareBalance)
+            // navigationDestination 클로저는 비이스케이프라 body 마다 평가된다 — shareBalance·shareSummaryLines 는 무거우므로
+            // 이스케이프 클로저로 감싸 목적지가 실제로 보일 때만 계산한다
+            LazyDestination {
+                ShareCardScreen(activity: activity, detail: detail, insight: shareInsight, manager: manager, condition: condition,
+                                summaryLines: shareSummaryLines,
+                                balance: shareBalance)
+            }
         }
         .sheet(isPresented: $showManualRaceEntry) {
             ManualRaceSheet(
@@ -5012,4 +5016,11 @@ private struct InlineTrendChart: View {
             }
         }
     }
+}
+
+/// 목적지 화면을 자기 body 안에서 만든다 — 호출한 쪽 body 를 돌 때마다 무거운 값을 계산하지 않게.
+private struct LazyDestination<Content: View>: View {
+    let make: () -> Content
+    init(@ViewBuilder _ make: @escaping () -> Content) { self.make = make }
+    var body: some View { make() }
 }

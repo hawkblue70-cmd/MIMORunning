@@ -124,7 +124,7 @@ struct BalanceTabCard: View {
             // 위: 저울 + 몸 상태 세로 막대 한 줄, 아래: 거미줄 크게(2026-11-11 실기기 요청)
             scaleAndBodies
             summaryCaption
-            if radarAxes.count >= 3 {
+            if snapshot.hasRadar {
                 divider
                 radar.frame(maxWidth: .infinity)
                 radarLegend
@@ -290,7 +290,7 @@ struct BalanceTabCard: View {
                 Text(L.s("오늘", "Today", ja: "今日"))
             }
             if let pace = snapshot.paceSecPerKm {
-                Text(L.s("같은 페이스 \(mrFormatPace(pace))/km", "same pace \(mrFormatPace(pace))/km", ja: "同じペース \(mrFormatPace(pace))/km"))
+                Text(BalanceDrawingText.samePace(pace))
                     .monospacedDigit()
                     .foregroundStyle(ink.pace)
             }

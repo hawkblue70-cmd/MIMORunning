@@ -407,7 +407,9 @@ struct StampControlsView: View {
     }
 
     private func sizeChip(_ level: TextSizeLevel) -> some View {
-        let isSelected = vm.sizeLevel == level
+        // 작은 크기를 못 쓰는 템플릿은 저장된 소·중도 실제로는 큰 크기로 그려진다 — 칩도 그에 맞춘다
+        let shown: TextSizeLevel = (!vm.storyTemplate.supportsSmallSizes && (vm.sizeLevel == .small || vm.sizeLevel == .medium)) ? .large : vm.sizeLevel
+        let isSelected = shown == level
         return Button {
             withAnimation(.easeInOut(duration: 0.15)) { vm.sizeLevel = level }
         } label: {
@@ -649,7 +651,7 @@ struct StampVisualPickerSheet: View {
                     case .runTotals: if data.runTotals == nil { return false }
                     case .hrZoneRows: if data.hrZoneRows == nil { return false }
                     // 폼 없는 러닝·인터벌(거미줄 없음)은 밸런스 스탬프를 숨긴다
-                    case .balance:   if data.balance?.mode != .full { return false }
+                    case .balance:   if data.balance?.hasRadar != true { return false }
                     case .route:
                         let hasMap   = data.routePoints != nil || data.mapImage != nil
                         let hasCoord = (data.routeCoordinates?.count ?? 0) >= 2

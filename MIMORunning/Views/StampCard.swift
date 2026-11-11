@@ -807,7 +807,7 @@ struct StampCard: View {
                                showTextOutline: showTextOutline)
         case .balanceRadar, .balanceScaleRadar:
             // 거미줄 없는 스냅샷(폼 없음·인터벌)은 목록에서 숨기지만, 저장된 설정으로 들어와도 빈 그림 대신 아무것도 그리지 않는다
-            if let b = data.balance, b.mode == .full {
+            if let b = data.balance, b.hasRadar {
                 StampBalanceView(snapshot: b, withScale: template == .balanceScaleRadar,
                                  fill: fill, outline: outline, scale: scale,
                                  showTextOutline: showTextOutline)
@@ -871,10 +871,8 @@ private struct StampBalanceView: View {
                              style: style, scale: scale)
                 .overlay(alignment: .bottom) {
                     if let pace = snapshot.paceSecPerKm {
-                        let L = AppLanguage.shared
-                        let p = mrFormatPace(pace)
-                        // 밸런스 탭 범례의 기준 페이스 줄과 같은 문구
-                        Text(L.s("같은 페이스 \(p)/km", "same pace \(p)/km", ja: "同じペース \(p)/km"))
+                        // 밸런스 탭 범례의 기준 페이스 줄과 같은 문구(공용 함수)
+                        Text(BalanceDrawingText.samePace(pace))
                             .font(.system(size: 10 * scale, weight: .semibold))
                             .monospacedDigit()
                             .lineLimit(1)

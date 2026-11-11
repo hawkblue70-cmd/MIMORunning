@@ -23,6 +23,16 @@ struct BalanceSnapshotTests {
                 vo2: 48, vo2SixMonths: [47, 49])
     }
 
+    @Test func hasRadarNeedsThreeAxes() throws {
+        #expect(try #require(S.make(base())).hasRadar)
+        var i = base()
+        i.stride = nil; i.groundContact = nil; i.verticalOsc = nil
+        let s = try #require(S.make(i))
+        #expect(s.mode == .full)
+        #expect(s.axes.count == 2)
+        #expect(s.hasRadar == false)
+    }
+
     @Test func sleepLevels() {
         #expect(S.sleepLevel(hours: 7, usual: 7) == .good)
         #expect(S.sleepLevel(hours: 6.6, usual: 7) == .good)

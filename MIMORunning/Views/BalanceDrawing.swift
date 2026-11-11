@@ -61,7 +61,14 @@ private extension View {
 
 // MARK: - 문구 (라벨만 — 문장·판정어 없음)
 
-private enum BalanceDrawingText {
+enum BalanceDrawingText {
+    /// 기준 페이스 줄 — 밸런스 탭 범례와 스탬프가 같은 문구를 쓴다.
+    static func samePace(_ paceSec: Double) -> String {
+        let L = AppLanguage.shared
+        let p = mrFormatPace(paceSec)
+        return L.s("같은 페이스 \(p)/km", "same pace \(p)/km", ja: "同じペース \(p)/km")
+    }
+
     static func blockLabel(_ k: BalanceBlockKind) -> String {
         let L = AppLanguage.shared
         switch k {
