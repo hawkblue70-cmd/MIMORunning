@@ -162,7 +162,7 @@ struct BalanceTabCard: View {
 
     /// 저울 전체 높이(판 끝 이동 자리 + 받침 + 캡션) — GeometryReader에 줄 높이
     private func scaleHeight(_ boardW: CGFloat) -> CGFloat {
-        (Self.pivotY + Self.fulcrumH + 3) + 2 * tiltRoom(boardW) + 4 + 16
+        BalanceScaleView.drawingHeight(snapshot: snapshot, boardW: boardW) + 4 + 16
     }
 
     /// 저울 아래 한 줄 해석 — 빨강 블록만 사실로(`BalanceSnapshot.summaryLine`)
@@ -207,43 +207,34 @@ struct BalanceTabCard: View {
         }
     }
 
-    private var badColor: Color { levelColor(.bad) }
-
-    private func toneColor(_ t: BalanceTone) -> Color {
-        switch t {
-        case .usual: return ink.fg(0.32)
-        case .good: return levelColor(.good)
-        case .normal: return levelColor(.normal)
-        case .bad: return levelColor(.bad)
-        }
+    /// 거미줄·저울 공용 뷰(BalanceDrawing.swift)에 넘기는 색 — 탭에서 쓰던 색 그대로(화면 불변)
+    private var drawStyle: BalanceDrawStyle {
+        BalanceDrawStyle(
+            primary: ink.primary,
+            secondary: ink.fg(0.55),                               // 축 이름
+            line: ink.fg(0.10),                                    // 바깥 고리·축선
+            band: ink.fg(snapshot.isReference ? 0.05 : 0.10),      // 참고 모드는 옅은 띠
+            usual: ink.fg(0.40),
+            today: ink.violet,
+            todayFill: ink.violet.opacity(0.22),
+            good: levelColor(.good),
+            bad: levelColor(.bad),
+            usualBlock: ink.fg(0.32),
+            normal: levelColor(.normal),
+            board: ink.fg(0.45),
+            textOutline: nil,
+            fontScale: 1,
+            blockLabel: ink.fg(0.60),
+            caption: ink.fg(0.75),
+            emptyMark: ink.fg(0.40),
+            referenceStroke: ink.fg(0.32),
+            fulcrum: ink.fg(0.22),
+            fulcrumBase: ink.fg(0.18),
+            chipText: ink.fg(0.60),
+            chipFill: ink.fg(0.08))
     }
 
     // MARK: 문구 (라벨만 — 문장·판정어 없음)
-
-    private func blockLabel(_ k: BalanceBlockKind) -> String {
-        let L = AppLanguage.shared
-        switch k {
-        case .heartRate: return L.s("심박", "Heart rate", ja: "心拍")
-        case .effort: return L.s("체감", "RPE", ja: "体感")   // 영어 약어(블록 칸이 좁다)
-        case .sleep: return L.s("수면", "Sleep", ja: "睡眠")
-        case .hrv: return "HRV"
-        case .load: return L.s("부하", "Load", ja: "負荷")   // 저울 칸이 좁아 짧게(막대는 "7일 부하")
-        case .cadence: return L.s("케이던스", "Cadence", ja: "ケイデンス")
-        case .stride: return L.s("보폭", "Stride", ja: "ストライド")
-        case .groundContact: return L.s("접지", "Contact", ja: "接地")
-        }
-    }
-
-    private func axisLabel(_ k: BalanceAxisKind) -> String {
-        let L = AppLanguage.shared
-        switch k {
-        case .heartRate: return L.s("심박", "Heart rate", ja: "心拍")
-        case .cadence: return L.s("케이던스", "Cadence", ja: "ケイデンス")
-        case .stride: return L.s("보폭", "Stride", ja: "ストライド")
-        case .groundContact: return L.s("접지", "Contact", ja: "接地")
-        case .verticalOsc: return L.s("수직 진폭", "Vert. osc.", ja: "上下動")
-        }
-    }
 
     private func bodyLabel(_ k: BalanceBodyKind) -> String {
         let L = AppLanguage.shared
@@ -255,248 +246,27 @@ struct BalanceTabCard: View {
         }
     }
 
-    /// 꼭짓점 값 — 케이던스 정수 spm · 보폭 0.00m · 접지 정수 ms · 수직 진폭 0.0cm · 심박 정수 bpm
-    private func axisValue(_ a: BalanceAxis) -> String {
-        switch a.kind {
-        case .heartRate: return "\(Int(a.value.rounded()))bpm"
-        case .cadence: return "\(Int(a.value.rounded()))spm"
-        case .stride: return String(format: "%.2fm", a.value)
-        case .groundContact: return "\(Int(a.value.rounded()))ms"
-        case .verticalOsc: return String(format: "%.1fcm", a.value)
-        }
-    }
-
     // MARK: - 저울
 
     /// 판 폭 — 막대 옆에서 190~270pt(막대 값 글자를 줄여 막대 영역이 좁아진 만큼 판을 넓힘, 2026-11-11)
     private static let boardMax: CGFloat = 270
     private static let boardMin: CGFloat = 190
-    private static let blockSlotMax: CGFloat = 26
-    private static let blockMaxH: CGFloat = 60
-    private static let boardH: CGFloat = 4
-    private static let labelRowH: CGFloat = 18
-    private static let groupSpacing: CGFloat = 2
-    /// 판 아래 가장자리 y — 회전 축(받침 꼭짓점)
-    private static var pivotY: CGFloat { blockMaxH + groupSpacing + boardH }
-    private static var groupH: CGFloat { pivotY + groupSpacing + labelRowH }
-    private static let fulcrumW: CGFloat = 22
-    private static let fulcrumH: CGFloat = 20
 
-    /// 기울어진 판 끝의 위아래 이동량 + 2pt — 최종 기울기 기준(애니메이션 중 배치가 흔들리지 않게)
-    private func tiltRoom(_ boardW: CGFloat) -> CGFloat {
-        let rad = abs(snapshot.tilt) * 12 * Double.pi / 180
-        return (boardW / 2 * CGFloat(sin(rad))).rounded(.up) + 2
-    }
-
-    /// 한 접시의 블록 칸 폭 — 반폭을 블록 수(최소 5칸)로 나눠 최대 30
-    private func slotW(_ boardW: CGFloat) -> CGFloat {
-        let halfW = (boardW - Self.fulcrumW - 8) / 2
-        let n = max(5, snapshot.inputBlocks.count, snapshot.outputBlocks.count)
-        return min(Self.blockSlotMax, (halfW / CGFloat(n)).rounded(.down))
-    }
-
-    /// 판 기울기(도) — tilt × 12. + = 왼쪽이 내려감(반시계) — 빨강 블록이 많은 쪽
-    private var tiltDegrees: Double { -snapshot.tilt * 12 * progress }
-
+    /// 저울 그림(BalanceDrawing.swift) — 판·받침·블록·블록 이름 + 캡션
     private func scale(boardW: CGFloat) -> some View {
-        let L = AppLanguage.shared
-        return VStack(spacing: 4) {
-            ZStack(alignment: .top) {
-                fulcrum
-                    .offset(y: Self.pivotY)
-                beamGroup(boardW: boardW)
-                    .rotationEffect(.degrees(tiltDegrees),
-                                    anchor: UnitPoint(x: 0.5, y: Self.pivotY / Self.groupH))
-            }
-            .frame(width: boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
-            // rotationEffect는 배치에 반영되지 않는다 — 판 끝이 오르내리는 만큼(반폭 × sin 각도) 위아래 자리를 비워
-            // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "몸 상태·부담 / 움직임"에 겹치지 않게(내보내기도 잘리지 않음)
-            .padding(.vertical, tiltRoom(boardW))
-            HStack {
-                // 이름 변경(2026-11-11): 왼쪽은 러닝 중 부담 + 출발 전 몸 상태, 오른쪽은 같은 페이스를 만든 방식(폼)이라
-                // "들인 것 / 나온 것"은 정확하지 않았다
-                Text(L.s("몸 상태·부담", "Body & strain", ja: "体の状態・負担"))
-                Spacer(minLength: 0)
-                Text(L.s("움직임", "Movement", ja: "動き"))
-            }
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(0.3)
-            .foregroundStyle(ink.fg(0.75))
-            .frame(width: boardW - 24)
-        }
-        .fixedSize()
-    }
-
-    /// 받침 — 꼭짓점이 판 가운데 아래에 닿는 삼각형 + 바닥 선
-    private var fulcrum: some View {
-        VStack(spacing: 0) {
-            FulcrumShape()
-                .fill(ink.fg(0.22))
-                .frame(width: Self.fulcrumW, height: Self.fulcrumH)
-            Capsule().fill(ink.fg(0.18)).frame(width: 56, height: 3)
-        }
-    }
-
-    /// 판 + 양쪽 블록 + 블록 이름 — 한 덩어리로 기운다
-    private func beamGroup(boardW: CGFloat) -> some View {
-        let halfW = (boardW - Self.fulcrumW - 8) / 2
-        let slot = slotW(boardW)
-        return VStack(spacing: Self.groupSpacing) {
-            HStack(spacing: 0) {
-                blockRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
-                Spacer(minLength: 0)
-                blockRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
-            }
-            .frame(height: Self.blockMaxH, alignment: .bottom)
-            Capsule()
-                .fill(ink.fg(0.45))
-                .frame(height: Self.boardH)
-            HStack(spacing: 0) {
-                labelRow(snapshot.inputBlocks, slotW: slot).frame(width: halfW)
-                Spacer(minLength: 0)
-                labelRow(snapshot.outputBlocks, slotW: slot).frame(width: halfW)
-            }
-            .frame(height: Self.labelRowH, alignment: .top)
-        }
-        .frame(width: boardW, height: Self.groupH)
-    }
-
-    private func blockRow(_ blocks: [BalanceBlock], slotW: CGFloat) -> some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            // 올릴 블록이 없는 접시(폼 없는 러닝의 나온 것 등)는 "—"
-            if blocks.isEmpty {
-                Text("—")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(ink.fg(0.40))
-            }
-            ForEach(blocks, id: \.kind) { b in
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(toneColor(b.tone))
-                    .frame(width: (slotW * 0.6).rounded(), height: max(4, Self.blockMaxH * b.height))
-                    .frame(width: slotW)
-            }
-        }
-        .frame(maxHeight: .infinity, alignment: .bottom)
-    }
-
-    private func labelRow(_ blocks: [BalanceBlock], slotW: CGFloat) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            ForEach(blocks, id: \.kind) { b in
-                Text(blockLabel(b.kind))
-                    .font(.system(size: 7.5, weight: .medium))
-                    .foregroundStyle(ink.fg(0.60))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.6)
-                    .frame(width: slotW)
-            }
-        }
+        BalanceScaleView(snapshot: snapshot, boardW: boardW, style: drawStyle, progress: progress)
     }
 
     // MARK: - 폼 거미줄
 
-    // 2026-11-11 실기기 요청으로 크게 — 전체 폭 가운데에 둔다(R 52 → 72)
-    /// 거미줄 크기 — 큰 화면 R 108, 그 외 R 88(`radar`의 ViewThatFits). 2026-11-11 실기기 요청으로 키움(52 → 72 → 96 → 108).
-    private struct RadarSize {
-        let w: CGFloat, h: CGFloat, r: CGFloat, labelR: CGFloat
-        var center: CGPoint { CGPoint(x: w / 2, y: h / 2) }
-        // 바깥 크기는 그대로, 도형과 라벨 사이 여백(28 → 22pt)을 줄여 도형만 키움(2026-11-11 실기기: 96 → 108)
-        static let large = RadarSize(w: 340, h: 292, r: 108, labelR: 130)
-        static let medium = RadarSize(w: 290, h: 244, r: 88, labelR: 108)
-    }
-
     /// 그릴 축 — 스냅샷 순서(심박·케이던스·보폭·접지·수직 진폭) 중 있는 것만
     private var radarAxes: [BalanceAxis] { snapshot.axes }
 
-    /// 축 자리의 점 — 없는 축은 자리를 비운다(다섯 자리 고정)
-    private static func point(_ k: BalanceAxisKind, r: CGFloat, center: CGPoint) -> CGPoint {
-        let a = BalanceRadarGeometry.angle(k)
-        return CGPoint(x: center.x + r * CGFloat(cos(a)), y: center.y + r * CGFloat(sin(a)))
-    }
-
+    /// 거미줄 크기 — 큰 화면 R 108, 그 외 R 88(2026-11-11 실기기 요청으로 키움, BalanceRadarSize)
     private var radar: some View {
         ViewThatFits(in: .horizontal) {
-            radar(.large)
-            radar(.medium)
-        }
-    }
-
-    private func radar(_ m: RadarSize) -> some View {
-        let axes = radarAxes
-        let kinds = axes.map(\.kind)
-        let todayR = axes.map { BalanceSnapshot.radius(value: $0.value, stat: $0.stat) }
-        return ZStack {
-            // 바탕 — 바깥 고리(1.0)와 축선
-            RadarPolygon(kinds: kinds, radii: Array(repeating: 1.0, count: kinds.count),
-                         maxR: m.r, progress: 1)
-                .stroke(ink.fg(0.10), lineWidth: 0.5)
-            RadarSpokes(kinds: kinds, maxR: m.r)
-                .stroke(ink.fg(0.10), lineWidth: 0.5)
-            // 평소 범위 띠(0.25…0.75 = stat 하한…상한) — 회색. 참고(빌린 구간·판정 불가·장거리)는 옅은 띠 + 점선 테두리(폼 탭 참고 띠와 같은 표기)
-            RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: m.r)
-                .fill(ink.fg(snapshot.isReference ? 0.05 : 0.10), style: FillStyle(eoFill: true))
-            if snapshot.isReference {
-                RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: m.r)
-                    .stroke(ink.fg(0.32), style: StrokeStyle(lineWidth: 0.8, dash: [2.5, 2.5]))
-            }
-            // 평소(띠 가운데 = 중앙값) — 회색 도형
-            RadarPolygon(kinds: kinds, radii: Array(repeating: 0.5, count: kinds.count),
-                         maxR: m.r, progress: 1)
-                .stroke(ink.fg(0.40), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            // 오늘 — 보라 도형(펼쳐짐)
-            RadarPolygon(kinds: kinds, radii: todayR, maxR: m.r, progress: progress)
-                .fill(ink.violet.opacity(0.22))
-            RadarPolygon(kinds: kinds, radii: todayR, maxR: m.r, progress: progress)
-                .stroke(ink.violet, lineWidth: 1.5)
-            vertexDots(axes: axes, radii: todayR, m: m)
-            axisLabels(axes: axes, m: m)
-        }
-        .frame(width: m.w, height: m.h)
-        .overlay(alignment: .topLeading) {
-            if snapshot.isReference { referenceChip }
-        }
-    }
-
-    /// "참고" 칩 — 판정어가 아니라 기준이 참고용이라는 표시
-    private var referenceChip: some View {
-        Text(AppLanguage.shared.s("참고", "Ref", ja: "参考"))
-            .font(.system(size: 8, weight: .semibold))
-            .foregroundStyle(ink.fg(0.60))
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(ink.fg(0.08))
-            .clipShape(Capsule())
-    }
-
-    /// 꼭짓점 점 — 나쁜 방향으로 범위를 벗어난 축만 빨간 점(참고 모드는 상태 .unknown이라 없음)
-    private func vertexDots(axes: [BalanceAxis], radii: [Double], m: RadarSize) -> some View {
-        ForEach(Array(axes.enumerated()), id: \.element.kind) { i, a in
-            let adverse = BalanceSnapshot.isAdverse(a.kind, a.status)
-            let favorable = BalanceSnapshot.isFavorable(a.kind, a.status)
-            let p = Self.point(a.kind, r: m.r * CGFloat(radii[i] * progress), center: m.center)
-            Circle()
-                .fill(adverse ? badColor : (favorable ? levelColor(.good) : ink.violet))
-                .frame(width: adverse || favorable ? 7 : 4, height: adverse || favorable ? 7 : 4)
-                .position(p)
-        }
-    }
-
-    private func axisLabels(axes: [BalanceAxis], m: RadarSize) -> some View {
-        ForEach(axes, id: \.kind) { a in
-            let p = Self.point(a.kind, r: m.labelR, center: m.center)
-            VStack(spacing: 0) {
-                // 축 이름은 회색 — 빨강은 평소 범위 밖 값에만(지표 의미색 빨강 "심박"이 나쁜 값처럼 읽혔다, 2026-11-11)
-                Text(axisLabel(a.kind))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(ink.fg(0.55))
-                Text(axisValue(a))
-                    .font(.system(size: 12, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(BalanceSnapshot.isAdverse(a.kind, a.status) ? badColor
-                                     : (BalanceSnapshot.isFavorable(a.kind, a.status) ? levelColor(.good) : ink.primary))
-            }
-            .lineLimit(1)
-            .fixedSize()
-            .position(p)
+            BalanceRadarView(snapshot: snapshot, size: .large, style: drawStyle, progress: progress)
+            BalanceRadarView(snapshot: snapshot, size: .medium, style: drawStyle, progress: progress)
         }
     }
 
@@ -573,86 +343,5 @@ struct BalanceTabCard: View {
                 .frame(height: 20, alignment: .top)
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - 도형
-
-/// 받침 삼각형 — 꼭짓점이 위
-private struct FulcrumShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        p.closeSubpath()
-        return p
-    }
-}
-
-/// 거미줄 다각형 — 축 자리(고정 다섯 자리 중 있는 것)마다 반지름 비율(0…1) × maxR × progress
-private struct RadarPolygon: Shape {
-    let kinds: [BalanceAxisKind]
-    let radii: [Double]
-    let maxR: CGFloat
-    var progress: Double
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        var p = Path()
-        for (i, k) in kinds.enumerated() {
-            let a = BalanceRadarGeometry.angle(k)
-            let r = maxR * CGFloat(radii[i] * progress)
-            let pt = CGPoint(x: c.x + r * CGFloat(cos(a)), y: c.y + r * CGFloat(sin(a)))
-            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
-        }
-        p.closeSubpath()
-        return p
-    }
-}
-
-/// 평소 범위 띠 — 바깥(상한)·안(하한) 두 다각형, 짝홀 채우기로 고리
-private struct RadarBand: Shape {
-    let kinds: [BalanceAxisKind]
-    let inner: Double
-    let outer: Double
-    let maxR: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var p = RadarPolygon(kinds: kinds, radii: Array(repeating: outer, count: kinds.count),
-                             maxR: maxR, progress: 1).path(in: rect)
-        p.addPath(RadarPolygon(kinds: kinds, radii: Array(repeating: inner, count: kinds.count),
-                               maxR: maxR, progress: 1).path(in: rect))
-        return p
-    }
-}
-
-/// 축선 — 가운데에서 바깥 고리까지
-private struct RadarSpokes: Shape {
-    let kinds: [BalanceAxisKind]
-    let maxR: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        var p = Path()
-        for k in kinds {
-            let a = BalanceRadarGeometry.angle(k)
-            p.move(to: c)
-            p.addLine(to: CGPoint(x: c.x + maxR * CGFloat(cos(a)), y: c.y + maxR * CGFloat(sin(a))))
-        }
-        return p
-    }
-}
-
-/// 축 각도 — 다섯 자리 고정(맨 위 심박부터 시계 방향). 도형과 글자가 같은 값을 쓴다.
-private enum BalanceRadarGeometry {
-    static func angle(_ k: BalanceAxisKind) -> Double {
-        let i = BalanceAxisKind.allCases.firstIndex(of: k) ?? 0
-        return -Double.pi / 2 + Double(i) * 2 * Double.pi / 5
     }
 }
