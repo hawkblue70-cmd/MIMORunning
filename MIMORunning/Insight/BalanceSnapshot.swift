@@ -50,6 +50,9 @@ struct BalanceSnapshot: Equatable {
     var effortDelta: Int? = nil
     /// 참고 모드(빌린 구간·판정 불가) 또는 장거리 문맥 — 심박·폼 축을 판정하지 않는다(화면: "참고" 칩·점선 띠)
     var isReference: Bool = false
+    /// 폼 탭 마무리 문장의 요약(`TabDigestForm.narrativeShort`, 예: "지면접촉 281ms·케이던스 172spm — 다리 무거운 날 패턴") —
+    /// 폼 탭과 같은 함수·같은 입력으로 접착 코드가 채운다(2026-11-11 사용자 요청). 없으면 줄 없음.
+    var formNote: String? = nil
     /// −1…1. 빨강(문제) 블록이 많은 쪽이 내려간다 — + = 왼쪽(들인 것), − = 오른쪽(나온 것).
     /// 처음엔 물리 저울(들인 것이 무거우면 왼쪽)이었는데, 눈은 "내려간 쪽 = 문제 쪽"으로 읽어
     /// 나온 것만 문제인 날(케이던스·접지 빨강)에 멀쩡한 왼쪽이 내려가 거꾸로 읽혔다(2026-11-11 사용자 결정).
@@ -224,6 +227,20 @@ struct BalanceSnapshot: Equatable {
 
     /// 빨간 점·빨간 블록이 되는 쪽 — 심박·접지는 위(더 들임·길어짐), 케이던스·보폭은 아래(덜 나옴).
     /// 수직 진폭은 방향 해석이 갈려 빨간 점을 찍지 않는다(저울 점수에도 없음).
+    /// 좋은 쪽 이탈 — 심박 낮음·접지 짧음·케이던스/보폭 큼(초록, 2026-11-11 사용자 결정). 수직 진폭은 방향 해석이 갈려 없음.
+    static func isFavorable(_ kind: BalanceAxisKind, _ status: FormNarrative.Status) -> Bool {
+        switch kind {
+        case .heartRate, .groundContact: return status == .below
+        case .cadence, .stride: return status == .above
+        case .verticalOsc: return false
+        }
+    }
+
+    /// 축 상태 → 블록 색: 나쁜 쪽 빨강 · 좋은 쪽 초록 · 범위 안 회색. 기울기는 빨강만 센다.
+    static func axisTone(_ kind: BalanceAxisKind, _ status: FormNarrative.Status) -> BalanceTone {
+        isAdverse(kind, status) ? .bad : (isFavorable(kind, status) ? .good : .usual)
+    }
+
     static func isAdverse(_ kind: BalanceAxisKind, _ status: FormNarrative.Status) -> Bool {
         switch kind {
         case .heartRate, .groundContact: return status == .above
@@ -255,12 +272,12 @@ struct BalanceSnapshot: Equatable {
         var out: [BalanceBlock] = []
         if let a = heartRateAxis {
             out.append(BalanceBlock(kind: .heartRate,
-                                    tone: Self.isAdverse(.heartRate, a.status) ? .bad : .usual,
+                                    tone: Self.axisTone(.heartRate, a.status),
                                     height: Self.radius(value: a.value, stat: a.stat)))
         }
         if let d = effortDelta {
             // 점수 문턱(±2)이 평소 범위 경계(0.25·0.75)에 오게
-            out.append(BalanceBlock(kind: .effort, tone: d >= 2 ? .bad : .usual,
+            out.append(BalanceBlock(kind: .effort, tone: d >= 2 ? .bad : (d <= -2 ? .good : .usual),
                                     height: max(0.1, min(1.0, 0.5 + Double(d) * 0.125))))
         }
         let map: [BalanceBodyKind: BalanceBlockKind] = [.sleep: .sleep, .hrv: .hrv, .load: .load]
@@ -278,15 +295,15 @@ struct BalanceSnapshot: Equatable {
         for a in axes {
             switch a.kind {
             case .cadence:
-                out.append(BalanceBlock(kind: .cadence, tone: Self.isAdverse(.cadence, a.status) ? .bad : .usual,
+                out.append(BalanceBlock(kind: .cadence, tone: Self.axisTone(.cadence, a.status),
                                         height: Self.radius(value: a.value, stat: a.stat)))
             case .stride:
-                out.append(BalanceBlock(kind: .stride, tone: Self.isAdverse(.stride, a.status) ? .bad : .usual,
+                out.append(BalanceBlock(kind: .stride, tone: Self.axisTone(.stride, a.status),
                                         height: Self.radius(value: a.value, stat: a.stat)))
             case .groundContact:
                 // 접지는 짧을수록 더 나온 것 — 눈금을 뒤집는다(평소 0.5는 그대로)
                 out.append(BalanceBlock(kind: .groundContact,
-                                        tone: Self.isAdverse(.groundContact, a.status) ? .bad : .usual,
+                                        tone: Self.axisTone(.groundContact, a.status),
                                         height: max(0.1, min(1.0, 1.0 - Self.radius(value: a.value, stat: a.stat)))))
             case .heartRate, .verticalOsc:
                 break

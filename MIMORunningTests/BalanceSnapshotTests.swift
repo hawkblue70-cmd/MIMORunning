@@ -315,4 +315,19 @@ struct BalanceSnapshotTests {
         g.cadence = 180
         #expect(try #require(S.make(g)).tilt == 0)
     }
+
+    @Test func favorableDeviationIsGreenButDoesNotTilt() throws {
+        var i = base()
+        i.heartRate = 140      // 평소보다 낮음
+        i.cadence = 180        // 평소보다 높음
+        i.groundContact = 235  // 평소보다 짧음
+        i.effort = 2           // 평소보다 2 낮음
+        let s = try #require(S.make(i))
+        #expect(s.inputBlocks.first { $0.kind == .heartRate }?.tone == .good)
+        #expect(s.inputBlocks.first { $0.kind == .effort }?.tone == .good)
+        #expect(s.outputBlocks.first { $0.kind == .cadence }?.tone == .good)
+        #expect(s.outputBlocks.first { $0.kind == .groundContact }?.tone == .good)
+        #expect(s.tilt == 0)
+        #expect(S.isFavorable(.verticalOsc, .above) == false)
+    }
 }

@@ -73,11 +73,15 @@ extension BalanceTabCard {
             activity: c.activity, detail: c.detail, baseline: c.formBaseline, formShifts: c.formShifts,
             workoutType: c.workoutType,
             typicalKm: RunSummaryBuilder.typicalRunDistanceKm(activity: c.activity, history: c.history),
-            fatigueContext: nil)
+            // 폼 탭과 같은 피로 맥락·이지 존 비율 — 폼 문장 요약(formNote)이 폼 탭과 같게
+            fatigueContext: RunSummaryBuilder.fatigueContext(activity: c.activity, history: c.history, effortIndex: c.effortIndex))
+            .withEasyZone(TabDigestRhythm.easyLowZoneFraction(zones: c.hrZones))
         let summary = RunSummaryBuilder.input(c)
-        return BalanceSnapshot.make(.from(form: form, summary: summary, activity: c.activity,
-                                          history: c.history, effortIndex: c.effortIndex,
-                                          typeOf: c.workoutTypeFn, vo2Points: vo2Points))
+        guard var snap = BalanceSnapshot.make(.from(form: form, summary: summary, activity: c.activity,
+                                                    history: c.history, effortIndex: c.effortIndex,
+                                                    typeOf: c.workoutTypeFn, vo2Points: vo2Points)) else { return nil }
+        if snap.mode == .full { snap.formNote = TabDigestForm.narrativeShort(form) }
+        return snap
     }
 }
 
@@ -170,6 +174,22 @@ struct BalanceTabCard: View {
                 .foregroundStyle(ink.fg(0.85))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // 폼 탭 문장 요약 — 같은 함수(TabDigestForm.narrativeShort)라 폼 탭과 같은 말
+        if let note = snapshot.formNote {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(AppLanguage.shared.s("폼", "Form", ja: "フォーム"))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(ink.fg(0.60))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(ink.fg(0.08))
+                    .clipShape(Capsule())
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ink.fg(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -451,10 +471,11 @@ struct BalanceTabCard: View {
     private func vertexDots(axes: [BalanceAxis], radii: [Double], m: RadarSize) -> some View {
         ForEach(Array(axes.enumerated()), id: \.element.kind) { i, a in
             let adverse = BalanceSnapshot.isAdverse(a.kind, a.status)
+            let favorable = BalanceSnapshot.isFavorable(a.kind, a.status)
             let p = Self.point(a.kind, r: m.r * CGFloat(radii[i] * progress), center: m.center)
             Circle()
-                .fill(adverse ? badColor : ink.violet)
-                .frame(width: adverse ? 7 : 4, height: adverse ? 7 : 4)
+                .fill(adverse ? badColor : (favorable ? levelColor(.good) : ink.violet))
+                .frame(width: adverse || favorable ? 7 : 4, height: adverse || favorable ? 7 : 4)
                 .position(p)
         }
     }
@@ -470,7 +491,8 @@ struct BalanceTabCard: View {
                 Text(axisValue(a))
                     .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(BalanceSnapshot.isAdverse(a.kind, a.status) ? badColor : ink.primary)
+                    .foregroundStyle(BalanceSnapshot.isAdverse(a.kind, a.status) ? badColor
+                                     : (BalanceSnapshot.isFavorable(a.kind, a.status) ? levelColor(.good) : ink.primary))
             }
             .lineLimit(1)
             .fixedSize()
