@@ -1229,7 +1229,9 @@ struct RunInsightTabCard: View {
             )
         case .balance:
             if let snap = balance {
-                BalanceTabCard(snapshot: snap)
+                BalanceTabCard(snapshot: snap,
+                               header: .make(activity: activity, detail: detail,
+                                             workoutType: workoutTypeFn?(activity.id) ?? .general, shoeName: shoeName))
             }
         case .race:
             RaceInsightCard(
@@ -5914,7 +5916,8 @@ struct InsightExportSheet: View {
         case .balance:
             if let snap = exportBalance {
                 BalanceTabCard(snapshot: snap, isExport: true,
-                               recordLine: "\(activity.formattedDistance) · \(activity.formattedDuration)")
+                               header: .make(activity: activity, detail: detail,
+                                             workoutType: workoutTypeFn?(activity.id) ?? .general, shoeName: shoeName))
             }
         case .race:
             RaceInsightCard(

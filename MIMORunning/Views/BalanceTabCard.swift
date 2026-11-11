@@ -86,8 +86,8 @@ extension BalanceTabCard {
 struct BalanceTabCard: View {
     let snapshot: BalanceSnapshot
     var isExport: Bool = false   // 내보내기: 애니메이션 없이 최종 상태
-    /// 내보내기 이미지 맨 위 기본 기록("8.42 km · 53:23") — 이미지만 보고도 어떤 러닝인지(앱 화면은 위 종합 카드가 보여 주므로 nil)
-    var recordLine: String? = nil
+    /// 맨 위 요약 — 폼 탭과 같은 뷰(거리·러닝화·시간·페이스·케이던스·보폭, 2026-11-11 사용자 요청)
+    var header: RunFormTopSummary? = nil
 
     @Environment(\.insightLight) private var insightLight
     @Environment(\.insightCompact) private var compact
@@ -116,7 +116,7 @@ struct BalanceTabCard: View {
     private var content: some View {
         switch snapshot.mode {
         case .full:
-            if let recordLine { recordHeader(recordLine) }
+            if let header { header; divider }
             // 위: 저울 + 몸 상태 세로 막대 한 줄, 아래: 거미줄 크게(2026-11-11 실기기 요청)
             scaleAndBodies
             summaryCaption
@@ -126,43 +126,39 @@ struct BalanceTabCard: View {
                 radarLegend
             }
         case .scaleOnly:
-            if let recordLine { recordHeader(recordLine) }
+            if let header { header; divider }
             scaleAndBodies
             summaryCaption
         case .bodyOnly:
-            if let recordLine { recordHeader(recordLine) }
+            if let header { header; divider }
             bodyBars
         }
     }
 
-    /// 내보내기 맨 위 기본 기록 한 줄
-    private func recordHeader(_ line: String) -> some View {
-        Text(line)
-            .font(.system(size: 13, weight: .semibold))
-            .monospacedDigit()
-            .foregroundStyle(ink.primary)
-            .frame(maxWidth: .infinity)
-    }
-
-    /// 저울 옆에 몸 상태 세로 막대 — 폭이 모자라면(작은 폰) 막대를 저울 아래 한 줄로
+    /// 저울 + 오른쪽 몸 상태 세로 막대 — 늘 한 줄(2026-11-11 사용자 요청: 저울 폭을 줄이고 막대는 오른쪽).
+    /// 판 폭은 남는 폭에서 막대 영역을 뺀 값으로 정하되 180~220pt 안에서.
     @ViewBuilder
     private var scaleAndBodies: some View {
         if snapshot.bodies.isEmpty {
-            scale
+            scale(boardW: Self.boardMax).frame(maxWidth: .infinity)
         } else {
-            ViewThatFits(in: .horizontal) {
-                // 막대 영역은 고정 폭 — 글자 이상 폭(약 160pt)으로 재면 ViewThatFits가 늘 아래 배치로 넘어갔다(2026-11-11 실기기)
-                HStack(alignment: .bottom, spacing: 10) {
-                    scale(boardW: Self.boardNarrow).fixedSize()
+            GeometryReader { g in
+                let board = min(Self.boardMax, max(Self.boardMin, g.size.width - Self.bodyColumnsW - Self.scaleBarsGap))
+                HStack(alignment: .bottom, spacing: Self.scaleBarsGap) {
+                    scale(boardW: board)
+                    Spacer(minLength: 0)
                     bodyBars.frame(width: Self.bodyColumnsW)
                 }
-                VStack(spacing: compact ? 8 : 12) {
-                    scale
-                    bodyBars
-                }
             }
-            .frame(maxWidth: .infinity)
+            .frame(height: scaleHeight(Self.boardMax))
         }
+    }
+
+    private static let scaleBarsGap: CGFloat = 10
+
+    /// 저울 전체 높이(판 끝 이동 자리 + 받침 + 캡션) — GeometryReader에 줄 높이
+    private func scaleHeight(_ boardW: CGFloat) -> CGFloat {
+        (Self.pivotY + Self.fulcrumH + 3) + 2 * tiltRoom(boardW) + 4 + 16
     }
 
     /// 저울 아래 한 줄 해석 — 빨강 블록만 사실로(`BalanceSnapshot.summaryLine`)
@@ -211,7 +207,7 @@ struct BalanceTabCard: View {
         case .effort: return L.s("체감", "RPE", ja: "体感")   // 영어 약어(블록 칸이 좁다)
         case .sleep: return L.s("수면", "Sleep", ja: "睡眠")
         case .hrv: return "HRV"
-        case .load: return L.s("7일 부하", "7-day load", ja: "7日負荷")
+        case .load: return L.s("부하", "Load", ja: "負荷")   // 저울 칸이 좁아 짧게(막대는 "7일 부하")
         case .cadence: return L.s("케이던스", "Cadence", ja: "ケイデンス")
         case .stride: return L.s("보폭", "Stride", ja: "ストライド")
         case .groundContact: return L.s("접지", "Contact", ja: "接地")
@@ -252,11 +248,9 @@ struct BalanceTabCard: View {
 
     // MARK: - 저울
 
-    /// 판 폭 — 막대 옆이면 236, 막대가 아래로 내려간 작은 화면은 300 · 270(`scale`의 ViewThatFits).
-    private static let boardWide: CGFloat = 300
-    private static let boardMid: CGFloat = 270
-    /// 몸 상태 막대 옆에 둘 때의 판 폭(2026-11-11 실기기: 저울 폭을 줄이고 옆에 세로 막대)
-    private static let boardNarrow: CGFloat = 236
+    /// 판 폭 — 막대 옆에서 180~220pt(2026-11-11 사용자 요청으로 288 → 236 → 220 이하로 좁힘)
+    private static let boardMax: CGFloat = 220
+    private static let boardMin: CGFloat = 180
     private static let blockSlotMax: CGFloat = 26
     private static let blockMaxH: CGFloat = 60
     private static let boardH: CGFloat = 4
@@ -283,15 +277,6 @@ struct BalanceTabCard: View {
 
     /// 판 기울기(도) — tilt × 12. + = 왼쪽이 내려감(반시계) — 빨강 블록이 많은 쪽
     private var tiltDegrees: Double { -snapshot.tilt * 12 * progress }
-
-    private var scale: some View {
-        ViewThatFits(in: .horizontal) {
-            scale(boardW: Self.boardWide)
-            scale(boardW: Self.boardMid)
-            scale(boardW: Self.boardNarrow)
-        }
-        .frame(maxWidth: .infinity)
-    }
 
     private func scale(boardW: CGFloat) -> some View {
         let L = AppLanguage.shared
@@ -378,11 +363,11 @@ struct BalanceTabCard: View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(blocks, id: \.kind) { b in
                 Text(blockLabel(b.kind))
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 7.5, weight: .medium))
                     .foregroundStyle(ink.fg(0.60))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
                     .frame(width: slotW)
             }
         }
