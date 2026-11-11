@@ -48,6 +48,8 @@ struct BalanceSnapshot: Equatable {
     var heartRateAxis: BalanceAxis? = nil
     /// 체감 강도 − 같은 종류 평소 강도. bodyOnly 이거나 둘 중 하나라도 없으면 nil
     var effortDelta: Int? = nil
+    /// 참고 모드(빌린 구간·판정 불가) 또는 장거리 문맥 — 심박·폼 축을 판정하지 않는다(화면: "참고" 칩·점선 띠)
+    var isReference: Bool = false
     /// −1…1. + = 왼쪽(들인 것)으로 기움 = 힘든 날, − = 가벼운 날
     var tilt: Double { max(-1, min(1, Double(inputScore - outputScore) / 4)) }
 
@@ -56,6 +58,8 @@ struct BalanceSnapshot: Equatable {
         var paceSecPerKm: Double?
         var hasForm: Bool                  // detail?.avgCadence != nil (폼 탭 노출 조건과 같음)
         var isReferenceBand: Bool          // 판정 불가 → 참고 모드
+        /// 장거리 문맥(`TabDigestForm.Inputs.isLongDistanceContext`) — 폼 탭처럼 판단 유보: 심박·폼 축 판정·점수 없음
+        var isLongDistance: Bool = false
         var heartRate: Double?;  var heartRateStat: FormStat?
         var cadence: Double?;    var cadenceStat: FormStat?
         var stride: Double?;     var strideStat: FormStat?
@@ -116,9 +120,6 @@ struct BalanceSnapshot: Equatable {
             bodies.append(BalanceBody(kind: .vo2, level: lv, display: String(format: "%.1f", v)))
         }
 
-        let hasEffort = i.effort != nil && i.effortTypeMedian != nil
-        let hasBodyInput = bodies.contains { $0.kind != .vo2 }
-
         // 모드
         let mode: Mode
         if i.workoutType == .interval {
@@ -129,12 +130,19 @@ struct BalanceSnapshot: Equatable {
                 || i.groundContactStat != nil || i.verticalOscStat != nil
             if i.hasForm && hasFormStat {
                 mode = .full
-            } else if (i.heartRate != nil && i.heartRateStat != nil) || hasEffort || hasBodyInput {
-                // 심박 값 없이 기준선만 있으면 저울에 올릴 심박 블록이 없다 — 스펙 "심박도 없음 → 저울 못 그림"
+            } else if i.heartRate != nil && i.heartRateStat != nil {
+                // 폼 없음 → 저울만. 심박(값과 기준)도 없으면 저울을 못 그린다 → 탭 숨김(스펙)
                 mode = .scaleOnly
             } else {
                 return nil
             }
+        }
+
+        // 판정 — 참고 모드·장거리 문맥·폭 없는 기준(상한 ≤ 하한)은 .unknown(빨간 점·점수 없음)
+        let noJudge = i.isReferenceBand || i.isLongDistance
+        func status(_ v: Double?, _ s: FormStat?, _ m: FormNarrative.Metric) -> FormNarrative.Status {
+            guard !noJudge, let s, s.upper - s.lower > 0 else { return .unknown }
+            return FormNarrative.status(rawValue: v, stat: s, metric: m)
         }
 
         // 축 (full 만)
@@ -142,9 +150,7 @@ struct BalanceSnapshot: Equatable {
         if mode == .full {
             func axis(_ k: BalanceAxisKind, _ v: Double?, _ s: FormStat?, _ m: FormNarrative.Metric) -> BalanceAxis? {
                 guard let v, let s else { return nil }
-                let st: FormNarrative.Status = i.isReferenceBand ? .unknown
-                    : FormNarrative.status(rawValue: v, stat: s, metric: m)
-                return BalanceAxis(kind: k, value: v, stat: s, status: st)
+                return BalanceAxis(kind: k, value: v, stat: s, status: status(v, s, m))
             }
             // 심박은 bpm 정수 반올림 — 케이던스와 같은 정밀도
             axes = [axis(.heartRate, i.heartRate, i.heartRateStat, .cadence),
@@ -154,10 +160,7 @@ struct BalanceSnapshot: Equatable {
                     axis(.verticalOsc, i.verticalOsc, i.verticalOscStat, .verticalOsc)].compactMap { $0 }
         }
 
-        // 점수 (참고 모드·.unknown 은 0)
-        func status(_ v: Double?, _ s: FormStat?, _ m: FormNarrative.Metric) -> FormNarrative.Status {
-            i.isReferenceBand ? .unknown : FormNarrative.status(rawValue: v, stat: s, metric: m)
-        }
+        // 점수 (.unknown 은 0)
         var input = 0
         var output = 0
         if mode != .bodyOnly {
@@ -200,7 +203,7 @@ struct BalanceSnapshot: Equatable {
 
         return BalanceSnapshot(mode: mode, paceSecPerKm: i.paceSecPerKm, axes: axes, bodies: bodies,
                                inputScore: input, outputScore: output,
-                               heartRateAxis: hrAxis, effortDelta: effortDelta)
+                               heartRateAxis: hrAxis, effortDelta: effortDelta, isReference: noJudge)
     }
 
     // MARK: - 그리기 재료 (순수 계산 — 화면은 이 값만 그린다)
@@ -212,11 +215,13 @@ struct BalanceSnapshot: Equatable {
         return max(0.1, min(1.0, 0.5 + (value - stat.median) / w * 0.5))
     }
 
-    /// 빨간 점·빨간 블록이 되는 쪽 — 심박·접지·수직 진폭은 위(더 들임·길어짐·커짐), 케이던스·보폭은 아래(덜 나옴).
+    /// 빨간 점·빨간 블록이 되는 쪽 — 심박·접지는 위(더 들임·길어짐), 케이던스·보폭은 아래(덜 나옴).
+    /// 수직 진폭은 방향 해석이 갈려 빨간 점을 찍지 않는다(저울 점수에도 없음).
     static func isAdverse(_ kind: BalanceAxisKind, _ status: FormNarrative.Status) -> Bool {
         switch kind {
-        case .heartRate, .groundContact, .verticalOsc: return status == .above
+        case .heartRate, .groundContact: return status == .above
         case .cadence, .stride: return status == .below
+        case .verticalOsc: return false
         }
     }
 

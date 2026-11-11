@@ -48,6 +48,7 @@ extension BalanceSnapshot.Input {
             paceSecPerKm: activity.paceSecPerKm,
             hasForm: form.avgCadence != nil,
             isReferenceBand: ref || notJudgeable,
+            isLongDistance: form.isLongDistanceContext,
             heartRate: activity.avgHeartRate.map(Double.init), heartRateStat: band?.heartRate,
             cadence: form.avgCadence.map(Double.init), cadenceStat: band?.cadence,
             stride: form.avgStrideLength, strideStat: ref ? form.displayStrideStat : form.strideStat,
@@ -233,6 +234,12 @@ struct BalanceTabCard: View {
     private static let fulcrumW: CGFloat = 22
     private static let fulcrumH: CGFloat = 20
 
+    /// 기울어진 판 끝의 위아래 이동량 + 2pt — 최종 기울기 기준(애니메이션 중 배치가 흔들리지 않게)
+    private var tiltRoom: CGFloat {
+        let rad = abs(snapshot.tilt) * 12 * Double.pi / 180
+        return (Self.boardW / 2 * CGFloat(sin(rad))).rounded(.up) + 2
+    }
+
     /// 판 기울기(도) — tilt × 12. + = 왼쪽(들인 것)이 내려감 = 반시계 방향
     private var tiltDegrees: Double { -snapshot.tilt * 12 * progress }
 
@@ -247,6 +254,9 @@ struct BalanceTabCard: View {
                                     anchor: UnitPoint(x: 0.5, y: Self.pivotY / Self.groupH))
             }
             .frame(width: Self.boardW, height: Self.pivotY + Self.fulcrumH + 3, alignment: .top)
+            // rotationEffect는 배치에 반영되지 않는다 — 판 끝이 오르내리는 만큼(반폭 × sin 각도) 위아래 자리를 비워
+            // 기운 블록이 위 구분선에, 기운 블록 이름이 아래 "들인 것 / 나온 것"에 겹치지 않게(내보내기도 잘리지 않음)
+            .padding(.vertical, tiltRoom)
             HStack {
                 Text(L.s("들인 것", "Effort in", ja: "かけたもの"))
                 Spacer(minLength: 0)
@@ -295,6 +305,12 @@ struct BalanceTabCard: View {
 
     private func blockRow(_ blocks: [BalanceBlock]) -> some View {
         HStack(alignment: .bottom, spacing: 0) {
+            // 올릴 블록이 없는 접시(폼 없는 러닝의 나온 것 등)는 "—"
+            if blocks.isEmpty {
+                Text("—")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(ink.fg(0.40))
+            }
             ForEach(blocks, id: \.kind) { b in
                 RoundedRectangle(cornerRadius: 3)
                     .fill(toneColor(b.tone))
@@ -348,9 +364,13 @@ struct BalanceTabCard: View {
                 .stroke(ink.fg(0.10), lineWidth: 0.5)
             RadarSpokes(kinds: kinds, maxR: Self.radarR)
                 .stroke(ink.fg(0.10), lineWidth: 0.5)
-            // 평소 범위 띠(0.25…0.75 = stat 하한…상한) — 회색
+            // 평소 범위 띠(0.25…0.75 = stat 하한…상한) — 회색. 참고(빌린 구간·판정 불가·장거리)는 옅은 띠 + 점선 테두리(폼 탭 참고 띠와 같은 표기)
             RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: Self.radarR)
-                .fill(ink.fg(0.10), style: FillStyle(eoFill: true))
+                .fill(ink.fg(snapshot.isReference ? 0.05 : 0.10), style: FillStyle(eoFill: true))
+            if snapshot.isReference {
+                RadarBand(kinds: kinds, inner: 0.25, outer: 0.75, maxR: Self.radarR)
+                    .stroke(ink.fg(0.32), style: StrokeStyle(lineWidth: 0.8, dash: [2.5, 2.5]))
+            }
             // 평소(띠 가운데 = 중앙값) — 회색 도형
             RadarPolygon(kinds: kinds, radii: Array(repeating: 0.5, count: kinds.count),
                          maxR: Self.radarR, progress: 1)
@@ -365,6 +385,19 @@ struct BalanceTabCard: View {
             paceCenter
         }
         .frame(width: Self.radarW, height: Self.radarH)
+        .overlay(alignment: .topLeading) {
+            if snapshot.isReference { referenceChip }
+        }
+    }
+
+    /// "참고" 칩 — 판정어가 아니라 기준이 참고용이라는 표시
+    private var referenceChip: some View {
+        Text(AppLanguage.shared.s("참고", "Ref", ja: "参考"))
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(ink.fg(0.60))
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(ink.fg(0.08))
+            .clipShape(Capsule())
     }
 
     /// 꼭짓점 점 — 나쁜 방향으로 범위를 벗어난 축만 빨간 점(참고 모드는 상태 .unknown이라 없음)

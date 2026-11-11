@@ -105,6 +105,10 @@ struct BalanceSnapshotTests {
         e.effort = nil; e.effortTypeMedian = nil
         e.sleepHours = nil; e.usualSleepHours = nil; e.hrvLevel = nil; e.load = nil
         #expect(S.make(e) == nil)
+        var b = base()          // 몸 상태·체감은 있지만 폼·심박 없음 → 탭 숨김
+        b.hasForm = false
+        b.heartRate = nil; b.heartRateStat = nil
+        #expect(S.make(b) == nil)
         var v = base()
         v.verticalOsc = 12
         let s = try #require(S.make(v))
@@ -201,7 +205,8 @@ struct BalanceSnapshotTests {
         #expect(S.isAdverse(.stride, .below))
         #expect(S.isAdverse(.groundContact, .above))
         #expect(!S.isAdverse(.groundContact, .below))
-        #expect(S.isAdverse(.verticalOsc, .above))
+        #expect(!S.isAdverse(.verticalOsc, .above))
+        #expect(!S.isAdverse(.verticalOsc, .below))
         #expect(!S.isAdverse(.cadence, .unknown))
     }
 
@@ -244,5 +249,27 @@ struct BalanceSnapshotTests {
         i.effort = nil; i.effortTypeMedian = nil
         i.sleepHours = nil; i.usualSleepHours = nil; i.hrvLevel = nil; i.load = nil
         #expect(S.make(i) == nil)
+    }
+
+    @Test func longDistanceDoesNotScoreFormOrHR() throws {
+        var i = base()
+        i.isLongDistance = true
+        i.heartRate = 170; i.cadence = 160; i.stride = 0.8; i.groundContact = 290
+        let s = try #require(S.make(i))
+        #expect(s.mode == .full)
+        #expect(s.axes.count == 5)                               // 축은 그린다
+        #expect(s.axes.allSatisfy { $0.status == .unknown })     // 판정·빨간 점 없음
+        #expect(s.inputScore == 0)
+        #expect(s.outputScore == 0)
+        #expect(s.isReference)
+        #expect(s.inputBlocks.first { $0.kind == .heartRate }?.tone == .usual)
+    }
+
+    @Test func zeroWidthStatIsUnknown() throws {
+        var i = base()
+        i.heartRate = 160; i.heartRateStat = stat(150, 0)   // 상한 = 하한
+        let s = try #require(S.make(i))
+        #expect(s.axes.first { $0.kind == .heartRate }?.status == .unknown)
+        #expect(s.inputScore == 0)
     }
 }

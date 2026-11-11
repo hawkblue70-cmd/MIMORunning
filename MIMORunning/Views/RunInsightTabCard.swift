@@ -993,14 +993,16 @@ struct RunInsightTabCard: View {
     var shoeName: String? = nil
 
     var body: some View {
+        // 밸런스 스냅샷은 본문마다 한 번 — 탭 노출과 탭 내용이 같은 값을 쓴다
+        let balance = balanceSnapshot
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
-            tabPicker
+            tabPicker(visibleTabs(hasBalance: balance != nil))
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
-            cardContent
+            cardContent(balance: balance)
                 .padding(.horizontal, 16)
             disclaimer
                 .padding(.horizontal, 16)
@@ -1103,28 +1105,34 @@ struct RunInsightTabCard: View {
         }
     }
 
-    /// 밸런스 탭 스냅샷 — 탭 노출·내용이 같은 값. 총평과 같은 Context(`summaryContext` 하나).
+    /// 밸런스 탭 스냅샷 — 총평과 같은 Context(`summaryContext` 하나). 본문에서 한 번만 부른다.
     private var balanceSnapshot: BalanceSnapshot? {
         BalanceTabCard.snapshot(context: summaryContext, vo2Points: vo2Points)
     }
 
-    private var visibleTabs: [InsightTabKind] {
+    private func visibleTabs(hasBalance: Bool) -> [InsightTabKind] {
         let hasForm = detail?.avgCadence != nil
         let isRace  = workoutTypeFn?(activity.id) == .race
-        let hasBalance = balanceSnapshot != nil
         return InsightTabKind.allCases.filter {
             ($0 != .form || hasForm) && ($0 != .race || isRace) && ($0 != .balance || hasBalance)
         }
     }
 
-    /// 탭 5개(대회 포함)·일본어에서 폭을 넘으면 가로로 밀어 본다 — 글자가 줄바꿈·압축되지 않게
-    private var tabPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) { tabPickerRow }
+    /// 탭 5개(대회 포함)·일본어에서 폭을 넘으면 가로로 밀어 본다 — 글자가 줄바꿈·압축되지 않게.
+    /// 선택 탭이 화면 밖이면 나타날 때·바뀔 때 그 탭으로 스크롤(내보내기 시트 탭 줄과 같은 규칙).
+    private func tabPicker(_ tabs: [InsightTabKind]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) { tabPickerRow(tabs) }
+                .onAppear { proxy.scrollTo(tab, anchor: .center) }
+                .onChange(of: tab) { _, t in
+                    withAnimation(.easeInOut(duration: 0.18)) { proxy.scrollTo(t, anchor: .center) }
+                }
+        }
     }
 
-    private var tabPickerRow: some View {
+    private func tabPickerRow(_ tabs: [InsightTabKind]) -> some View {
         HStack(spacing: 6) {
-            ForEach(visibleTabs, id: \.self) { t in
+            ForEach(tabs, id: \.self) { t in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) { tab = t }
                 } label: {
@@ -1138,12 +1146,13 @@ struct RunInsightTabCard: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .id(t)
             }
         }
     }
 
     @ViewBuilder
-    private var cardContent: some View {
+    private func cardContent(balance: BalanceSnapshot?) -> some View {
         switch tab {
         case .rhythm:
             RhythmInsightCard(
@@ -1219,7 +1228,7 @@ struct RunInsightTabCard: View {
                 vo2Points: vo2Points, shoeName: shoeName
             )
         case .balance:
-            if let snap = balanceSnapshot {
+            if let snap = balance {
                 BalanceTabCard(snapshot: snap)
             }
         case .race:
@@ -5642,6 +5651,8 @@ struct InsightExportSheet: View {
     }
 
     @State private var tab: InsightTabKind = .rhythm
+    /// 밸런스 스냅샷 — 나타날 때 한 번 계산(입력은 시트가 열린 동안 바뀌지 않는다)
+    @State private var exportBalance: BalanceSnapshot? = nil
     /// 테마 칩 — 켜짐 = 라이트, 꺼짐 = 다크(기본). 저장 안 함(러닝 하루 카드·차트 내보내기와 같은 규칙).
     @State private var isLight = false
     @State private var exportImage: UIImage? = nil
@@ -5672,6 +5683,7 @@ struct InsightExportSheet: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
+            exportBalance = balanceSnapshot   // 탭 노출·내용·렌더가 같은 값 — 한 번만 계산
             tab = startTab
             renderCard()
         }
@@ -5683,6 +5695,7 @@ struct InsightExportSheet: View {
     }
 
     /// 밸런스 탭 스냅샷 — 인사이트 탭 카드(`RunInsightTabCard.balanceSnapshot`)와 같은 식(미리보기 = 출력).
+    /// 시트가 나타날 때 `exportBalance`에 한 번 담는다.
     private var balanceSnapshot: BalanceSnapshot? {
         BalanceTabCard.snapshot(context: summaryContext, vo2Points: vo2Points)
     }
@@ -5690,15 +5703,21 @@ struct InsightExportSheet: View {
     private var visibleTabs: [InsightTabKind] {
         let hasForm = detail?.avgCadence != nil
         let isRace  = workoutTypeFn?(activity.id) == .race
-        let hasBalance = balanceSnapshot != nil
+        let hasBalance = exportBalance != nil
         return InsightTabKind.allCases.filter {
             ($0 != .form || hasForm) && ($0 != .race || isRace) && ($0 != .balance || hasBalance)
         }
     }
 
-    /// 카드 탭 줄과 같은 규칙 — 넘치면 가로 스크롤, 글자는 한 줄
+    /// 카드 탭 줄과 같은 규칙 — 넘치면 가로 스크롤, 글자는 한 줄, 선택 탭으로 스크롤
     private var tabSwitcher: some View {
-        ScrollView(.horizontal, showsIndicators: false) { tabSwitcherRow }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) { tabSwitcherRow }
+                .onAppear { proxy.scrollTo(tab, anchor: .center) }
+                .onChange(of: tab) { _, t in
+                    withAnimation(.easeInOut(duration: 0.15)) { proxy.scrollTo(t, anchor: .center) }
+                }
+        }
     }
 
     private var tabSwitcherRow: some View {
@@ -5717,6 +5736,7 @@ struct InsightExportSheet: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .id(t)
             }
             Spacer()
         }
@@ -5892,7 +5912,7 @@ struct InsightExportSheet: View {
                 vo2Points: vo2Points, shoeName: shoeName
             )
         case .balance:
-            if let snap = balanceSnapshot {
+            if let snap = exportBalance {
                 BalanceTabCard(snapshot: snap, isExport: true)
             }
         case .race:
