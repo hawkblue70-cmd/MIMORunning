@@ -153,6 +153,10 @@ final class MREngineStore: ObservableObject {
     /// 밤 묶기 규칙 버전 — 바뀌면 캐시를 버리고 다시 읽는다. 1 = 창 규칙(15시~12시) · 2 = 잠든 구간 한정(2026-09-23)
     ///   · 3 = 수면 세션(잠깐 깬 시간 포함, 2026-10-09)
     private static let hrvNightRuleVersion = 3
+    /// 처음 한 번 400일을 읽었는지(값 = 그때의 밤 묶기 규칙 버전) — 이후엔 60일만 읽어 저장값에 덧붙인다(2026-11-11)
+    private static let hrvBackfillKey = "mimo.hrvCache.backfill400"
+    private static let hrvBackfillDays = 400
+    private static let hrvRecentDays = 60
 
     private func loadPersistedHRV() -> (fetchedAt: Date, nights: [(date: Date, value: Double)])? {
         let ud = UserDefaults.standard
@@ -1586,18 +1590,26 @@ final class MREngineStore: ObservableObject {
         #if DEBUG
         print("[HRV] 재조회 시작(\(reason))")
         #endif
-        let raw = (try? await hk.fetchSleepHRV()) ?? []
+        // 처음 한 번은 400일(과거 러닝 밸런스 탭 HRV·수면 막대), 그 뒤엔 60일만 읽어 저장값에 덧붙인다
+        let backfilled = UserDefaults.standard.integer(forKey: Self.hrvBackfillKey) == Self.hrvNightRuleVersion
+        let days = backfilled ? Self.hrvRecentDays : Self.hrvBackfillDays
+        let windowStart = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        func merge(_ old: [(date: Date, value: Double)], _ new: [(date: Date, value: Double)]) -> [(date: Date, value: Double)] {
+            backfilled ? mrMergeNights(old: old, new: new, windowStart: windowStart) : new
+        }
+        let raw = (try? await hk.fetchSleepHRV(days: days)) ?? []
         #if DEBUG
-        print(String(format: "[⏱ HRV 샘플] %.2fs · %d건", CFAbsoluteTimeGetCurrent() - t0, raw.count))
+        print(String(format: "[⏱ HRV 샘플] %.2fs · %d건 · %d일%@", CFAbsoluteTimeGetCurrent() - t0, raw.count, days,
+                     backfilled ? " (저장값에 덧붙임)" : " (처음 한 번 전체)"))
         #endif
-        let asleep: [(start: Date, end: Date)] = mrHRVUseSleepIntervals ? ((try? await hk.fetchAsleepIntervals()) ?? []) : []
+        let asleep: [(start: Date, end: Date)] = mrHRVUseSleepIntervals ? ((try? await hk.fetchAsleepIntervals(days: days)) ?? []) : []
         #if DEBUG
         print(String(format: "[⏱ HRV 잠든 구간] %.2fs · %d개%@", CFAbsoluteTimeGetCurrent() - t0, asleep.count,
                      mrHRVUseSleepIntervals ? "" : " (꺼짐 — 창 규칙)"))
         #endif
         // 밤 활력 징후 — 같은 잠든 구간으로 묶는다. 권한이 없거나 워치를 안 차고 자면 빈 배열(규칙이 조용히 빠진다).
-        let respRaw = (try? await hk.fetchRespiratoryRate()) ?? []
-        let tempRaw = (try? await hk.fetchWristTemperature()) ?? []
+        let respRaw = (try? await hk.fetchRespiratoryRate(days: days)) ?? []
+        let tempRaw = (try? await hk.fetchWristTemperature(days: days)) ?? []
         let t1 = CFAbsoluteTimeGetCurrent()
         let nights = await Task.detached(priority: .userInitiated) { mrHRVNightMedians(samples: raw, asleep: asleep) }.value
         // 호흡수는 HRV와 같은 밤 묶기(수면 세션 안 값만). 바닥값 4회/분 아래는 측정 잡음.
@@ -1605,14 +1617,14 @@ final class MREngineStore: ObservableObject {
             mrHRVNightMedians(samples: respRaw, asleep: asleep, noiseFloor: 4)
         }.value
         let temp = mrWristTempNights(samples: tempRaw)
-        respNights = resp
-        tempNights = temp
+        respNights = merge(respNights, resp)
+        tempNights = merge(tempNights, temp)
         vitalsLoaded = true
         if !asleep.isEmpty {
-            sleepNights = mrSleepNightHours(asleep)
+            sleepNights = merge(sleepNights, mrSleepNightHours(asleep))
             UserDefaults.standard.set(sleepNights.map { [$0.date.timeIntervalSince1970, $0.value] }, forKey: Self.sleepNightsKey)
         }
-        persistVitals(resp: resp, temp: temp)
+        persistVitals(resp: respNights, temp: tempNights)
         #if DEBUG
         logVitals(now: Date())
         #endif
@@ -1626,8 +1638,9 @@ final class MREngineStore: ObservableObject {
         hrvLastFetchedAt = fetchedAt
         // 일시적 조회 실패(빈 결과)가 복원된 캐시를 메모리에서 지우지 않게 — 결과가 있을 때만 교체
         if !nights.isEmpty {
-            hrvNights = nights
-            persistHRV(fetchedAt: fetchedAt, nights: nights)
+            hrvNights = merge(hrvNights, nights)
+            persistHRV(fetchedAt: fetchedAt, nights: hrvNights)
+            if !backfilled { UserDefaults.standard.set(Self.hrvNightRuleVersion, forKey: Self.hrvBackfillKey) }
         }
         guard case .ready = state else { return }   // 준비 전이면 refreshCore가 이어서 카드를 만든다
         let now = Date()

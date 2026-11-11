@@ -224,3 +224,13 @@ func mrRecentHardRunCount(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatH
     }
     return (hard, total, lastHard)
 }
+
+/// 저장된 밤 값에 새로 읽은 창(최근 N일)을 덧붙인다 — 창 첫날은 반쪽 밤일 수 있어 그다음 날부터 새 값으로 갈아 끼우고,
+/// 그 전 밤은 저장값을 그대로 둔다. 처음 한 번 400일을 읽은 뒤 평소엔 60일만 읽기 위한 것(2026-11-11: 과거 러닝 밸런스 탭 HRV·수면).
+func mrMergeNights(old: [(date: Date, value: Double)], new: [(date: Date, value: Double)],
+                   windowStart: Date, calendar: Calendar = .current) -> [(date: Date, value: Double)] {
+    let cutoff = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: windowStart)) ?? windowStart
+    let kept = old.filter { $0.date < cutoff }
+    let added = new.filter { $0.date >= cutoff }
+    return (kept + added).sorted { $0.date < $1.date }
+}
