@@ -59,7 +59,7 @@ struct BalanceSnapshotTests {
         let s = try #require(S.make(i))
         #expect(s.inputScore == 2)
         #expect(s.outputScore == -1)
-        #expect(s.tilt == 0.75)
+        #expect(s.tilt == 0.25)     // 왼쪽 빨강 2(심박·수면) − 오른쪽 빨강 1(케이던스)
         #expect(s.axes.first { $0.kind == .cadence }?.status == .below)
     }
 
@@ -301,5 +301,18 @@ struct BalanceSnapshotTests {
         var iv = base()
         iv.workoutType = .interval
         #expect(try #require(S.make(iv)).summaryLine == nil)
+    }
+
+    @Test func problemSideGoesDown() throws {
+        // 11/9 모양 — 들인 것 모두 평소, 나온 것 케이던스·접지 빨강 → 오른쪽이 내려간다
+        var i = base()
+        i.cadence = 166
+        i.groundContact = 270
+        #expect(try #require(S.make(i)).tilt == -0.5)
+        // 좋은 쪽 이탈(심박 낮음·케이던스 높음)은 기울이지 않는다
+        var g = base()
+        g.heartRate = 140
+        g.cadence = 180
+        #expect(try #require(S.make(g)).tilt == 0)
     }
 }

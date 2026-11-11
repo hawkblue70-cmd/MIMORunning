@@ -50,8 +50,15 @@ struct BalanceSnapshot: Equatable {
     var effortDelta: Int? = nil
     /// 참고 모드(빌린 구간·판정 불가) 또는 장거리 문맥 — 심박·폼 축을 판정하지 않는다(화면: "참고" 칩·점선 띠)
     var isReference: Bool = false
-    /// −1…1. + = 왼쪽(들인 것)으로 기움 = 힘든 날, − = 가벼운 날
-    var tilt: Double { max(-1, min(1, Double(inputScore - outputScore) / 4)) }
+    /// −1…1. 빨강(문제) 블록이 많은 쪽이 내려간다 — + = 왼쪽(들인 것), − = 오른쪽(나온 것).
+    /// 처음엔 물리 저울(들인 것이 무거우면 왼쪽)이었는데, 눈은 "내려간 쪽 = 문제 쪽"으로 읽어
+    /// 나온 것만 문제인 날(케이던스·접지 빨강)에 멀쩡한 왼쪽이 내려가 거꾸로 읽혔다(2026-11-11 사용자 결정).
+    /// 좋은 쪽 이탈(덜 든 것·더 나온 것)은 기울이지 않는다.
+    var tilt: Double {
+        let left = inputBlocks.filter { $0.tone == .bad }.count
+        let right = outputBlocks.filter { $0.tone == .bad }.count
+        return max(-1, min(1, Double(left - right) / 4))
+    }
 
     struct Input: Equatable {
         var workoutType: WorkoutType

@@ -281,7 +281,7 @@ struct BalanceTabCard: View {
         return min(Self.blockSlotMax, (halfW / CGFloat(n)).rounded(.down))
     }
 
-    /// 판 기울기(도) — tilt × 12. + = 왼쪽(들인 것)이 내려감 = 반시계 방향
+    /// 판 기울기(도) — tilt × 12. + = 왼쪽이 내려감(반시계) — 빨강 블록이 많은 쪽
     private var tiltDegrees: Double { -snapshot.tilt * 12 * progress }
 
     private var scale: some View {
