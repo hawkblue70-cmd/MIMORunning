@@ -136,7 +136,7 @@ struct BalanceTabCard: View {
     }
 
     /// 저울 + 오른쪽 몸 상태 세로 막대 — 늘 한 줄(2026-11-11 사용자 요청: 저울 폭을 줄이고 막대는 오른쪽).
-    /// 판 폭은 남는 폭에서 막대 영역을 뺀 값으로 정하되 180~220pt 안에서.
+    /// 판 폭은 남는 폭에서 막대 영역을 뺀 값으로 정하되 190~270pt 안에서.
     @ViewBuilder
     private var scaleAndBodies: some View {
         if snapshot.bodies.isEmpty {
@@ -248,9 +248,9 @@ struct BalanceTabCard: View {
 
     // MARK: - 저울
 
-    /// 판 폭 — 막대 옆에서 180~220pt(2026-11-11 사용자 요청으로 288 → 236 → 220 이하로 좁힘)
-    private static let boardMax: CGFloat = 220
-    private static let boardMin: CGFloat = 180
+    /// 판 폭 — 막대 옆에서 190~270pt(막대 값 글자를 줄여 막대 영역이 좁아진 만큼 판을 넓힘, 2026-11-11)
+    private static let boardMax: CGFloat = 270
+    private static let boardMin: CGFloat = 190
     private static let blockSlotMax: CGFloat = 26
     private static let blockMaxH: CGFloat = 60
     private static let boardH: CGFloat = 4
@@ -512,7 +512,8 @@ struct BalanceTabCard: View {
     // MARK: - 몸 상태 막대
 
     /// 몸 상태 — 세로 막대 4개. 막대 높이는 모두 같고 색으로만 좋음·보통·나쁨(길이로 부담을 나타내면 짧은 초록이 모자람처럼 읽혔다)
-    private static let bodyColumnsW: CGFloat = 116
+    /// 막대 영역 폭 — 값 글자를 이름과 같은 8pt로 줄여 116 → 96(2026-11-11 실기기)
+    private static let bodyColumnsW: CGFloat = 96
     private static let bodyBarH: CGFloat = 56
 
     private var bodyBars: some View {
@@ -526,12 +527,13 @@ struct BalanceTabCard: View {
     private func bodyColumn(_ b: BalanceBody) -> some View {
         let c = levelColor(b.level)
         return VStack(spacing: 4) {
+            // 값 글자 = 아래 이름과 같은 8pt(2026-11-11 실기기 요청)
             Text(b.display)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 8, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(ink.metricText(c))
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.7)
             Capsule()
                 .fill(ink.fg(0.08))
                 .frame(width: 10, height: Self.bodyBarH)
