@@ -321,13 +321,16 @@ struct BalanceTabCard: View {
     private func bodyColumn(_ b: BalanceBody) -> some View {
         let c = levelColor(b.level)
         return VStack(spacing: 4) {
-            // 값 글자 = 아래 이름과 같은 8pt(2026-11-11 실기기 요청)
+            // 값 글자 = 아래 이름과 같은 8pt(2026-11-11 실기기 요청). 두 줄까지 — "어젯밤 낮음"이 "어젯밤…"으로 잘렸다(2026-11-11 실기기).
+            // 모든 칸이 두 줄 높이를 아래 정렬로 가져 막대 위치가 어긋나지 않는다
             Text(b.display)
                 .font(.system(size: 8, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(ink.metricText(c))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .frame(height: 20, alignment: .bottom)
             Capsule()
                 .fill(ink.fg(0.08))
                 .frame(width: 10, height: Self.bodyBarH)
