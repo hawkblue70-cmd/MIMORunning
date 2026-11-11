@@ -422,7 +422,12 @@ struct MRMonthlyPlanCard: View {
             : base
         // 항목 안 띄어쓰기는 줄바꿈 없는 공백 — " · " 자리에서만 줄이 바뀌게("최근 30일 / 최장 21km" 방지)
         return line.components(separatedBy: " · ")
-            .map { $0.replacingOccurrences(of: " ", with: "\u{00A0}") }
+            // 한글은 글자 사이에서도 줄이 바뀐다(NBSP만으로는 "최근 30 / 일 최장"으로 끊겼다, 2026-11-11 실기기) —
+            // 항목 안 글자 사이에 단어 결합자(U+2060)를 넣어 항목 안에서는 줄을 바꾸지 않게
+            .map { seg in
+                seg.replacingOccurrences(of: " ", with: "\u{00A0}")
+                    .map(String.init).joined(separator: "\u{2060}")
+            }
             .joined(separator: " · ")
     }
 
