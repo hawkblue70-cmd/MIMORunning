@@ -131,6 +131,30 @@ struct FormTypeCaptionTests {
         #expect(hrMidSplitSpikeKmIDs(mk(sustained)).isEmpty)
     }
 
+    @Test("케이던스 고정 의심 — 심박이 케이던스와 8bpm 안·높음·페이스 그대로·5분↑ 이어지면 판정에서 뺀다(2026-11-12)")
+    func cadenceLock() {
+        func mk(_ h: [Int], _ c: [Int], _ p: [Double]) -> [SplitData] {
+            h.indices.map { i in
+                SplitData(id: i + 1, distanceM: 1000, duration: p[i], avgHeartRate: h[i], avgCadence: c[i], avgPower: nil,
+                          avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+            }
+        }
+        // 이지 페이스 그대로인데 6~7km 심박이 케이던스(176) 쪽으로 붙음
+        let hr  = [140, 142, 143, 144, 145, 172, 174, 146]
+        let cad = [176, 176, 177, 176, 176, 176, 177, 176]
+        let p   = Array(repeating: 390.0, count: 8)
+        #expect(hrCadenceLockKmIDs(mk(hr, cad, p)) == [6, 7])
+        #expect(!splitsForHRJudgement(mk(hr, cad, p)).contains { $0.id == 6 || $0.id == 7 })
+        #expect(TabDigestRhythm.cadenceLockText(mk(hr, cad, p)) != nil)
+        // 그 km가 빨랐으면(실제로 세게 뜀) 잡지 않는다
+        var fast = p; fast[5] = 360; fast[6] = 360
+        #expect(hrCadenceLockKmIDs(mk(hr, cad, fast)).isEmpty)
+        // 한 km(5분 미만)만 붙으면 잡지 않는다
+        var short = p; short[5] = 290
+        let hr1 = [140, 142, 143, 144, 145, 172, 146, 146]
+        #expect(hrCadenceLockKmIDs(mk(hr1, cad, short)).isEmpty)
+    }
+
     @Test("첫 km 심박 끊김 — 앞뒤보다 25bpm↑ 낮은데 페이스는 그대로면 판정에서 뺀다(2026-11-12)")
     func lowSplitDip() {
         func mk(_ h: [Int], _ p: [Double]) -> [SplitData] {

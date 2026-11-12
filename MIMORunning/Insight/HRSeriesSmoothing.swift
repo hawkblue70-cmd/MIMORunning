@@ -168,17 +168,58 @@ func hrMidSplitSpikeKmIDs(_ splits: [SplitData],
     return out
 }
 
-/// 심박 판정에 쓸 구간 — 몸 풀리기 전 구간과 중간 km 측정 튐을 뺀 목록.
+// MARK: - 케이던스 고정 의심 (손목 광학 센서가 발걸음 리듬을 심박으로 읽는 경우)
+
+/// 심박이 케이던스와 이만큼(bpm) 안이면 붙었다고 본다
+let hrCadenceLockGapBpm = 8.0
+/// 붙은 km가 이어서 이만큼(초) 넘어야 의심
+let hrCadenceLockMinSec: TimeInterval = 300
+
+/// 케이던스 고정 의심 km(id) — 심박이 그 km 케이던스와 8bpm 안이고, 심박이 높고(최대심박 90%↑, 모르면 나머지 km 중앙값 +10↑),
+/// 페이스는 나머지 km 중앙값보다 10초/km 넘게 빨라지지 않았으며, 그런 km가 이어서 5분 넘을 때(2026-11-12 사용자 승인).
+/// 실제로 세게 뛴 날과 겹치지 않게 '페이스는 그대로인데 심박만 케이던스 쪽으로 붙은' 경우만 잡는다. 측정이라고 단정하지 않는다.
+func hrCadenceLockKmIDs(_ splits: [SplitData], hrMax: Double? = nil) -> [Int] {
+    let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil && $0.avgCadence != nil }.sorted { $0.id < $1.id }
+    guard full.count >= 4 else { return [] }
+    func med(_ v: [Double]) -> Double {
+        guard !v.isEmpty else { return 0 }
+        let s = v.sorted(); let m = s.count / 2; return s.count % 2 == 0 ? (s[m - 1] + s[m]) / 2 : s[m]
+    }
+    var hits: [SplitData] = []
+    for (i, s) in full.enumerated() {
+        guard let h = s.avgHeartRate, let c = s.avgCadence else { continue }
+        let hr = Double(h), cad = Double(c)
+        guard abs(hr - cad) <= hrCadenceLockGapBpm else { continue }
+        let others = full.indices.filter { $0 != i }
+        guard s.paceSecPerKm >= med(others.map { full[$0].paceSecPerKm }) - 10 else { continue }
+        if let m = hrMax, m > 0 {
+            guard hr >= 0.90 * m else { continue }
+        } else {
+            guard hr >= med(others.compactMap { full[$0].avgHeartRate.map(Double.init) }) + 10 else { continue }
+        }
+        hits.append(s)
+    }
+    var out: [Int] = [], run: [SplitData] = []
+    func flush() { if run.map(\.duration).reduce(0, +) >= hrCadenceLockMinSec { out += run.map(\.id) }; run = [] }
+    for s in hits {
+        if let last = run.last, s.id != last.id + 1 { flush() }
+        run.append(s)
+    }
+    flush()
+    return out
+}
+
+/// 심박 판정에 쓸 구간 — 몸 풀리기 전 구간과 중간 km 측정 튐(높게 튐·끊김·케이던스 고정 의심)을 뺀 목록.
 func splitsForHRJudgement(_ splits: [SplitData],
                           altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [SplitData] {
-    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile))
+    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile)).union(hrCadenceLockKmIDs(splits))
     return splitsExcludingWarmupPhase(splits, altitudeProfile: altitudeProfile).filter { !spikes.contains($0.id) }
 }
 
 /// 중간 km 측정 튐의 시간 구간(러닝 시작부터 초, 구간 시간 합 기준) — 심박 표본에서 뺀다.
 func hrMidSplitSpikeWindows(_ splits: [SplitData],
                             altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [ClosedRange<TimeInterval>] {
-    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile))
+    let spikes = Set(hrMidSplitSpikeKmIDs(splits, altitudeProfile: altitudeProfile)).union(hrCadenceLockKmIDs(splits))
     guard !spikes.isEmpty else { return [] }
     var t: TimeInterval = 0
     var out: [ClosedRange<TimeInterval>] = []

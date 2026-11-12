@@ -562,6 +562,12 @@ enum TabDigestRhythm {
                                         text: t.text, tone: .neutral, short: t.short))
         }
 
+        // 덧붙임 — 케이던스 고정 의심 km를 판정에서 뺐으면 그 사실(2026-11-12)
+        if let t = cadenceLockText(c.detail?.splits ?? []) {
+            out.append(TabDigest.Signal(tab: .rhythm, kind: .extra, priority: 1, family: .unique,
+                                        text: t.text, tone: .neutral, short: t.short))
+        }
+
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
         if c.workoutType == .easy, let f = easyLowZoneFraction(zones: c.hrZones) {
             let v = easyVerdict(lowZoneFraction: f)
@@ -578,6 +584,22 @@ enum TabDigestRhythm {
                  short: AppLanguage.shared.s("최근 \(n)회 중 최장 거리", "Longest of last \(n) runs", ja: "直近\(n)回で最長距離"))
         }
         return out
+    }
+
+    /// 케이던스 고정 의심 사실 문장 — 요약 블록과 리듬 카드 본문이 같은 문장. 단정하지 않는다("~읽었을 수 있어").
+    static func cadenceLockText(_ splits: [SplitData]) -> (text: String, short: String)? {
+        let ids = hrCadenceLockKmIDs(splits)
+        guard let a = ids.first, let b = ids.last else { return nil }
+        let lock = splits.filter { ids.contains($0.id) }
+        let hr = lock.compactMap(\.avgHeartRate), cad = lock.compactMap(\.avgCadence)
+        guard let hLo = hr.min(), let hHi = hr.max(), let cLo = cad.min(), let cHi = cad.max() else { return nil }
+        let L = AppLanguage.shared
+        let km = a == b ? "\(a)km" : "\(a)~\(b)km"
+        let hs = hLo == hHi ? "\(hHi)" : "\(hLo)~\(hHi)", cs = cLo == cHi ? "\(cHi)" : "\(cLo)~\(cHi)"
+        return (L.s("\(km) 심박(\(hs))이 케이던스(\(cs))와 거의 같았습니다. 손목 센서가 발걸음 리듬을 읽었을 수 있어 판정에서 뺐습니다.",
+                    "At \(km) heart rate (\(hs)) was almost the same as cadence (\(cs)). The wrist sensor may have picked up your step rhythm, so it was left out.",
+                    ja: "\(km)の心拍(\(hs))がケイデンス(\(cs))とほぼ同じでした。手首のセンサーが足の運びを拾った可能性があるため判定から外しました。"),
+                L.s("\(km) 심박 ≈ 케이던스 · 판정에서 제외", "\(km) HR ≈ cadence · excluded", ja: "\(km) 心拍 ≈ ケイデンス · 判定から除外"))
     }
 
     /// 몸 풀리기 전 구간 사실 문장 — 요약 블록(text·short)과 리듬 카드 본문이 같은 문장을 쓴다.

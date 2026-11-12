@@ -2172,6 +2172,11 @@ private struct RhythmInsightCard: View {
                 Rectangle().fill(sep).frame(height: 0.5)
                 formSummaryLine(parts: [(TabDigestRhythm.warmupPhaseText(w).text, ink.fg(0.6))])
             }
+            // 케이던스 고정 의심 km를 판정에서 뺐으면 그 사실 — 요약 블록과 같은 문장(2026-11-12)
+            if let t = TabDigestRhythm.cadenceLockText(detail?.splits ?? []) {
+                Rectangle().fill(sep).frame(height: 0.5)
+                formSummaryLine(parts: [(t.text, ink.fg(0.6))])
+            }
         }
     }
 
