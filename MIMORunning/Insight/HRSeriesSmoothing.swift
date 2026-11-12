@@ -120,11 +120,16 @@ func hrWarmupPhaseEndOffset(_ splits: [SplitData],
 /// 갑자기)은 13분 이어진 튐을 못 걸러 "최고 강도까지 올렸습니다"가 나왔다(2026-11-01). 페이스가 빨랐거나(10초/km↑ 빠름) 그 km에
 /// 10m↑ 오르막이면 실제 변화로 둔다. 4km 이상 이어지면(지속 상승) 보지 않는다. 존·차트는 그대로, 판정에서만 뺀다.
 let hrMidSplitSpikeBpm = 20
+/// km 심박이 앞뒤 중앙값보다 이만큼 낮으면(페이스는 그대로) 측정 끊김으로 본다
+let hrLowSplitDipBpm = 25
 func hrMidSplitSpikeKmIDs(_ splits: [SplitData],
                           altitudeProfile: [(distanceKm: Double, altitude: Double)] = []) -> [Int] {
     let full = splits.filter { $0.distanceM >= 900 && $0.avgHeartRate != nil }.sorted { $0.id < $1.id }
     guard full.count >= 6 else { return [] }
-    func med(_ v: [Double]) -> Double { let s = v.sorted(); let m = s.count / 2; return s.count % 2 == 0 ? (s[m - 1] + s[m]) / 2 : s[m] }
+    func med(_ v: [Double]) -> Double {
+        guard !v.isEmpty else { return 0 }
+        let s = v.sorted(); let m = s.count / 2; return s.count % 2 == 0 ? (s[m - 1] + s[m]) / 2 : s[m]
+    }
     func alt(at km: Double) -> Double? {
         guard !altitudeProfile.isEmpty else { return nil }
         return altitudeProfile.min { abs($0.distanceKm - km) < abs($1.distanceKm - km) }?.altitude
@@ -140,6 +145,19 @@ func hrMidSplitSpikeKmIDs(_ splits: [SplitData],
         if let a0 = alt(at: Double(full[i].id - 1)), let a1 = alt(at: Double(full[i].id)), a1 - a0 >= 10 { continue }
         flagged.append(full[i].id)
     }
+    // 반대쪽 — 앞뒤보다 25bpm↑ 낮은데 페이스는 느려지지 않은 km(첫 km 포함). 9°C 밤 첫 km 6'25"에 89 → 2km 6'09"에 165:
+    // 첫 km가 전반 평균을 끌어내려 디커플링 +17.6%·'후반 심박 상승'을 키웠다(2026-11-12). 20초/km↑ 느려졌으면(멈춤·걷기) 실제 변화로 둔다.
+    for i in 0..<full.count {
+        let lo = max(0, i - 3), hi = min(full.count - 1, i + 3)
+        let window = (lo...hi).filter { $0 != i }
+        guard window.count >= 3 else { continue }
+        let hrBase = med(window.compactMap { full[$0].avgHeartRate.map(Double.init) })
+        let paceBase = med(window.map { full[$0].paceSecPerKm })
+        guard let hr = full[i].avgHeartRate, hrBase - Double(hr) >= Double(hrLowSplitDipBpm),
+              full[i].paceSecPerKm <= paceBase + 20 else { continue }
+        flagged.append(full[i].id)
+    }
+    flagged = Array(Set(flagged)).sorted()
     // 연속 4km 이상이면 지속 상승 — 튐이 아니다
     var out: [Int] = [], run: [Int] = []
     for id in flagged {

@@ -58,7 +58,7 @@ struct TabDigestRhythmTests {
         #expect(v?.text == "고강도 구간이 많았습니다")
         #expect(v?.isProblem == true)
         let planned = TabDigestRhythm.zoneVerdict(fractions: [4: 0.5, 5: 0.2, 2: 0.3], workoutType: .tempo, heatSuffix: nil)
-        #expect(planned?.text == "고강도 구간이 많았습니다 · 의도한 강도")
+        #expect(planned?.text == "고강도 구간이 많았습니다")   // 템포는 의도를 모른다(2026-11-12)
         #expect(planned?.isProblem == false)
     }
 

@@ -544,7 +544,9 @@ extension FormNarrative {
     /// 심박존 도넛 캡션 — 4존 이상이 최다 구간일 때.
     static func highIntensityZoneCaption(type: WorkoutType) -> String {
         let L = AppLanguage.shared
-        if isPlannedHighIntensity(type) {
+        // "의도한"은 의도가 분명한 인터벌·대회만 — 템포·빌드업·거리주는 페이스 모양으로 붙인 분류라 의도까지는 모른다
+        // (총평 심박 줄과 같은 규칙, 2026-11-12: 도넛만 '의도한 강도'로 남아 있었다)
+        if type == .interval || type == .race {
             return L.s("고강도 구간이 많았습니다 · 의도한 강도", "High-intensity effort · intended", ja: "高強度域が多かったです · 意図した強度")
         }
         return L.s("고강도 구간이 많았습니다", "High-intensity effort", ja: "高強度域が多かったです")

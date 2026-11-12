@@ -131,6 +131,23 @@ struct FormTypeCaptionTests {
         #expect(hrMidSplitSpikeKmIDs(mk(sustained)).isEmpty)
     }
 
+    @Test("첫 km 심박 끊김 — 앞뒤보다 25bpm↑ 낮은데 페이스는 그대로면 판정에서 뺀다(2026-11-12)")
+    func lowSplitDip() {
+        func mk(_ h: [Int], _ p: [Double]) -> [SplitData] {
+            h.enumerated().map { i, v in
+                SplitData(id: i + 1, distanceM: 1000, duration: p[i], avgHeartRate: v, avgCadence: nil, avgPower: nil,
+                          avgGroundContactTime: nil, avgStrideLength: nil, avgVerticalOscillation: nil)
+            }
+        }
+        // 11/11 다른 러너: 6'25" 89 · 6'09" 165 · 6'27" 164 · 6'30" 136(멈춤 섞여 느림) · 6'03" 151 · 5'36" 167 · 5'55" 177 …
+        let hr = [89, 165, 164, 136, 151, 167, 177, 181, 183, 193, 191]
+        let pace: [Double] = [385, 369, 387, 390, 363, 336, 355, 367, 371, 356, 347]
+        let ids = hrMidSplitSpikeKmIDs(mk(hr, pace))
+        #expect(ids.contains(1))
+        #expect(!ids.contains(4))      // 20초/km↑ 느려진 km는 실제 변화
+        #expect(!splitsForHRJudgement(mk(hr, pace)).contains { $0.id == 1 })
+    }
+
     @Test("HRmax 다시 재기 — 러닝 중간 13분 튐은 빼고 마지막 스퍼트는 남긴다")
     func sustainedSpikeTrim() {
         // 60분, 5초 간격: 145 기본, 35~48분 183 튐, 마지막 2분 170 스퍼트
@@ -173,8 +190,12 @@ struct FormTypeCaptionTests {
 
     @Test func zoneCaptionPlannedTypesSayAsPlanned() {
         ko {
-            for t: WorkoutType in [.buildUp, .tempo, .race, .interval] {
+            for t: WorkoutType in [.race, .interval] {
                 #expect(FormNarrative.highIntensityZoneCaption(type: t) == "고강도 구간이 많았습니다 · 의도한 강도", "\(t)")
+            }
+            // 페이스 모양으로 붙인 분류는 의도를 모른다(2026-11-12)
+            for t: WorkoutType in [.buildUp, .tempo, .distanceRun] {
+                #expect(FormNarrative.highIntensityZoneCaption(type: t) == "고강도 구간이 많았습니다", "\(t)")
             }
             #expect(FormNarrative.highIntensityZoneCaption(type: .easy) == "고강도 구간이 많았습니다")
             #expect(FormNarrative.highIntensityZoneCaption(type: .general) == "고강도 구간이 많았습니다")
@@ -241,7 +262,7 @@ struct FormTypeCaptionTests {
 
     @Test(.english) func captionsHaveEnglish() {
         #expect(FormNarrative.hrSecondHalfRiseCaption(type: .buildUp).contains("pace picked up"))
-        #expect(FormNarrative.highIntensityZoneCaption(type: .tempo).contains("intended"))
+        #expect(FormNarrative.highIntensityZoneCaption(type: .interval).contains("intended"))
         #expect(FormNarrative.formHeldCaption(type: .race).contains("fast finish"))
         #expect(FormNarrative.belowRangeNote(type: .buildUp, metric: .groundContact).contains("Faster late pace"))
     }
