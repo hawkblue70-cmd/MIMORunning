@@ -47,6 +47,18 @@ struct TabDigestRhythmTests {
         #expect(high.shade == .caution)
     }
 
+    @Test func easyVerdictUnderEasyCapIsGood() {
+        // 2026-11-13: 평균 137·이지 상한 139·Zone 1~2 66% — 아침 '→ 실제' "제안대로"와 같은 판정
+        let v = TabDigestRhythm.easyVerdict(lowZoneFraction: 0.66, avgHR: 137, easyCap: 139)
+        #expect(v.text == "평균 심박 137로 이지 상한(139) 아래였습니다")
+        #expect(v.isProblem == false)
+        #expect(v.isGood)
+        // 상한 위면 지금 규칙 그대로
+        let over = TabDigestRhythm.easyVerdict(lowZoneFraction: 0.66, avgHR: 141, easyCap: 139)
+        #expect(over.text == "이지 구간이 66%였습니다. 조금 더 천천히 가도 좋습니다")
+        #expect(TabDigestRhythm.easyCap(hrMax: 174, isMale: true) == 137)
+    }
+
     @Test func zoneVerdictZone2() {
         let v = TabDigestRhythm.zoneVerdict(fractions: [2: 0.7, 3: 0.3], workoutType: .easy, heatSuffix: nil)
         #expect(v?.text == AppLanguage.shared.s("Zone 2 중심으로 달렸습니다", "Mostly in Zone 2", ja: "ゾーン2中心で走りました"))

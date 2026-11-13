@@ -1328,7 +1328,8 @@ struct InsightEngine {
         print("[Milestone] 타입=\(a.type.rawValue) 풀=\(priorFiltered.count)개 시점누적=\(String(format:"%.1f",curKm))km \(fires ? "달성" : "다음")=\(nextMark)km 발화=\(fires)")
         #endif
         guard curKm >= Double(nextMark) else { return nil }
-        let km = nextMark
+        // 천 단위 쉼표 — "5100km" → "5,100km"(누적 거리 표기와 같게, 2026-11-13)
+        let km = mrWholeKm(Double(nextMark))
         let L = AppLanguage.shared
         let idx = titleIdx(for: "milestone", poolSize: 3, activity: a)
         let titles = [L.s("누적 \(km)km의 발자국", "\(km) km of Footprints", ja: "累計\(km)kmの足跡"),
@@ -1336,7 +1337,7 @@ struct InsightEngine {
                       L.s("\(km)km이 쌓인 날", "\(km) km — Day It Stacked Up", ja: "\(km)kmが積み上がった日")]
         let details = [L.s("이 러닝으로 누적 \(km)km에 도달했습니다", "This run brought your total to \(km) km", ja: "このランで累計\(km)kmに到達しました"),
                        L.s("한 걸음 한 걸음 쌓아 \(km)km", "Step by step to \(km) km", ja: "一歩一歩積み重ねて\(km)km"),
-                       L.s("누적 \(Int(curKm))km — \(km)km 이정표 통과", "Lifetime: \(Int(curKm)) km, past the \(km) km mark", ja: "累計\(Int(curKm))km — \(km)kmの節目を通過")]
+                       L.s("누적 \(mrWholeKm(curKm))km — \(km)km 이정표 통과", "Lifetime: \(mrWholeKm(curKm)) km, past the \(km) km mark", ja: "累計\(mrWholeKm(curKm))km — \(km)kmの節目を通過")]
         return InsightResult(theme: .milestone, title: titles[idx], detail: details[idx])
     }
 

@@ -179,8 +179,18 @@ enum RunSummary {
     // MARK: 축별 규칙
 
     private static func formLine(_ i: RunSummaryInput) -> RunSummaryLine? {
-        guard let f = i.form else { return nil }
         let L = AppLanguage.shared
+        // 초·중·말 단계를 못 나눈 짧은 러닝(4km 이지런 등)이어도 다리 무거움 판정은 있다 — 폼 탭이 주황인데 총평에서
+        // 러닝폼 줄이 통째로 빠졌다(2026-11-13)
+        guard let f = i.form else {
+            guard let h = i.heavyLegs else { return nil }
+            var line = RunSummaryLine(axis: L.s("러닝폼", "Form", ja: "ランニングフォーム"),
+                                      state: L.s("다리 무거운 날 패턴", "Heavy-legs pattern", ja: "脚が重い日のパターン"), tone: .neutral)
+            line.evidence = L.s("같은 페이스 평소보다 지면접촉 \(h.gct)ms로 길고 케이던스 \(h.cad)spm으로 낮음",
+                                "contact \(h.gct) ms (longer) and cadence \(h.cad) spm (lower) than usual at this pace",
+                                ja: "同じペースの普段より接地\(h.gct)msと長く、ケイデンス\(h.cad)spmと低い")
+            return line
+        }
         // 러닝 전체가 평소 폼과 달랐으면(다리 무거움) 그게 먼저 — 후반 변화만 말하면 폼 탭과 색·말이 갈린다(2026-11-10)
         let heavy = i.heavyLegs
         var line = RunSummaryLine(axis: L.s("러닝폼", "Form", ja: "ランニングフォーム"),

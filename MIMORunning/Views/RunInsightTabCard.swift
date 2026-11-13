@@ -2373,7 +2373,10 @@ private struct RhythmInsightCard: View {
         case .distanceRun, .general:
             verdict = TabDigestRhythm.paceShapeVerdict(splits: det.splits, workoutType: wt, altitudeProfile: det.altitudeProfile)
         case .easy:
-            verdict = TabDigestRhythm.easyLowZoneFraction(zones: hrZones).map { TabDigestRhythm.easyVerdict(lowZoneFraction: $0) }
+            verdict = TabDigestRhythm.easyLowZoneFraction(zones: hrZones).map {
+                TabDigestRhythm.easyVerdict(lowZoneFraction: $0, avgHR: activity.avgHeartRate,
+                                            easyCap: TabDigestRhythm.easyCap(hrMax: hrMax, isMale: isMale))
+            }
         case .interval, .race:
             verdict = nil
         }

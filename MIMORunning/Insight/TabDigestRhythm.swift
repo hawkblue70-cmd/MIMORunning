@@ -200,9 +200,24 @@ enum TabDigestRhythm {
     }
 
     /// 이지 분기 (Z1~2 비율)
-    static func easyVerdict(lowZoneFraction ratio: Double) -> Verdict {
+    /// 이지 상한(LT1, 관측 최대심박 × 여 0.800 · 남 0.785) — 아침 "이지는 심박 N 아래"와 같은 식. 모르면 nil.
+    static func easyCap(hrMax: Double?, isMale: Bool?) -> Int? {
+        guard let hm = hrMax, hm > 0 else { return nil }
+        return Int((hm * (isMale == false ? 0.800 : 0.785)).rounded())
+    }
+
+    /// - avgHR·easyCap: 평균 심박이 이지 상한 아래면 존 비율이 80% 미만이어도 "더 천천히"를 권하지 않는다 —
+    ///   아침 '→ 실제'는 "제안(139 아래)대로"인데 이 문장은 "조금 더 천천히"로 갈렸다(2026-11-13, 평균 137·Zone 1~2 66%).
+    ///   존은 공식(Tanaka)이고 이지 상한은 관측 최대심박 기준이라 같은 심박이 Zone 3에 걸린다(HRmax·존 결정).
+    static func easyVerdict(lowZoneFraction ratio: Double, avgHR: Int? = nil, easyCap: Int? = nil) -> Verdict {
         let L = AppLanguage.shared
         let pct = Int((ratio * 100).rounded())
+        if ratio < 0.80, let hr = avgHR, let cap = easyCap, hr < cap {
+            return Verdict(text: L.s("평균 심박 \(hr)로 이지 상한(\(cap)) 아래였습니다", "Avg HR \(hr), under your easy cap (\(cap))",
+                                     ja: "平均心拍\(hr)でイージー上限(\(cap))未満でした"),
+                           isProblem: false, shade: .good,
+                           short: L.s("이지 상한 아래 · 평균 \(hr)(상한 \(cap))", "Under easy cap · avg \(hr) (cap \(cap))", ja: "イージー上限未満 · 平均\(hr)(上限\(cap))"))
+        }
         if ratio >= 0.80 {
             return Verdict(text: L.s("제대로 이지 페이스를 지켰습니다", "Great easy pacing — Z1–Z2 \(pct)%", ja: "しっかりイージーペースを守りました"),
                            isProblem: false, shade: .good,
@@ -570,7 +585,8 @@ enum TabDigestRhythm {
 
         // 좋은 신호 — Zone 2 중심/이지 지킴 → 끝까지 안정/후반 여유 → 최근 N회 최장
         if c.workoutType == .easy, let f = easyLowZoneFraction(zones: c.hrZones) {
-            let v = easyVerdict(lowZoneFraction: f)
+            let v = easyVerdict(lowZoneFraction: f, avgHR: c.activity.avgHeartRate,
+                                easyCap: easyCap(hrMax: c.hrMax, isMale: c.isMale))
             if v.isGood { good(1, .unique, v.text, short: v.short) }
         } else if let zone, zone.isGood {
             good(1, .unique, zone.text, short: zone.short)
