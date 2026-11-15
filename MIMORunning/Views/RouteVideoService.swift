@@ -319,6 +319,8 @@ private struct KmMarkerInfo {
     let distanceM: Double
     let isFinish: Bool
     let pathFraction: Double  // 0…1 fraction of total distance
+    /// km 글자를 그릴지 — 앞서 놓인 글자와 겹치면 점만(2026-11-15 사용자 A안)
+    var showLabel: Bool = true
 }
 
 // MARK: - RouteVideoExportService
@@ -709,7 +711,27 @@ struct RouteVideoExportService {
 
             // KM markers
             if showKmMarkers {
-                let markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
+                var markers = computeKmMarkers(snapshotPoints: scaledPoints, totalDistanceM: totalDistanceM)
+                // 글자 겹침 — 점은 매 km 그대로, 글자는 앞서 자리 잡은 글자와 겹치면 뺀다. 5km 배수가 먼저 자리를 잡는다
+                // (광화문 출발처럼 짧은 거리에 코스가 몰리면 "1 km·2 km·3 km…"가 서로 덮었다, 2026-11-15)
+                let order = markers.indices.filter { !markers[$0].isFinish }.sorted { a, b in
+                    let ka = Int((markers[a].distanceM / 1000).rounded()), kb = Int((markers[b].distanceM / 1000).rounded())
+                    let pa = ka % 5 == 0 ? 0 : 1, pb = kb % 5 == 0 ? 0 : 1
+                    return pa != pb ? pa < pb : ka < kb
+                }
+                let finishPad = 10 * renderScale
+                var taken: [CGRect] = markers.filter(\.isFinish).map {
+                    CGRect(x: $0.position.x - finishPad, y: $0.position.y - finishPad, width: finishPad * 2, height: finishPad * 2)
+                }
+                for i in order {
+                    guard let r = kmLabelRect(marker: markers[i], pixelSize: px, renderScale: renderScale) else { continue }
+                    let padded = r.insetBy(dx: -3 * renderScale, dy: -2 * renderScale)
+                    if taken.contains(where: { $0.intersects(padded) }) {
+                        markers[i].showLabel = false
+                    } else {
+                        taken.append(padded)
+                    }
+                }
                 for m in markers {
                     parentLayer.addSublayer(makeMarkerLayer(marker: m, pixelSize: px,
                                                             routeDuration: routeDur,
@@ -1204,6 +1226,31 @@ struct RouteVideoExportService {
         return points.last!
     }
 
+    // MARK: - KM label placement (그리기·겹침 판정 공용)
+
+    private static let kmDotR: CGFloat = 3.5
+    /// 점에서 조금 떨어뜨린다 — 붙어 있으면 점·선과 겹쳐 글자가 안 보였다(2026-11-15)
+    private static let kmLabelGap: CGFloat = 12
+
+    /// 마커 컨테이너(폭 2·half) 안에서 글자 가운데 x — 오른쪽 끝 가까우면 왼쪽으로 뒤집는다(60px 안전 여백)
+    private static func kmLabelCenterX(markerX: CGFloat, labelWidth lw: CGFloat, half: CGFloat,
+                                       pixelSize: CGSize, renderScale: CGFloat) -> CGFloat {
+        let dotR = kmDotR * renderScale, gap = kmLabelGap * renderScale
+        let nearRight = markerX > pixelSize.width - 60 - dotR - gap - lw
+        return nearRight ? half - dotR - gap - lw / 2 : half + dotR + gap + lw / 2
+    }
+
+    /// 글자가 화면(픽셀)에서 차지할 사각형 — 겹침 판정용
+    private static func kmLabelRect(marker: KmMarkerInfo, pixelSize: CGSize, renderScale: CGFloat) -> CGRect? {
+        let km = Int((marker.distanceM / 1000).rounded())
+        guard let img = makeKmLabelImage(km: km, renderScale: renderScale) else { return nil }
+        let lw = CGFloat(img.width), lh = CGFloat(img.height)
+        let half = 80 * renderScale / 2
+        let cx = marker.position.x - half + kmLabelCenterX(markerX: marker.position.x, labelWidth: lw, half: half,
+                                                           pixelSize: pixelSize, renderScale: renderScale)
+        return CGRect(x: cx - lw / 2, y: marker.position.y - lh / 2, width: lw, height: lh)
+    }
+
     // MARK: - Marker layer factory
 
     private static func makeMarkerLayer(
@@ -1241,17 +1288,11 @@ struct RouteVideoExportService {
 
             // Pre-render label as CGImage — reliable in AVVideoCompositionCoreAnimationTool
             let km = Int((marker.distanceM / 1000).rounded())
-            if let labelImg = makeKmLabelImage(km: km, renderScale: renderScale) {
+            if marker.showLabel, let labelImg = makeKmLabelImage(km: km, renderScale: renderScale) {
                 let lw = CGFloat(labelImg.width)
                 let lh = CGFloat(labelImg.height)
-                // 점에서 조금 떨어뜨린다 — 붙어 있으면 점·선과 겹쳐 글자가 안 보였다(2026-11-15)
-                let gap: CGFloat = 12 * renderScale
-
-                // Safe zone: flip label left if dot is near the right edge (60px safe margin)
-                let nearRight = marker.position.x > pixelSize.width - 60 - dotR - gap - lw
-                let labelX = nearRight
-                    ? half - dotR - gap - lw / 2
-                    : half + dotR + gap + lw / 2
+                let labelX = kmLabelCenterX(markerX: marker.position.x, labelWidth: lw, half: half,
+                                            pixelSize: pixelSize, renderScale: renderScale)
 
                 let labelLayer = CALayer()
                 labelLayer.contents = labelImg
