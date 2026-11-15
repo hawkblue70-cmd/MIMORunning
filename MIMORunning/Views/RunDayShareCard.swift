@@ -459,6 +459,8 @@ struct RunDayShareCard: View {
     var actualType: WorkoutType? = nil
     /// 이 러닝 뒤 가장 가까운 계획 대회의 대회 페이스(예상 기록 ÷ 거리, 훈련일지 '예상'과 같은 값) — 본 구간 이름용
     var racePaceSecPerKm: Double? = nil
+    /// 확정된 대회명 — 있으면 "오늘의 러닝" 아래 대회 뱃지(다른 공유 카드와 같은 RaceBadge, 2026-11-15)
+    var raceName: String? = nil
 
     private var divider: some View {
         Rectangle().fill(isLight ? RunCardLight.divider : Color.white.opacity(0.12)).frame(height: 0.5)
@@ -685,6 +687,9 @@ struct RunDayShareCard: View {
                 Text(L.s("오늘의 러닝", "Today's Run", ja: "今日のラン"))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(isLight ? RunCardLight.violet : Theme.violetText)
+                if let race = raceName {
+                    RaceBadge(name: race, scale: 1.0, onLight: isLight)
+                }
                 Text(Self.headTitle(label: workoutTypeLabel ?? activity.type.label, title: text.title))
                     .font(.headline.bold())
                     .foregroundStyle(isLight ? RunCardLight.text : .white)
@@ -745,6 +750,7 @@ struct RunDayShareSheet: View {
     var splits: [SplitData] = []
     var actualType: WorkoutType? = nil
     var racePaceSecPerKm: Double? = nil
+    var raceName: String? = nil
 
     @Query private var allStories: [WorkoutStory]
     @Query private var allShoes: [Shoe]
@@ -767,7 +773,7 @@ struct RunDayShareSheet: View {
                         condition: condition, digest: digest, morning: morning,
                         weekKm: weekKm, monthKm: monthKm, shoeName: shoeName, isLight: isLight,
                         comparisonHR: comparisonHR, splits: splits, actualType: actualType,
-                        racePaceSecPerKm: racePaceSecPerKm)
+                        racePaceSecPerKm: racePaceSecPerKm, raceName: raceName)
     }
 
     var body: some View {
