@@ -746,7 +746,8 @@ struct RouteVideoExportService {
                         let r = CGRect(x: c.x - lw / 2, y: c.y - lh / 2, width: lw, height: lh)
                         let padded = r.insetBy(dx: -3 * renderScale, dy: -2 * renderScale)
                         guard r.minX >= 8, r.maxX <= px.width - 8, r.minY >= 8, r.maxY <= px.height - 8,
-                              !dots.contains(where: { $0.intersects(padded) }),
+                              // 자기 점은 빼고 본다 — 넣으면 위·아래 자리가 늘 자기 점에 걸려 2~9km 글자가 모두 빠졌다(2026-11-15)
+                              !dots.indices.contains(where: { $0 != i && dots[$0].intersects(padded) }),
                               !taken.contains(where: { $0.intersects(padded) }) else { continue }
                         let cover = linePts.filter { r.contains($0) }.count
                         if best == nil || cover < best!.cover { best = (off, padded, cover) }
