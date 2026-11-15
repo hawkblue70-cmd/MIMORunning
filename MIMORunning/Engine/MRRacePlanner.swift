@@ -309,14 +309,19 @@ func mrBuildPlan(raceDate: Date,
         return d >= MRDistance.dF ? 3 : (d >= MRDistance.dH ? 1 : 0)
     }()
 
-    if let prior = priorRace, priorRecoveryWeeks > 0, prior.date > today, prior.date < raceDate {
-        // 앞 대회 당일이 속한 주를 건너뛰고 그 다음 주 월요일부터 시작
-        // Gregorian .weekday: 일=1, 월=2 … 토=7
+    // 앞 대회 다음 주 월요일(이 계획 시작) — Gregorian .weekday: 일=1, 월=2 … 토=7
+    let priorNextMonday: Date? = priorRace.map { prior in
         let priorWD = cal.component(.weekday, from: prior.date)
         let daysToNextMon = (9 - priorWD) % 7   // 일(1)→1, 월(2)→7로 처리
-        let priorNext = cal.date(byAdding: .day,
-                                  value: daysToNextMon == 0 ? 7 : daysToNextMon,
-                                  to: cal.startOfDay(for: prior.date)) ?? cal.startOfDay(for: prior.date)
+        return cal.date(byAdding: .day, value: daysToNextMon == 0 ? 7 : daysToNextMon,
+                        to: cal.startOfDay(for: prior.date)) ?? cal.startOfDay(for: prior.date)
+    }
+    // 앞 대회는 '날짜'로 본다 — 예전엔 시각(prior.date > today)으로 봐서, 하프 대회 당일 오전 9시(UTC 자정으로 저장된 날짜)가 지나자
+    // 앞 대회가 빠지고 풀 계획이 "8주짜리 · 1월 시작"으로 통째로 다시 짜였다(2026-11-15). 대회가 끝난 뒤에도 이 계획 시작 월요일까지는 유지.
+    if let prior = priorRace, priorRecoveryWeeks > 0, let priorNext = priorNextMonday,
+       priorNext >= cal.startOfDay(for: today),
+       cal.startOfDay(for: prior.date) < cal.startOfDay(for: raceDate) {
+        // 앞 대회 당일이 속한 주를 건너뛰고 그 다음 주 월요일부터 시작
         let pLong     = max(prior.peakLong, simStartLong)
         let pVol      = max(prior.peakVol,  simStartVol)
 

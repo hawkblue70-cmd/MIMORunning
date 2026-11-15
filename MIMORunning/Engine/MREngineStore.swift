@@ -369,9 +369,21 @@ final class MREngineStore: ObservableObject {
         for r in upcoming where r.distanceM >= MRDistance.dH {
             let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
             // 앞선 대회는 반드시 대상 대회보다 하루 이상 앞선 날이어야 한다.
+            // 다가오는 앞 대회가 없으면 막 끝난 하프·풀(자기 계획 스냅샷 있음)을 쓴다 — 대회 다음 날 앞 대회가 목록에서 빠지면
+            // 풀 계획이 "하프를 따르고 · 대회 주 · 회복 1주 뒤 시작"을 잃고 다시 짜였다(2026-11-15). 플래너가 다음 월요일까지만 쓴다.
             let prior = prevPlanInfo.flatMap { p in
                 cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
-            }
+            } ?? storedFinishedRaces
+                .filter { $0.distanceM >= MRDistance.dH && $0.distanceM < r.distanceM + 1
+                          && cal.startOfDay(for: $0.date) < cal.startOfDay(for: now)
+                          && cal.startOfDay(for: $0.date) < cal.startOfDay(for: r.date)
+                          && (cal.dateComponents([.day], from: cal.startOfDay(for: $0.date), to: cal.startOfDay(for: now)).day ?? 99) <= 7 }
+                .max { $0.date < $1.date }
+                .flatMap { f -> (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? in
+                    let snap = storedSnapshotWeeks[mrArchiveKey(raceDate: f.date, distanceM: f.distanceM)] ?? []
+                    guard let long = snap.map(\.longRunKm).max(), let vol = snap.map(\.weeklyKm).max() else { return nil }
+                    return (f.date, f.name, f.distanceM, long, vol)
+                }
             var tune = mrTuneUpCandidates(for: r, among: upcoming, today: now,
                                           plannedKeys: Set(anchors.keys)).map { t -> MRTuneUpRace in
                 var t = t
