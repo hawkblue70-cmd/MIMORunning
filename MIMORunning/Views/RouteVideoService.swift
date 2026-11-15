@@ -736,7 +736,10 @@ struct RouteVideoExportService {
                     let km = Int((markers[i].distanceM / 1000).rounded())
                     guard let img = makeKmLabelImage(km: km, renderScale: renderScale) else { continue }
                     let lw = CGFloat(img.width), lh = CGFloat(img.height)
-                    let dotR = kmDotR * renderScale, vGap = 4 * renderScale, hGap = kmLabelGap * renderScale
+                    let dotR = kmDotR * renderScale, hGap = kmLabelGap * renderScale
+                    // 위·아래 간격 4 → 10 — 가로로 이어진 구간은 옆 km 점(약 50px 간격)이 같은 높이라, 가까이 붙인 글자가
+                    // 늘 옆 점에 걸려 2~6·8·9km가 빠졌다(2026-11-15). 띄우면 옆 점 위로 지나가고 위·아래가 번갈아 놓인다.
+                    let vGap = 10 * renderScale
                     // 위 · 아래 먼저(2026-11-15 사용자: 점과 글자가 겹치지 않게 위나 아래), 안 되면 오른쪽 · 왼쪽
                     let offsets = [CGPoint(x: 0, y: -(dotR + vGap + lh / 2)), CGPoint(x: 0, y: dotR + vGap + lh / 2),
                                    CGPoint(x: dotR + hGap + lw / 2, y: 0), CGPoint(x: -(dotR + hGap + lw / 2), y: 0)]
