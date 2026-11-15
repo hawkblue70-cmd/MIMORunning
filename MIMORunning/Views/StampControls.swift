@@ -150,10 +150,10 @@ struct StampControlsView: View {
                         } label: { smallChip(mode.chipLabel, isSelected: isSel) }
                         .buttonStyle(.plain)
                     }
-                    if template == .slide || template == .routeVideo {
-                        dateChip   // 슬라이드·경로 영상: '없음' 옆
-                        shoeChip
-                    }
+                }
+                // 슬라이드·경로 영상: 날짜·러닝화는 아랫줄 — 애니메이션 칩 옆에 붙이면 폭을 넘겨 "도장"·"날…"처럼 이름이 잘렸다(2026-11-15)
+                if template == .slide || template == .routeVideo {
+                    HStack(spacing: 6) { dateChip; shoeChip }
                 }
                 // 방향 선택 — flyIn 모드일 때만
                 if vm.stampEntranceMode == .flyIn {
