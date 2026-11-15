@@ -31,6 +31,8 @@ struct MRReadiness: Equatable {
     var sessionIsPoint: Bool = false
     /// 대회 뒤 2주 회복(대회 없을 때 리듬) — 판정 줄을 "오늘은 이지런 · 대회 뒤 회복"으로. "강도 여유 있음"과 부딪히지 않게.
     var sessionIsRecovery: Bool = false
+    /// 계획 대회 당일 — 판정 줄을 "오늘은 대회 날"로(테이퍼 주 "이지런"을 권하지 않는다, 2026-11-15)
+    var isRaceDay: Bool = false
 
     /// 둘째 줄 — "왜" 문장 뒤에 데이터 조각을 " · "로 붙인다(계획 진행은 셋째 줄로 따로)
     var detail: String {
@@ -55,7 +57,9 @@ struct MRReadiness: Equatable {
         // 세션이 있으면 판정어 · 세션 — 근거는 둘째 줄의 "왜" 문장이 이미 담고 있다.
         // 강도 OK인데 오늘 세션이 이지면 "강도 OK · 이지"가 앞뒤로 부딪힌다 → "오늘은 이지 Nkm · 강도 여유 있음"
         var parts: [String]
-        if sessionIsRecovery, level != .rest {
+        if isRaceDay {
+            parts = [L.s("오늘은 대회 날", "Today: race day", ja: "今日はレース当日")]
+        } else if sessionIsRecovery, level != .rest {
             parts = [L.s("오늘은 이지런", "Today: easy run", ja: "今日はイージーラン"), L.s("대회 뒤 회복", "post-race recovery", ja: "レース後の回復")]
         } else if level == .go, let sess = session, !sessionIsLongRun, !sessionIsPoint {
             parts = [L.s("오늘은 \(sess)", "Today: \(sess)", ja: "今日は\(sess)"), L.s("강도 여유 있음", "room for intensity", ja: "強度の余裕あり")]
@@ -482,6 +486,14 @@ func mrReadiness(runs: [MRWorkout], phys: MRPhysiology, heatHR: MRHeatHRModel,
         return r
     }
 
+    // 규칙 0-0 — 계획 대회 당일(2026-11-15: 하프 대회 아침에 "오늘은 이지런 · 테이퍼 주 · 이지는 심박 139 아래"가 나왔다).
+    // 달릴지 말지를 판정하지 않는다 — 대회 날이라는 사실만. 이지 기준·세션은 붙지 않는다(대회 주는 세션 없음, 강도 OK라 이지 안내 없음).
+    if let p = planWeek, p.daysToRace == 0 {
+        var r = make(.go, [], why: L.s("오늘은 대회 날입니다. 초반은 계획한 페이스로 시작하세요.",
+                                       "It's race day. Start at your planned pace.", ja: "今日はレース当日です。序盤は計画したペースで入ってください。"))
+        r.isRaceDay = true
+        return r
+    }
     // 규칙 0-2 — 밤 활력 징후(호흡수·손목 온도)가 평소보다 높음(2026-10-09). 맨 앞 — 몸이 이상한 날은 계획보다 몸이 먼저다.
     // 하나·한 밤 = 이지런(손목 온도 하나는 술·더운 방으로도 오른다), 둘 다 또는 2밤 연속 = 휴식. 진단하지 않는다.
     if let v = vital {

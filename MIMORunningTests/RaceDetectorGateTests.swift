@@ -43,6 +43,39 @@ struct RaceDetectorGateTests {
                                  distanceKm: 10.1, startCoord: Self.ttukseom))
     }
 
+    // MARK: - 자동 확정(2026-11-15 MBN 서울마라톤: 07:30 대회 · 마지막 조 08:08 출발 · 광화문 → 잠실)
+
+    private static let gwanghwamun = CLLocationCoordinate2D(latitude: 37.5716, longitude: 126.9767)
+    private static let jamsil = CLLocationCoordinate2D(latitude: 37.515, longitude: 127.073)
+
+    @Test func lateWaveOnPointToPointCourseAutoConfirms() async {
+        let d = RaceDetector()
+        d.loadRacesForTesting([race(name: "2026 MBN 서울마라톤", dateString: "2026-11-15", startTime: "07:30",
+                                    lat: 37.5716, lng: 126.9767, distances: [10.0, 21.0975])])
+        let route = [Self.gwanghwamun, Self.jamsil]
+        // 38분 늦은 출발 · 종료점이 출발점에서 10.5km(하프의 0.5배) — 묻지 않고 확정
+        let s = await d.assess(activityID: UUID(), date: localDate(2026, 11, 15, 8, 8), distanceKm: 21.33,
+                               startCoord: Self.gwanghwamun, routeCoords: route)
+        #expect(s?.strength == .strong)
+        // 60분을 넘으면(±90분 안) 질문
+        let late = await d.assess(activityID: UUID(), date: localDate(2026, 11, 15, 8, 40), distanceKm: 21.33,
+                                  startCoord: Self.gwanghwamun, routeCoords: route)
+        #expect(late?.strength == .weak)
+    }
+
+    @Test func plannedRaceAmongCandidatesAutoConfirms() async {
+        let d = RaceDetector()
+        // city 정밀도는 원래 자동 확정이 안 되지만, 본인이 계획에 넣어 둔 대회면 묻지 않는다
+        d.loadRacesForTesting([race(name: "계획 대회", dateString: "2026-11-15", startTime: "07:30", precision: "city")])
+        let asked = await d.assess(activityID: UUID(), date: localDate(2026, 11, 15, 8, 40), distanceKm: 21.2,
+                                   startCoord: Self.ttukseom)
+        #expect(asked?.strength == .weak)
+        let planned = await d.assess(activityID: UUID(), date: localDate(2026, 11, 15, 8, 40), distanceKm: 21.2,
+                                     startCoord: Self.ttukseom, plannedRaceNames: ["계획 대회"])
+        #expect(planned?.strength == .strong)
+        #expect(planned?.primary.name == "계획 대회")
+    }
+
     @Test func routelessActivityStillCheckedByDistanceAndTime() {
         // 경로 좌표가 없으면 위치 검증만 생략 — 거리·시각은 그대로 검사한다
         let d = RaceDetector()

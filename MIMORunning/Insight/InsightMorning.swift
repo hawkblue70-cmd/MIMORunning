@@ -41,6 +41,11 @@ struct InsightMorning: Equatable {
         return ["롱런", "Long run", "ロング走"].contains { parts[1].hasPrefix($0) }
     }
 
+    /// 판정 줄이 대회 계획 테이퍼 주의 이지 제안인가 — "오늘은 이지런 · 대회 계획 테이퍼 주"(한·영·일)
+    static func lineIsTaperEasy(_ line: String) -> Bool {
+        ["대회 계획 테이퍼 주", "race plan: taper week", "レース計画: テーパー週"].contains { line.contains($0) }
+    }
+
     /// 판정 줄이 포인트 세션인가(숫자 칸이 없던 옛 스냅샷용) — "오늘은 강도 OK · 빌드업 10km …"
     static func lineLooksPoint(level: String, line: String) -> Bool {
         guard level == "go", let rest = sessionText(line: line) else { return false }

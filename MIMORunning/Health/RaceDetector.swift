@@ -114,6 +114,9 @@ final class RaceDetector {
     /// 이보다 낮은 버전으로 자동 확정된 기록은 `revalidateAutoMatches`에서 다시 검사한다.
     /// v2: 거리 ±5% · 출발 시각 ±90분 · 정밀도별 반경(1.5/3/5km) 게이트 도입.
     static let gateVersion = 2
+    /// 자동 확정(.strong)의 출발 시각 폭(분)·종료점 허용 거리(러닝 거리 대비)
+    static let autoConfirmMinutes = 60
+    static let autoConfirmEndGapFraction = 0.6
     private var modelContext: ModelContext?
 
     // MARK: - Setup
@@ -132,14 +135,15 @@ final class RaceDetector {
     ///
     /// 하드 게이트(전부 통과해야 후보): 같은 날짜 · 공식 종목 거리 ±5% ·
     /// 출발 시각 ±90분 · 출발점이 대회 좌표 반경 안(정밀도별 1.5/3/5km).
-    /// 자동 확정(.strong)은 후보가 1개이고 venue 정밀도 + 시각 ±45분 +
+    /// 본인 계획 대회가 후보에 있으면 그 대회로 자동 확정. 그 밖의 자동 확정(.strong)은 후보가 1개이고 venue 정밀도 + 시각 ±60분 +
     /// 종료점까지 대회장 근처일 때만. 나머지는 .weak → 사용자 확인.
     func assess(
         activityID: UUID,
         date: Date,
         distanceKm: Double,
         startCoord: CLLocationCoordinate2D?,
-        routeCoords: [CLLocationCoordinate2D] = []
+        routeCoords: [CLLocationCoordinate2D] = [],
+        plannedRaceNames: Set<String> = []
     ) async -> RaceSuggestion? {
         let existing = matches[activityID.uuidString]
         if existing?.isConfirmed == true { return nil }
@@ -158,6 +162,12 @@ final class RaceDetector {
         if wasDismissed { return nil }
 
         let sorted = gated.sorted { $0.distKm < $1.distKm }
+        // 본인이 계획에 넣어 둔 대회가 그날 후보(날짜·거리·출발 시각 ±90분·출발점)에 있으면 묻지 않고 그 대회로 확정한다
+        // (2026-11-15 MBN 서울마라톤: 계획 대회인데도 "대회였나요?"를 물었다)
+        if let planned = sorted.first(where: { plannedRaceNames.contains($0.race.name) }) {
+            return RaceSuggestion(primary: planned.race, strength: .strong,
+                                  alternatives: sorted.filter { $0.race.name != planned.race.name }.map(\.race))
+        }
         let primary = sorted[0].race
         let strength: MatchStrength =
             (sorted.count == 1 && qualifiesForAutoConfirm(race: primary, date: date,
@@ -204,14 +214,16 @@ final class RaceDetector {
     ) -> Bool {
         // 출발선이 특정된 대회만 — city/district 중심 좌표는 확신할 수 없다
         guard race.geoPrecision == "venue" else { return false }
-        // 출발 시각을 아는 대회만, 그것도 ±45분 안
+        // 출발 시각을 아는 대회만, 그것도 ±60분 안 — 큰 대회는 조별 출발이라 마지막 조가 40분 넘게 늦는다
+        // (2026-11-15 사용자: 07:30 대회 · 08:10 출발, ±45 → ±60)
         guard let raceMin = race.startMinutesOfDay,
-              Self.minuteGap(from: date, toMinutesOfDay: raceMin) <= 45 else { return false }
+              Self.minuteGap(from: date, toMinutesOfDay: raceMin) <= Self.autoConfirmMinutes else { return false }
         // 종료점도 대회장 권역 안 — 지점간(point-to-point) 코스를 감안해 거리 비례로 넉넉히
         guard let ec = endCoord,
               let lat = race.startLatitude, let lng = race.startLongitude else { return false }
+        // 지점간 코스(광화문 → 잠실, 직선 10.5km = 하프의 0.5배)가 0.35배 기준에 걸려 자동 확정이 안 됐다 → 0.6배
         let endGap = Self.haversineKm(ec.latitude, ec.longitude, lat, lng)
-        return endGap <= max(race.matchRadiusKm, distanceKm * 0.35)
+        return endGap <= max(race.matchRadiusKm, distanceKm * Self.autoConfirmEndGapFraction)
     }
 
     /// 활동 시작 시각(로컬)과 대회 출발 시각(분) 사이의 간격. 자정을 넘겨도 최단 거리로.

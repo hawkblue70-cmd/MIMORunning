@@ -486,6 +486,8 @@ struct RunDayShareCard: View {
         // 판정이 이지런인 날 + "강도 OK"인데 오늘 세션이 이지인 날("오늘은 이지 8.3km · 강도 여유 있음") — 둘 다 이지 상한 문장이 붙는다.
         // 휴식 날은 "제안대로"가 맞지 않아 뺀다(2026-10-20: 10/15 강도 OK + 이지 세션 날 줄이 빠졌다)
         guard let e = morning?.morningOf else { return nil }
+        // 대회 러닝은 아침 이지 제안과 비교하지 않는다 — "5'37"로 제안(6'29")보다 52초/km 빨랐고…"(2026-11-15 하프 대회)
+        if actualType == .race { return nil }
         let L = AppLanguage.shared
         // 평균 심박 — 몸 풀리기 전 구간을 뺐으면 그 값과 "(처음 3km 제외)"(리듬 탭 판정과 같은 구간, 2026-10-22)
         let hrValue = comparisonHR?.bpm ?? activity.avgHeartRate

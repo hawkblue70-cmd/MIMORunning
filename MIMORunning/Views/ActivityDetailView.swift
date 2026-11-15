@@ -146,6 +146,13 @@ struct ActivityDetailView: View {
     @Environment(RaceDetector.self) private var raceDetector
     @Environment(\.scenePhase) private var scenePhase
     @Query private var panelAllStories: [WorkoutStory]
+    /// 나 탭에 등록한 계획 대회 — 이 러닝 날짜의 대회가 후보에 있으면 묻지 않고 그 대회로 확정한다(2026-11-15)
+    @Query private var plannedRacesForMatch: [MyPlannedRace]
+    private var plannedRaceNamesOnRunDay: Set<String> {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = .current
+        let day = df.string(from: activity.date)
+        return Set(plannedRacesForMatch.filter { $0.dateString == day }.map(\.raceName))
+    }
     @Query private var panelAllShoes: [Shoe]
     @EnvironmentObject private var engine: MREngineStore
     @Environment(\.modelContext) private var modelContext
@@ -192,7 +199,7 @@ struct ActivityDetailView: View {
         // 존 메모 — 재계산 두 번(그날·다음 날)이 같은 러닝의 디스크 상세 JSON을 다시 디코드하지 않게 공유한다
         final class ZoneMemo { var map: [UUID: [HRZoneData]?] = [:] }
         let memo = ZoneMemo()
-        let result = InsightMorning.make(
+        var result = InsightMorning.make(
             runStart: activity.date, now: Date(),
             snapshotFor: { key in MRReadinessSnapshotStore.fetch(dateKey: key, context: ctx) },
             recompute: { [engine, manager] asOf in
@@ -225,6 +232,17 @@ struct ActivityDetailView: View {
               + " · 엔진 준비 \(engine.readiness(asOf: activity.date.addingTimeInterval(-1), hardRunStarts: []) != nil ? "재계산 가능" : "재계산 nil")"
               + " · 스냅샷 \(snap.map { "\($0.computedAt)" } ?? "없음")")
         #endif
+        // 계획 대회 당일인데 아침 스냅샷이 테이퍼 주 "이지런"으로 저장된 날(대회 날 규칙을 넣기 전 빌드) — 대회로 확정된 러닝이면
+        // 그 줄을 대회 날로 바꿔 보여 준다. 수치 조각(HRV 등)은 그대로(2026-11-15)
+        if confirmedRaceMatch != nil, let m = result.morningOf, InsightMorning.lineIsTaperEasy(m.line) {
+            let L = AppLanguage.shared
+            result.morningOf = InsightMorning.Entry(
+                label: m.label, level: "go",
+                line: L.s("오늘은 대회 날", "Today: race day", ja: "今日はレース当日"),
+                why: L.s("오늘은 대회 날입니다. 초반은 계획한 페이스로 시작하세요.", "It's race day. Start at your planned pace.",
+                         ja: "今日はレース当日です。序盤は計画したペースで入ってください。"),
+                data: m.data, planLine: "")
+        }
         return result
     }
 
@@ -532,6 +550,18 @@ struct ActivityDetailView: View {
                             ? insight.map { MiniMeVariant.from(theme: $0.theme, workoutType: $0.workoutType) }
                             : nil
                     )
+                    // 대회였는지 묻는 배너는 맨 위 — 오늘의 인사이트 바로 앞(2026-11-15 사용자: 상세 데이터 아래에 있어 대회로
+                    // 인식되지 않은 채 인사이트가 먼저 보였다)
+                    if showRaceBanner {
+                        RaceDetectionBanner(
+                            suggestion: raceSuggestion,
+                            activityID: activity.id,
+                            activityDistanceKm: activity.distance / 1000,
+                            activityDate: activity.date,
+                            onConfirmed: { Task { await recomputeInsightWithRaceMatch() } },
+                            onDismissed: {}
+                        )
+                    }
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, headline: headline, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
@@ -629,16 +659,7 @@ struct ActivityDetailView: View {
                         panelChipRow
                         selectedPanelSection
                     }
-                    if showRaceBanner {
-                        RaceDetectionBanner(
-                            suggestion: raceSuggestion,
-                            activityID: activity.id,
-                            activityDistanceKm: activity.distance / 1000,
-                            activityDate: activity.date,
-                            onConfirmed: { Task { await recomputeInsightWithRaceMatch() } },
-                            onDismissed: {}
-                        )
-                    } else if isDismissedRace {
+                    if isDismissedRace, !showRaceBanner {
                         Button {
                             raceDetector.resetDismissed(activityID: activity.id)
                             Task { await runRaceAssessment() }
@@ -985,7 +1006,8 @@ struct ActivityDetailView: View {
                 date: activity.date,
                 distanceKm: activity.distance / 1000,
                 startCoord: firstCoord,
-                routeCoords: detail?.routeCoordinates ?? []
+                routeCoords: detail?.routeCoordinates ?? [],
+                plannedRaceNames: plannedRaceNamesOnRunDay
             )
 
             if cachedInsight != nil {
@@ -1161,7 +1183,8 @@ struct ActivityDetailView: View {
             date: activity.date,
             distanceKm: activity.distance / 1000,
             startCoord: routeCoords.first,
-            routeCoords: routeCoords
+            routeCoords: routeCoords,
+            plannedRaceNames: plannedRaceNamesOnRunDay
         )
         if let s = suggestion, s.strength == .strong {
             raceDetector.confirm(activityID: activity.id, race: s.primary,
