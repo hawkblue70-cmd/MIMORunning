@@ -76,7 +76,14 @@ func mrRaceDayCard(race: MRTargetRace,
     case 8...14:    phase = .tapering
     case 2...7:     phase = .finalWeek
     case 1:         phase = .eve
-    case 0:         phase = .raceDay
+    case 0:
+        // 대회를 마치고 기록이 들어왔으면 당일에도 결과 화면 — 저녁까지 "첫 5km를 빠르게 가지 마세요"가 남아 있었다(2026-11-15)
+        if let finishedRun = mrFinishedRun(for: race, runs: runs) {
+            done = finishedRun
+            phase = .recovery
+        } else {
+            phase = .raceDay
+        }
     case (-14)...(-1):
         // 실제 기록이 없으면 회복 화면을 띄우지 않는다
         guard let finishedRun = mrFinishedRun(for: race, runs: runs) else { return nil }
@@ -213,7 +220,13 @@ func mrRaceDayCard(race: MRTargetRace,
         let run = done!
         let ago = -d
         let time = mrFormatDisplay(run.durationMin)
-        headline = "\(race.name) \(time)"
+        headline = ago == 0 ? L.s("수고하셨습니다 · \(time)", "Well done · \(time)", ja: "お疲れさまでした · \(time)")
+                            : "\(race.name) \(time)"
+        if ago == 0, let km = run.distanceKm, km > 0 {
+            lines.append(L.s("\(mrRunKmInText(km))km · 평균 \(mrFormatPace(run.durationMin * 60 / km))/km로 완주했습니다.",
+                             "Finished \(mrRunKmInText(km)) km at \(mrFormatPace(run.durationMin * 60 / km))/km.",
+                             ja: "\(mrRunKmInText(km))kmを平均\(mrFormatPace(run.durationMin * 60 / km))/kmで完走しました。"))
+        }
 
         // 목표가 있었으면 결과를 함께 말한다. 판정이 아니라 사실로.
         if let g = goalMin {
@@ -233,6 +246,11 @@ func mrRaceDayCard(race: MRTargetRace,
             lines.append(L.s("마라톤 뒤에는 근육이 회복되는 데 2주쯤 걸립니다. 지금 기록이 잘 안 나와도 정상입니다.", "Muscles take about two weeks to recover after a marathon. Slow times right now are normal.", ja: "マラソンの後は筋肉の回復に2週間ほどかかります。今タイムが出なくても正常です。"))
             lines.append(ago <= 3 ? L.s("며칠은 걷기나 아주 가벼운 조깅만으로 충분합니다.", "For a few days, walking or very easy jogging is plenty.", ja: "数日はウォーキングかごく軽いジョグで十分です。")
                                   : L.s("슬슬 이지 러닝으로 돌아오셔도 됩니다. 강도는 다음 주부터.", "You can ease back into easy runs. Intensity from next week.", ja: "そろそろイージーランに戻って大丈夫です。強度は来週から。"))
+        } else if ago == 0 {
+            // 대회 당일 저녁 — 내일 할 일(2026-11-15 사용자: 수고했다는 말과 기록, 내일은 이지런이나 몸풀기)
+            lines.append(L.s("오늘은 푹 쉬세요. 내일은 쉬거나 20~30분 아주 가볍게 몸만 푸세요.",
+                             "Rest well tonight. Tomorrow, rest or loosen up with 20–30 very easy minutes.",
+                             ja: "今日はゆっくり休んでください。明日は休むか、20~30分ごく軽く体をほぐしてください。"))
         } else {
             lines.append(L.s("며칠은 가볍게 가시면 됩니다.", "Keep it easy for a few days.", ja: "数日は軽めにしてください。"))
         }
