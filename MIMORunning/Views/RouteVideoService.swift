@@ -657,7 +657,9 @@ struct RouteVideoExportService {
                 tipPositionAnim = pathAnimation(path: routePath, duration: routeDur)
             }
 
-            if let uiImg = miniMeImage, let cgImg = uiImg.cgImage {
+            // 끝점 마커는 노란 점 — 미니미 사진은 경로 선을 가려 선이 보이지 않았다(2026-11-15 사용자). 미니미 분기는 남겨 두되 쓰지 않는다.
+            let useMiniMeMarker = false
+            if useMiniMeMarker, let uiImg = miniMeImage, let cgImg = uiImg.cgImage {
                 let markerR: CGFloat = 20 * renderScale   // 80px diameter (~7% of 1080px)
                 let borderW: CGFloat = 2  * renderScale
                 let imageR  = markerR - borderW
@@ -688,12 +690,18 @@ struct RouteVideoExportService {
                 let rDot:  CGFloat = 5  * renderScale
 
                 let tipGlow = makeCircleLayer(radius: rGlow,
-                                              color: UIColor(Theme.violet).withAlphaComponent(0.38))
+                                              color: UIColor(Theme.time).withAlphaComponent(0.38))
                 tipGlow.position = firstPt
                 tipGlow.add(tipPositionAnim, forKey: "position")
                 parentLayer.addSublayer(tipGlow)
 
-                let tipDot = makeCircleLayer(radius: rDot, color: .white)
+                // 노란 점(시간·현재 위치 색) — 심박 색 선 위에서 구분되게 흰 테두리
+                let tipRing = makeCircleLayer(radius: rDot + 1.5 * renderScale, color: .white)
+                tipRing.position = firstPt
+                tipRing.add(tipPositionAnim, forKey: "position")
+                parentLayer.addSublayer(tipRing)
+
+                let tipDot = makeCircleLayer(radius: rDot, color: UIColor(Theme.time))
                 tipDot.position = firstPt
                 tipDot.add(tipPositionAnim, forKey: "position")
                 parentLayer.addSublayer(tipDot)
@@ -1236,7 +1244,8 @@ struct RouteVideoExportService {
             if let labelImg = makeKmLabelImage(km: km, renderScale: renderScale) {
                 let lw = CGFloat(labelImg.width)
                 let lh = CGFloat(labelImg.height)
-                let gap: CGFloat = 5 * renderScale
+                // 점에서 조금 떨어뜨린다 — 붙어 있으면 점·선과 겹쳐 글자가 안 보였다(2026-11-15)
+                let gap: CGFloat = 12 * renderScale
 
                 // Safe zone: flip label left if dot is near the right edge (60px safe margin)
                 let nearRight = marker.position.x > pixelSize.width - 60 - dotR - gap - lw
@@ -1286,7 +1295,7 @@ struct RouteVideoExportService {
     // MARK: - KM label image (pre-rendered CGImage, avoids CATextLayer rendering quirks)
 
     /// 경로 영상 km 글자 배율 — 12pt → 15pt(2026-11-07 사용자: 지도 글자가 작다). 활동 상세 지도는 그대로(배율은 이 호출만).
-    static let kmLabelSizeFactor: CGFloat = 1.25
+    static let kmLabelSizeFactor: CGFloat = 1.1   // 1.25(15pt)는 컸다(2026-11-15) → 약 13pt
 
     private static func makeKmLabelImage(km: Int, renderScale: CGFloat) -> CGImage? {
         makeKmMarkerLabelImage(km: km, renderScale: renderScale * kmLabelSizeFactor)
