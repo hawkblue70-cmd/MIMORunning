@@ -321,6 +321,8 @@ private struct KmMarkerInfo {
     let pathFraction: Double  // 0…1 fraction of total distance
     /// km 글자를 그릴지 — 앞서 놓인 글자와 겹치면 점만(2026-11-15 사용자 A안)
     var showLabel: Bool = true
+    /// 글자 가운데 위치(점 기준 오프셋, 픽셀) — 위·아래·오른쪽·왼쪽 중 점·다른 글자와 안 겹치는 자리
+    var labelOffset: CGPoint? = nil
 }
 
 // MARK: - RouteVideoExportService
@@ -719,17 +721,42 @@ struct RouteVideoExportService {
                     let pa = ka % 5 == 0 ? 0 : 1, pb = kb % 5 == 0 ? 0 : 1
                     return pa != pb ? pa < pb : ka < kb
                 }
+                // 장애물 — 모든 km 점·도착점(그 위에 글자를 올리지 않는다), 이미 놓인 글자
+                let dotPad = (kmDotR + 3) * renderScale
                 let finishPad = 10 * renderScale
-                var taken: [CGRect] = markers.filter(\.isFinish).map {
-                    CGRect(x: $0.position.x - finishPad, y: $0.position.y - finishPad, width: finishPad * 2, height: finishPad * 2)
+                let dots: [CGRect] = markers.map { m in
+                    let r = m.isFinish ? finishPad : dotPad
+                    return CGRect(x: m.position.x - r, y: m.position.y - r, width: r * 2, height: r * 2)
                 }
+                var taken: [CGRect] = []
+                // 선 위 점(일부) — 글자가 경로를 덮는 정도를 비교할 때만
+                let step = max(1, scaledPoints.count / 300)
+                let linePts = stride(from: 0, to: scaledPoints.count, by: step).map { scaledPoints[$0] }
                 for i in order {
-                    guard let r = kmLabelRect(marker: markers[i], pixelSize: px, renderScale: renderScale) else { continue }
-                    let padded = r.insetBy(dx: -3 * renderScale, dy: -2 * renderScale)
-                    if taken.contains(where: { $0.intersects(padded) }) {
-                        markers[i].showLabel = false
+                    let km = Int((markers[i].distanceM / 1000).rounded())
+                    guard let img = makeKmLabelImage(km: km, renderScale: renderScale) else { continue }
+                    let lw = CGFloat(img.width), lh = CGFloat(img.height)
+                    let dotR = kmDotR * renderScale, vGap = 4 * renderScale, hGap = kmLabelGap * renderScale
+                    // 위 · 아래 먼저(2026-11-15 사용자: 점과 글자가 겹치지 않게 위나 아래), 안 되면 오른쪽 · 왼쪽
+                    let offsets = [CGPoint(x: 0, y: -(dotR + vGap + lh / 2)), CGPoint(x: 0, y: dotR + vGap + lh / 2),
+                                   CGPoint(x: dotR + hGap + lw / 2, y: 0), CGPoint(x: -(dotR + hGap + lw / 2), y: 0)]
+                    var best: (off: CGPoint, rect: CGRect, cover: Int)? = nil
+                    for off in offsets {
+                        let c = CGPoint(x: markers[i].position.x + off.x, y: markers[i].position.y + off.y)
+                        let r = CGRect(x: c.x - lw / 2, y: c.y - lh / 2, width: lw, height: lh)
+                        let padded = r.insetBy(dx: -3 * renderScale, dy: -2 * renderScale)
+                        guard r.minX >= 8, r.maxX <= px.width - 8, r.minY >= 8, r.maxY <= px.height - 8,
+                              !dots.contains(where: { $0.intersects(padded) }),
+                              !taken.contains(where: { $0.intersects(padded) }) else { continue }
+                        let cover = linePts.filter { r.contains($0) }.count
+                        if best == nil || cover < best!.cover { best = (off, padded, cover) }
+                        if cover == 0 { break }
+                    }
+                    if let b = best {
+                        markers[i].labelOffset = b.off
+                        taken.append(b.rect)
                     } else {
-                        taken.append(padded)
+                        markers[i].showLabel = false
                     }
                 }
                 for m in markers {
@@ -1240,17 +1267,6 @@ struct RouteVideoExportService {
         return nearRight ? half - dotR - gap - lw / 2 : half + dotR + gap + lw / 2
     }
 
-    /// 글자가 화면(픽셀)에서 차지할 사각형 — 겹침 판정용
-    private static func kmLabelRect(marker: KmMarkerInfo, pixelSize: CGSize, renderScale: CGFloat) -> CGRect? {
-        let km = Int((marker.distanceM / 1000).rounded())
-        guard let img = makeKmLabelImage(km: km, renderScale: renderScale) else { return nil }
-        let lw = CGFloat(img.width), lh = CGFloat(img.height)
-        let half = 80 * renderScale / 2
-        let cx = marker.position.x - half + kmLabelCenterX(markerX: marker.position.x, labelWidth: lw, half: half,
-                                                           pixelSize: pixelSize, renderScale: renderScale)
-        return CGRect(x: cx - lw / 2, y: marker.position.y - lh / 2, width: lw, height: lh)
-    }
-
     // MARK: - Marker layer factory
 
     private static func makeMarkerLayer(
@@ -1291,13 +1307,15 @@ struct RouteVideoExportService {
             if marker.showLabel, let labelImg = makeKmLabelImage(km: km, renderScale: renderScale) {
                 let lw = CGFloat(labelImg.width)
                 let lh = CGFloat(labelImg.height)
-                let labelX = kmLabelCenterX(markerX: marker.position.x, labelWidth: lw, half: half,
-                                            pixelSize: pixelSize, renderScale: renderScale)
+                let labelX = marker.labelOffset.map { half + $0.x }
+                    ?? kmLabelCenterX(markerX: marker.position.x, labelWidth: lw, half: half,
+                                      pixelSize: pixelSize, renderScale: renderScale)
+                let labelY = marker.labelOffset.map { half + $0.y } ?? half
 
                 let labelLayer = CALayer()
                 labelLayer.contents = labelImg
                 labelLayer.bounds   = CGRect(x: 0, y: 0, width: lw, height: lh)
-                labelLayer.position = CGPoint(x: labelX, y: half)
+                labelLayer.position = CGPoint(x: labelX, y: labelY)
                 container.addSublayer(labelLayer)
             }
         }
