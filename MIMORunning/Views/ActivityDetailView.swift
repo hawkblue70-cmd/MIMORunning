@@ -562,6 +562,22 @@ struct ActivityDetailView: View {
                             onDismissed: {}
                         )
                     }
+                    if isDismissedRace, !showRaceBanner {
+                        Button {
+                            raceDetector.resetDismissed(activityID: activity.id)
+                            Task { await runRaceAssessment() }
+                        } label: {
+                            Label(AppLanguage.shared.s("대회 기록 추가", "Add Race Record", ja: "レース記録を追加"), systemImage: "flag.checkered")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                    }
                     if activity.type == .running {
                         InsightCard(activity: activity, insight: insight, headline: headline, condition: condition,
                                     confirmedRace: confirmedRaceMatch, hillMatch: hillMatch,
@@ -658,22 +674,6 @@ struct ActivityDetailView: View {
                             .id("panelAnchor")
                         panelChipRow
                         selectedPanelSection
-                    }
-                    if isDismissedRace, !showRaceBanner {
-                        Button {
-                            raceDetector.resetDismissed(activityID: activity.id)
-                            Task { await runRaceAssessment() }
-                        } label: {
-                            Label(AppLanguage.shared.s("대회 기록 추가", "Add Race Record", ja: "レース記録を追加"), systemImage: "flag.checkered")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.05))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 16)
                     }
                     MetricGrid(activity: activity, detail: detail, age: userAge,
                                isMale: manager.userIsMale)
