@@ -57,6 +57,15 @@ struct EffortRulesTests {
         #expect(general.insights[0].tone == .good)
     }
 
+    @Test func muchHigherThanUsualIsNotSimilar() {
+        // 2026-11-15 하프 대회: 체감 9 · 평소 대회 5가 "비슷한 체감"으로 나왔다
+        let race = EffortRules.evaluate(input(effort: 9, type: .race, baseline: 5))
+        #expect(race.insights.first?.message == "체감 9 · 평소 대회 5 — 평소 대회보다 4 높았습니다.")
+        #expect(race.insights.first?.tone == .neutral)
+        let tempo = EffortRules.evaluate(input(effort: 9, type: .tempo, baseline: 7))
+        #expect(tempo.insights.first?.message.contains("2 높았습니다") == true)
+    }
+
     @Test func heatRules() {
         let higher = EffortRules.evaluate(input(effort: 6, type: .general, baseline: 5, temp: 26))
         #expect(higher.replacesEnvironment)

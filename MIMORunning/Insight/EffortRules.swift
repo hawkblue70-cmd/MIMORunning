@@ -123,6 +123,20 @@ enum EffortRules {
     /// 아침 제안을 따른 것처럼 읽혔다(2026-11-03). 무엇과 비교했는지(평소 그 유형)만 밝힌다.
     private static func matched(_ e: Int, _ b: Int, label: String) -> RunInsight {
         let L = AppLanguage.shared
+        // 2 이상 차이 나면 '비슷한'이 아니다 — 체감 9 · 평소 대회 5가 "평소 대회와 비슷한 체감"으로 나왔다(2026-11-15 하프).
+        // 판정 없이 차이만 적는다.
+        if abs(e - b) >= 2 {
+            let d = abs(e - b), up = e > b
+            return RunInsight(category: .intensity, tone: .neutral, badge: L.s("체감 강도", "Perceived Effort", ja: "体感強度"),
+                              message: up
+                                ? L.s("체감 \(e) · 평소 \(label) \(b) — 평소 \(label)보다 \(d) 높았습니다.",
+                                      "Effort \(e) · usual \(label.lowercased()) \(b) — \(d) higher than your usual \(label.lowercased()).",
+                                      ja: "体感\(e) · 普段の\(label) \(b) — 普段の\(label)より\(d)高かったです。")
+                                : L.s("체감 \(e) · 평소 \(label) \(b) — 평소 \(label)보다 \(d) 낮았습니다.",
+                                      "Effort \(e) · usual \(label.lowercased()) \(b) — \(d) lower than your usual \(label.lowercased()).",
+                                      ja: "体感\(e) · 普段の\(label) \(b) — 普段の\(label)より\(d)低かったです。"),
+                              highlights: ["\(e)"])
+        }
         return RunInsight(category: .intensity, tone: .good, badge: L.s("평소 체감", "Usual Effort", ja: "普段どおりの体感"),
                           message: L.s("체감 \(e) · 평소 \(label) \(b) — 평소 \(label)\(KoreanParticle.and(after: label)) 비슷한 체감이었습니다.",
                                        "Effort \(e) · usual \(label.lowercased()) \(b) — about the same as your usual \(label.lowercased()).",
