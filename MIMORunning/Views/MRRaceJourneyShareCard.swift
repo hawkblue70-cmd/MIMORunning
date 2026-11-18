@@ -296,6 +296,13 @@ private struct MRRaceJourneyWeekRows: View {
 
     private static let barH: CGFloat = 8
 
+    static func runDay(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = AppLanguage.shared.locale
+        f.dateFormat = "M/d (E)"
+        return f.string(from: d)
+    }
+
     /// 그 주에 한 것 — 종류마다 막대와 같은 색, 구분점은 흐린 글자. 예정 주·러닝 없음은 한 가지 색.
     private func detailText(_ w: MRRaceJourney.Week) -> Text {
         guard !w.isFuture, !w.parts.isEmpty else {
@@ -361,6 +368,26 @@ private struct MRRaceJourneyWeekRows: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
+
+                    // 진행 중 내보내기의 이번 주 — 러닝 한 번씩(주차표 펼침과 같은 내용, 거리는 종류 색)
+                    ForEach(Array(w.runs.enumerated()), id: \.offset) { _, r in
+                        HStack(spacing: 6) {
+                            Text(Self.runDay(r.start))
+                                .foregroundStyle(palette.sub)
+                                .frame(width: 52, alignment: .leading)
+                            Text(String(format: "%.2fkm", mrKmFloor2(r.km)))
+                                .foregroundStyle(palette.color(r.kind))
+                                .frame(width: 46, alignment: .trailing)
+                            Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
+                                .foregroundStyle(palette.text.opacity(0.80))
+                            if !r.label.isEmpty {
+                                Text(r.label).foregroundStyle(palette.sub)
+                            }
+                        }
+                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .padding(.leading, 35)
+                    }
                 }
             }
         }

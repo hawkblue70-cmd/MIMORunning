@@ -31,7 +31,17 @@ struct MRRaceJourney: Identifiable {
         var isCurrent: Bool = false
         /// detail을 종류별로 나눈 조각 — 카드가 막대와 같은 색으로 칠한다(2026-10-07 사용자 요청)
         var parts: [(text: String, kind: Kind)] = []
+        /// 진행 중 내보내기의 이번 주 — 러닝 한 번씩(날짜·거리·페이스·종류). 주차표 펼침과 같은 내용(2026-11-18 사용자 요청)
+        var runs: [RunLine] = []
         var totalKm: Double { km.values.reduce(0, +) }
+    }
+
+    struct RunLine {
+        let start: Date
+        let km: Double
+        let paceSecPerKm: Double?
+        let label: String     // 저장 종류 이름(없으면 빈 문자열)
+        let kind: Kind
     }
 
     let raceName: String
@@ -142,6 +152,7 @@ struct MRRaceJourney: Identifiable {
             let ws = span.filter { $0.start >= mon && $0.start < wEnd }
             var km: [Kind: Double] = [:]
             var groups: [(name: String, kind: Kind, n: Int, km: Double)] = []
+            var runLines: [RunLine] = []
             for r in ws {
                 let d = r.distanceKm ?? 0
                 let k: Kind
@@ -156,6 +167,8 @@ struct MRRaceJourney: Identifiable {
                     k = .easy; name = ""
                 }
                 let label = k == .easy ? L.s("이지", "Easy", ja: "イージー") : name
+                runLines.append(RunLine(start: r.start, km: d, paceSecPerKm: r.paceSecPerKm,
+                                        label: types[r.start]?.koreanLabel ?? (k == .easy ? "" : name), kind: k))
                 km[k, default: 0] += d
                 if let i = groups.firstIndex(where: { $0.name == label }) {
                     groups[i].n += 1; groups[i].km += d
@@ -189,7 +202,8 @@ struct MRRaceJourney: Identifiable {
             if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
-                              isCurrent: isCurrent, parts: parts))
+                              isCurrent: isCurrent, parts: parts,
+                              runs: isCurrent ? runLines.sorted { $0.start < $1.start } : []))
             if w.point != nil {
                 hardPlanned += 1
                 if mrPointRun(weekRuns: ws, longRunKm: w.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil {
