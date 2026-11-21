@@ -164,13 +164,17 @@ struct MRRaceJourneyShareCard: View {
                 }
 
 
-                Text(j.progress != nil ? L.s("대회 준비 중", "Race build-up in progress", ja: "レース準備中")
-                          : j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
-                          : L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(p.sub)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
+                // 바닥 문구 — 진행 중 카드는 없음(2026-11-21 사용자: '대회 준비 중' 삭제), 아래 여백만
+                if j.progress == nil {
+                    Text(j.month != nil ? L.s("월간 계획 · 수행 기록", "Monthly plan · log", ja: "月間計画 · 実行記録")
+                                        : L.s("계획부터 완주까지", "From plan to finish", ja: "計画から完走まで"))
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(p.sub)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                } else {
+                    Color.clear.frame(height: 14)
+                }
             }
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity, alignment: .top)
