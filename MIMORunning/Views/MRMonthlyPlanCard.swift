@@ -307,7 +307,7 @@ struct MRMonthlyPlanCard: View {
                         title: L.s("\(monthName(month)) 훈련일지", "\(monthName(month)) training log",
                                    ja: "\(monthName(month))の練習日誌"),
                         monthStart: r.start, monthEnd: r.end, goalKm: goalPast, planTotalKm: planTotal,
-                        planWeeks: weeks, bars: monthBars(r.start, r.end), now: r.end.addingTimeInterval(-1), runs: engine.runs,
+                        planWeeks: weeks, bars: monthBars(r.start, r.end), now: r.end.addingTimeInterval(-1), live: false, runs: engine.runs,
                         types: MRRaceJourney.runTypes(manager: manager, runs: engine.runs,
                                                       from: weeks.first?.monday ?? r.start, to: r.end.addingTimeInterval(7 * 86_400),
                                                       fallback: engine.pointRunTypes),

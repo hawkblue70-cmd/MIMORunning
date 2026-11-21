@@ -226,6 +226,7 @@ struct MRRaceJourney: Identifiable {
     /// 월간 계획 훈련일지 — 고정된 주차(지난 주·이번 주) + 그 기간 러닝. 이번 주 이후 주는 넣지 않는다.
     static func makeMonth(title: String, monthStart: Date, monthEnd: Date, goalKm: Double?, planTotalKm: Double,
                           planWeeks: [MRPlanWeekSummary], bars: [RecordBar] = [], now: Date = Date(),
+                          live: Bool = true,
                           runs: [MRWorkout], types: [Date: WorkoutType],
                           hardStarts: Set<Date>, pointTypes: [Date: WorkoutType],
                           calendar cal: Calendar = .current) -> MRRaceJourney? {
@@ -239,8 +240,13 @@ struct MRRaceJourney: Identifiable {
         let span = runs.filter { $0.start >= start && $0.start < end }.sorted { $0.start < $1.start }
         let inMonth = span.filter { $0.start >= monthStart && $0.start < monthEnd }
         guard !inMonth.isEmpty else { return nil }
-        let built = buildWeeks(weeksSorted, span: span, raceRun: nil, types: types,
-                               hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
+        // 이번 달(live)은 진행 중 대회 카드와 같은 방식 — 이번 주 강조·목표·러닝 목록, 다음 주부터 예정(2026-11-21 사용자).
+        // 지난 달은 끝난 주만.
+        let built = live
+            ? buildWeeks(planWeeks.sorted { $0.monday < $1.monday }, span: span, raceRun: nil, types: types,
+                         hardStarts: hardStarts, pointTypes: pointTypes, today: today, calendar: cal)
+            : buildWeeks(weeksSorted, span: span, raceRun: nil, types: types,
+                         hardStarts: hardStarts, pointTypes: pointTypes, calendar: cal)
         var j = MRRaceJourney(
             raceName: "", raceDate: monthStart, distanceM: 0, actualMin: 0,
             planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,

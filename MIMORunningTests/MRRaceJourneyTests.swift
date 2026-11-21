@@ -89,7 +89,8 @@ struct MRRaceJourneyTests {
             title: "10월 훈련일지", monthStart: d(1, 0), monthEnd: cal.date(from: DateComponents(year: 2026, month: 11, day: 1))!,
             goalKm: 140, planTotalKm: 128, planWeeks: plan, now: d(14),
             runs: runs, types: [:], hardStarts: [], pointTypes: [:]))
-        #expect(j.weeks.count == 3)                    // 10/19 주는 아직 아님
+        #expect(j.weeks.count == 4)                    // 이번 달은 예정 주까지(2026-11-21)
+        #expect(j.weeks[3].isFuture && j.weeks[2].isCurrent)
         #expect(j.month?.monthKm == 30)                // 9/29 러닝은 10월이 아님
         #expect(j.month?.monthRuns == 3)
         #expect(j.month?.goalKm == 140)
