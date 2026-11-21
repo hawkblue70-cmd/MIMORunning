@@ -426,7 +426,7 @@ private struct MRRaceJourneyWeekRows: View {
                     }
 
                     // 진행 중 내보내기의 이번 주 — 그 주 목표(예정 주와 같은 문구·색)
-                    if !w.planText.isEmpty {
+                    if !w.isFuture, !w.planText.isEmpty {   // 예정 주는 단계 옆에 이미 계획 문구가 있다
                         Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
                             .font(.system(size: 8.5, weight: .semibold))
                             .foregroundStyle(palette.text.opacity(0.85))
