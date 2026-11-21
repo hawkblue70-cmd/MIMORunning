@@ -365,7 +365,7 @@ private struct MRRaceJourneyWeekRows: View {
                     HStack(spacing: 5) {
                         // 이번 주는 밝고 굵게(2026-11-21 사용자)
                         Text(MRRaceJourneyShareCard.md(w.monday))
-                            .foregroundStyle(w.isCurrent ? palette.text : palette.text.opacity(0.75))
+                            .foregroundStyle(w.isCurrent ? palette.text : palette.text.opacity(0.72))
                             .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 34, alignment: .leading)
                         // 계획 단계 — 대회 주차표와 같은 이름·글자색(늘리기는 기본 글자색)
@@ -383,7 +383,7 @@ private struct MRRaceJourneyWeekRows: View {
                             // 아직 안 한 주 — 막대 대신 그 주 계획 문구를 단계 옆에(2026-11-21 사용자)
                             Text(w.planText.isEmpty ? AppLanguage.shared.s("예정", "Planned", ja: "予定") : w.planText)
                                 .font(.system(size: 9.5, weight: .medium))
-                                .foregroundStyle(palette.text.opacity(0.88))   // 흐린 회색은 안 읽혔다(2026-11-21)
+                                .foregroundStyle(palette.text.opacity(0.72))   // 주차표 실행 안내와 같은 밝기(2026-11-21 사용자: 너무 밝음)
                                 .lineLimit(nil)   // 잘라내지 않는다 — 3줄이어도 모두(2026-11-21 사용자)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,7 +411,7 @@ private struct MRRaceJourneyWeekRows: View {
                         }
                         // 예정 주 — 실제 칸은 "—", 계획 km만
                         Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
-                            .foregroundStyle(w.isFuture ? palette.text.opacity(0.88) : palette.text)
+                            .foregroundStyle(w.isFuture ? palette.text.opacity(0.82) : palette.text)   // 주차표 주간 칸과 같은 밝기
                             .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 52, alignment: .trailing)
                     }
@@ -432,7 +432,7 @@ private struct MRRaceJourneyWeekRows: View {
                     if !w.isFuture, !w.planText.isEmpty {   // 예정 주는 단계 옆에 이미 계획 문구가 있다
                         Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
                             .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundStyle(palette.text.opacity(0.85))
+                            .foregroundStyle(palette.text.opacity(0.72))   // 주차표 실행 안내와 같은 밝기
                             .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 39)
@@ -442,15 +442,15 @@ private struct MRRaceJourneyWeekRows: View {
                     ForEach(Array(w.runs.enumerated()), id: \.offset) { _, r in
                         HStack(spacing: 6) {
                             Text(Self.runDay(r.start))
-                                .foregroundStyle(palette.text.opacity(0.85))
+                                .foregroundStyle(palette.text.opacity(0.72))
                                 .frame(width: 58, alignment: .leading)
                             Text(String(format: "%.2fkm", mrKmFloor2(r.km)))
                                 .foregroundStyle(palette.color(r.kind))
                                 .frame(width: 52, alignment: .trailing)
                             Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
-                                .foregroundStyle(palette.text)
+                                .foregroundStyle(palette.text.opacity(0.72))
                             if !r.label.isEmpty {
-                                Text(r.label).foregroundStyle(palette.text.opacity(0.85))
+                                Text(r.label).foregroundStyle(palette.text.opacity(0.60))   // 주차표 러닝 줄과 같은 밝기
                             }
                         }
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
