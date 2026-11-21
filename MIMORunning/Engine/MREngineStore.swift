@@ -1249,6 +1249,8 @@ final class MREngineStore: ObservableObject {
             profile = mrProfile(runs: runs, efforts: efforts, sigmaObs: newSigma, asOf: now)
             predictions = mrPredict(efforts: efforts, fit: fit, profile: profile, heat: heat, asOf: now,
                                     anchorPool: anchorPool)
+            // 계획의 예측 폭도 새 σ_obs로 — 저장된 스냅샷·앵커 그대로 다시 짠다
+            recomputePlans()
             #if DEBUG
             print(String(format: "[σ_obs] 백테스트 %d건 → σ_obs=%.4f (±%.1f%%) · 재계산",
                          rows.count, newSigma, (exp(newSigma) - 1) * 100))
@@ -1824,7 +1826,9 @@ final class MREngineStore: ObservableObject {
                                         to: cal.startOfDay(for: now)) ?? now
             return mondayStart2.addingTimeInterval(-1)  // 이번 주 런 전체 제외 (월요일 포함)
         }()
-        let planProfile2 = mrProfile(runs: runs, efforts: efforts, asOf: planCutoff2)
+        // ⚠ σ_obs(지난 대회 예측 오차)를 꼭 넘긴다 — 빠지면 예측 폭에서 대회 날 흔들림(a)이 0이 되어
+        //   풀코스 범위가 좁게 나왔다(2026-11-21 실기기: a=0 → ±6.2%, 넣으면 약 ±8%).
+        let planProfile2 = mrProfile(runs: runs, efforts: efforts, sigmaObs: storedSigmaObs, asOf: planCutoff2)
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
         let raceTempByID = Dictionary(upcoming.map { r in
