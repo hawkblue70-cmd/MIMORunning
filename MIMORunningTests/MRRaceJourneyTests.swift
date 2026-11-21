@@ -115,6 +115,25 @@ struct MRRaceJourneyTests {
         #expect(j.progress?.daysLeft == 18)
         #expect(j.progress?.goalMin == 110)
     }
+
+    @Test func lastWeekKeepsDetailUntilFirstRunThisWeek() throws {
+        // 계획 10/5 · 10/12 · 10/19 · 10/26, 오늘 10/13(화) — 이번 주(10/12)에 러닝이 없으면 지난 주(10/5) 내역 유지
+        let plan = [5, 12, 19, 26].enumerated().map { i, dd in
+            MRPlanWeekSummary(idx: i + 1, monday: d(dd, 0), phase: "늘리기", longRunKm: 12, weeklyKm: 30)
+        }
+        let race = cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9))!
+        func journey(_ runs: [MRWorkout]) throws -> MRRaceJourney {
+            try #require(MRRaceJourney.makeInProgress(
+                raceName: "x", raceDate: race, distanceM: MRDistance.dH, planWeeks: plan,
+                goalMin: nil, projectedMin: nil, now: d(13, 20),
+                runs: runs, types: [:], hardStarts: [], pointTypes: [:]))
+        }
+        let before = try journey([run(6, km: 10), run(8, km: 8)])
+        #expect(!before.weeks[0].isDone && before.weeks[0].runs.count == 2)
+        let after = try journey([run(6, km: 10), run(8, km: 8), run(13, km: 6)])
+        #expect(after.weeks[0].isDone && after.weeks[0].runs.isEmpty)
+        #expect(after.weeks[1].isCurrent && after.weeks[1].runs.count == 1)
+    }
 }
 
 private extension MRWorkout {

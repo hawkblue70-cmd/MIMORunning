@@ -150,6 +150,15 @@ struct MRRaceJourney: Identifiable {
         let L = AppLanguage.shared
         var weeks: [Week] = []
         var hardDone = 0, hardPlanned = 0
+        // 이번 주에 아직 러닝이 없으면 지난 주 내역을 계속 보여 준다 — 새 주 첫 러닝을 하면 지난 주는 막대만(2026-11-21 사용자)
+        var keepMonday: Date? = nil
+        if let t = today {
+            let thisMon = MRPlanGovernance.weekMonday(of: t, calendar: cal)
+            let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: t)) ?? t
+            if !span.contains(where: { $0.start >= thisMon && $0.start < tomorrow }) {
+                keepMonday = cal.date(byAdding: .day, value: -7, to: thisMon)
+            }
+        }
         for w in weeksSorted {
             let mon = cal.startOfDay(for: w.monday)
             guard let wEnd = cal.date(byAdding: .day, value: 7, to: mon) else { continue }
@@ -198,15 +207,16 @@ struct MRRaceJourney: Identifiable {
                 continue
             }
             let isCurrent = today.map { t in mon <= t && wEnd > t } ?? false
+            let keepsDetail = isCurrent || keepMonday.map { cal.isDate($0, inSameDayAs: mon) } ?? false
             var sym: String? = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
                                           actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
             // 이번 주는 다 채웠을 때만(●·▲) — 대회 주차표와 같은 규칙
             if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
-                              isCurrent: isCurrent, isDone: today != nil && !isCurrent, parts: parts,
-                              runs: isCurrent ? runLines.sorted { $0.start < $1.start } : [],
-                              planText: isCurrent ? Self.planText(w) : ""))
+                              isCurrent: isCurrent, isDone: today != nil && !keepsDetail, parts: parts,
+                              runs: keepsDetail ? runLines.sorted { $0.start < $1.start } : [],
+                              planText: keepsDetail ? Self.planText(w) : ""))
             if w.point != nil {
                 hardPlanned += 1
                 if mrPointRun(weekRuns: ws, longRunKm: w.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil {
