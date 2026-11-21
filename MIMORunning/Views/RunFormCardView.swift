@@ -598,7 +598,19 @@ struct RunFormCardView: View {
             let st = metricStatus(rawValue: Double(c), stat: stat, dir: .cadence)
             return st == .above || st == .below
         }()
-        if (style == .quickStep || style == .bigStride), items.count < 3, !cadenceAlreadySaid {
+        // 문장이 말하는 두 지표가 위 막대(평소 범위)에서도 실제로 범위 밖일 때만 — 잔차 백분위로만 보면 막대는 '범위 안'(175 · 173–175,
+        // 0.90 · 0.90–0.92)인데 "평소보다 케이던스가 높고 보폭이 짧았습니다"가 붙었다(2026-11-21)
+        let styleShownOutside: Bool = {
+            guard let c = avgCadence, let sl = avgStrideLength else { return false }
+            let cs = metricStatus(rawValue: Double(c), stat: bb?.cadence, dir: .cadence)
+            let ss = metricStatus(rawValue: sl, stat: inputs.displayStrideStat, dir: .stride)
+            switch style {
+            case .quickStep: return cs == .above && ss == .below
+            case .bigStride: return cs == .below && ss == .above
+            default:         return false
+            }
+        }()
+        if (style == .quickStep || style == .bigStride), styleShownOutside, items.count < 3, !cadenceAlreadySaid {
             let text: String
             switch style {
             case .quickStep:

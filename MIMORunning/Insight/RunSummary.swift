@@ -419,13 +419,13 @@ enum RunSummary {
             } else if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac,
                let u = underCap {
                 line = RunSummaryLine(axis: axis,
-                                      state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주 · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) 아래",
+                                      state: L.s("\(phase == postRacePhase ? "대회를 마친" : phase) 주 · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) \(u.hr < u.cap ? "아래" : "안")",
                                                  "Easy week · avg HR \(u.hr), under your easy cap (\(u.cap))", ja: "軽めの週 · 平均心拍\(u.hr)でイージー上限(\(u.cap))未満"),
                                       tone: .good)
             } else if easyIntentTypes.contains(i.workoutType), high3 >= easyHighZoneFrac, let u = underCap {
                 let label = i.workoutType.koreanLabel
                 line = RunSummaryLine(axis: axis,
-                                      state: L.s("\(label) · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) 아래", "\(label) · avg HR \(u.hr), under your easy cap (\(u.cap))",
+                                      state: L.s("\(label) · 평균 심박 \(u.hr)로 이지 상한(\(u.cap)) \(u.hr < u.cap ? "아래" : "안")", "\(label) · avg HR \(u.hr), under your easy cap (\(u.cap))",
                                                  ja: "\(label) · 平均心拍\(u.hr)でイージー上限(\(u.cap))未満"),
                                       tone: .good)
             } else if i.workoutType != .race, let phase = i.planPhase, planEasyPhases.contains(phase), high3 >= easyHighZoneFrac {
