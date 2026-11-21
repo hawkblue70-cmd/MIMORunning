@@ -323,6 +323,7 @@ struct MRRaceJourneyShareCard: View {
 // MARK: - 주별 두 줄 — 가로 막대 + 수행 과정
 
 private struct MRRaceJourneyWeekRows: View {
+    // 글자 한 단계 크게(9 → 10, 설명 8.5 → 9.5)·칸 폭 같이(2026-11-21 사용자: 조금만)
     let weeks: [MRRaceJourney.Week]
     let palette: RJPalette
 
@@ -355,9 +356,9 @@ private struct MRRaceJourneyWeekRows: View {
             HStack {
                 Spacer(minLength: 0)
                 Text(AppLanguage.shared.s("수행/목표", "Done/Plan", ja: "実行/目標"))
-                    .font(.system(size: 8.5, weight: .semibold))
+                    .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(palette.sub)
-                    .frame(width: 46, alignment: .trailing)
+                    .frame(width: 52, alignment: .trailing)
             }
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, w in
                 VStack(alignment: .leading, spacing: 2) {
@@ -366,7 +367,7 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(MRRaceJourneyShareCard.md(w.monday))
                             .foregroundStyle(w.isCurrent ? palette.text : palette.text.opacity(0.75))
                             .fontWeight(w.isCurrent ? .bold : .medium)
-                            .frame(width: 30, alignment: .leading)
+                            .frame(width: 34, alignment: .leading)
                         // 계획 단계 — 대회 주차표와 같은 이름·글자색(늘리기는 기본 글자색)
                         Text(localizedPhase(w.phase))
                             .foregroundStyle(mrPhaseColor(w.phase) ?? palette.text.opacity(0.85))
@@ -374,14 +375,14 @@ private struct MRRaceJourneyWeekRows: View {
                             // 줄이지 않는다(주마다 글자 크기 같게) · 칸 50 → 32, 긴 이름("대회 페이스"·"10K 계획")은 두 줄로 — 계획 문구 칸을 넓게(2026-11-21 사용자)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(width: 32, alignment: .leading)
+                            .frame(width: 36, alignment: .leading)
                         Text(w.symbol ?? "")
                             .foregroundStyle(palette.text)
                             .frame(width: 9, alignment: .leading)
                         if w.isFuture {
                             // 아직 안 한 주 — 막대 대신 그 주 계획 문구를 단계 옆에(2026-11-21 사용자)
                             Text(w.planText.isEmpty ? AppLanguage.shared.s("예정", "Planned", ja: "予定") : w.planText)
-                                .font(.system(size: 8.5, weight: .medium))
+                                .font(.system(size: 9.5, weight: .medium))
                                 .foregroundStyle(palette.text.opacity(0.88))   // 흐린 회색은 안 읽혔다(2026-11-21)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -412,29 +413,29 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
                             .foregroundStyle(w.isFuture ? palette.text.opacity(0.88) : palette.text)
                             .fontWeight(w.isCurrent ? .bold : .medium)
-                            .frame(width: 46, alignment: .trailing)
+                            .frame(width: 52, alignment: .trailing)
                     }
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
                     .monospacedDigit()
 
                     // 줄이지 않고 길면 두 줄로 — 주마다 글자 크기 같게. 예정 주는 위 줄에 계획 문구가 있어 생략
                     // 진행 중 카드의 지난 주는 막대만 — 이번 주 내역만 보이게(2026-11-21 사용자)
                     if !w.isFuture && !w.isDone {
                     detailText(w)
-                        .font(.system(size: 8.5, weight: w.isCurrent ? .bold : .medium))
+                        .font(.system(size: 9.5, weight: w.isCurrent ? .bold : .medium))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
+                        .padding(.leading, 39)   // 단계 칸부터 — 설명 줄 폭을 넓게
                     }
 
                     // 진행 중 내보내기의 이번 주 — 그 주 목표(예정 주와 같은 문구·색)
                     if !w.isFuture, !w.planText.isEmpty {   // 예정 주는 단계 옆에 이미 계획 문구가 있다
                         Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
-                            .font(.system(size: 8.5, weight: .semibold))
+                            .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(palette.text.opacity(0.85))
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 35)
+                            .padding(.leading, 39)
                     }
 
                     // 진행 중 내보내기의 이번 주 — 러닝 한 번씩(주차표 펼침과 같은 내용, 거리는 종류 색)
@@ -442,19 +443,19 @@ private struct MRRaceJourneyWeekRows: View {
                         HStack(spacing: 6) {
                             Text(Self.runDay(r.start))
                                 .foregroundStyle(palette.text.opacity(0.85))
-                                .frame(width: 52, alignment: .leading)
+                                .frame(width: 58, alignment: .leading)
                             Text(String(format: "%.2fkm", mrKmFloor2(r.km)))
                                 .foregroundStyle(palette.color(r.kind))
-                                .frame(width: 46, alignment: .trailing)
+                                .frame(width: 52, alignment: .trailing)
                             Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
                                 .foregroundStyle(palette.text)
                             if !r.label.isEmpty {
                                 Text(r.label).foregroundStyle(palette.text.opacity(0.85))
                             }
                         }
-                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .padding(.leading, 35)
+                        .padding(.leading, 39)
                     }
                 }
             }
