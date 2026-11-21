@@ -230,26 +230,13 @@ func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0,
     // d²=a+b·T 분해 (T단위: 주, d=log(하프등가비))
     // a = 2·σ_obs² — 백테스트 잔차로 고정 (관측 노이즈)
     // b 만 절편 고정 최소제곱: b = Σ((d²-a)·T) / Σ(T²), b<0이면 0 클램프
-    // 12개월 노력 3건 미만이면 24개월로 확장
-    let efforts12m = efforts.filter { let d = days($0.date); return d >= 0 && d < 364 }
-    let efforts24m = efforts.filter { let d = days($0.date); return d >= 0 && d < 728 }
-    let effortsForSigma: [MRRaceEffort]
-    let sigmaWindowLabel: String
-    if efforts12m.count >= 3 {
-        effortsForSigma = efforts12m
-        sigmaWindowLabel = "12개월내 \(efforts12m.count)건"
-    } else if efforts24m.count >= 3 {
-        effortsForSigma = efforts24m
-        sigmaWindowLabel = "12개월 \(efforts12m.count)건→24개월 확장 \(efforts24m.count)건"
-    } else {
-        effortsForSigma = efforts24m
-        sigmaWindowLabel = "24개월내 \(efforts24m.count)건(부족)"
-    }
-
-    // 모든 쌍 (i < j), 2주(14일) 이상 간격 → (T, d²) 수집
-    var olsPairs = [(T: Double, dSq: Double)]()
-    if effortsForSigma.count >= 2 {
-        let sortedHE = effortsForSigma.sorted { $0.date < $1.date }.compactMap { e -> (Date, Double)? in
+    // 12개월에서 쓸 수 있는 쌍(2주 이상 간격)이 3개 미만이면 24개월로 확장.
+    // ⚠ 예전엔 노력 '건수' 3건 미만일 때만 넓혀서, 3건 중 둘이 2주 안에 붙으면 쌍 2개로 실패하고
+    //   "최근 기록이 적어 예측 폭을 계산하지 못했습니다"가 나왔다(2026-11-21 실기기, 24개월이면 쌍 14개).
+    func sigmaPairs(_ es: [MRRaceEffort]) -> [(T: Double, dSq: Double)] {
+        var out = [(T: Double, dSq: Double)]()
+        guard es.count >= 2 else { return out }
+        let sortedHE = es.sorted { $0.date < $1.date }.compactMap { e -> (Date, Double)? in
             guard e.distanceM > 0, e.timeMinRef > 0 else { return nil }
             let he = e.timeMinRef * pow(MRDistance.dH / e.distanceM, 1.06)
             return (e.date, he)
@@ -262,10 +249,24 @@ func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0,
                 guard dayGap >= 14, h1 > 0, h2 > 0 else { continue }
                 let T = dayGap / 7.0
                 let delta = log(h2 / h1)
-                olsPairs.append((T: T, dSq: delta * delta))
+                out.append((T: T, dSq: delta * delta))
             }
         }
+        return out
     }
+    let efforts12m = efforts.filter { let d = days($0.date); return d >= 0 && d < 364 }
+    let efforts24m = efforts.filter { let d = days($0.date); return d >= 0 && d < 728 }
+    let pairs12m = sigmaPairs(efforts12m)
+    let olsPairs: [(T: Double, dSq: Double)]
+    let sigmaWindowLabel: String
+    if pairs12m.count >= 3 {
+        olsPairs = pairs12m
+        sigmaWindowLabel = "12개월내 \(efforts12m.count)건"
+    } else {
+        olsPairs = sigmaPairs(efforts24m)
+        sigmaWindowLabel = "12개월 \(efforts12m.count)건·쌍 \(pairs12m.count)개→24개월 확장 \(efforts24m.count)건"
+    }
+    let effortsForSigma = pairs12m.count >= 3 ? efforts12m : efforts24m
 
     let aFixed = 2.0 * sigmaObs * sigmaObs
     if olsPairs.count >= 3 {
