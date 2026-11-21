@@ -406,6 +406,16 @@ private struct MRRaceJourneyWeekRows: View {
                         .minimumScaleFactor(0.7)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
 
+                    // 진행 중 내보내기의 이번 주 — 그 주 목표(예정 주와 같은 문구·색)
+                    if !w.planText.isEmpty {
+                        Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
+                            .font(.system(size: 8.5, weight: .medium))
+                            .foregroundStyle(palette.sub)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .padding(.leading, 35)
+                    }
+
                     // 진행 중 내보내기의 이번 주 — 러닝 한 번씩(주차표 펼침과 같은 내용, 거리는 종류 색)
                     ForEach(Array(w.runs.enumerated()), id: \.offset) { _, r in
                         HStack(spacing: 6) {

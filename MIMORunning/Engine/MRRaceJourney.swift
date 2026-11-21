@@ -33,6 +33,8 @@ struct MRRaceJourney: Identifiable {
         var parts: [(text: String, kind: Kind)] = []
         /// 진행 중 내보내기의 이번 주 — 러닝 한 번씩(날짜·거리·페이스·종류). 주차표 펼침과 같은 내용(2026-11-18 사용자 요청)
         var runs: [RunLine] = []
+        /// 진행 중 내보내기의 이번 주 — 그 주 계획(예정 주와 같은 문구, "목표 · 롱런 11km + 이지 6.3km 4번", 2026-11-21 사용자)
+        var planText: String = ""
         var totalKm: Double { km.values.reduce(0, +) }
     }
 
@@ -187,9 +189,7 @@ struct MRRaceJourney: Identifiable {
             let named = parts.map(\.text)
             // 다음 주부터는 예정 — 실행 안내(계획 문구)와 강도 훈련만, 기호·실제 없음
             if let t = today, mon > t {
-                // 스냅샷 문구는 만든 때 언어(대개 한국어) — 주차표처럼 표시 언어로 바꿔 쓴다
-                var plan = localizedBreakdown(w.breakdown)
-                if let pt = w.point { plan += (plan.isEmpty ? "" : " · ") + pt.text }
+                let plan = Self.planText(w)
                 weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: [:], symbol: nil,
                                   detail: L.s("예정", "Planned", ja: "予定") + (plan.isEmpty ? "" : " · " + plan),
                                   isFuture: true))
@@ -203,7 +203,8 @@ struct MRRaceJourney: Identifiable {
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
                               isCurrent: isCurrent, parts: parts,
-                              runs: isCurrent ? runLines.sorted { $0.start < $1.start } : []))
+                              runs: isCurrent ? runLines.sorted { $0.start < $1.start } : [],
+                              planText: isCurrent ? Self.planText(w) : ""))
             if w.point != nil {
                 hardPlanned += 1
                 if mrPointRun(weekRuns: ws, longRunKm: w.longRunKm, hardStarts: hardStarts, pointTypes: pointTypes) != nil {
@@ -213,6 +214,13 @@ struct MRRaceJourney: Identifiable {
         }
 
         return (weeks, hardDone, hardPlanned)
+    }
+
+    /// 그 주 계획 문구 — 실행 안내 + 강도 훈련. 스냅샷 문구는 만든 때 언어(대개 한국어)라 주차표처럼 표시 언어로 바꿔 쓴다.
+    static func planText(_ w: MRPlanWeekSummary) -> String {
+        var plan = localizedBreakdown(w.breakdown)
+        if let pt = w.point { plan += (plan.isEmpty ? "" : " · ") + pt.text }
+        return plan
     }
 
     /// 월간 계획 훈련일지 — 고정된 주차(지난 주·이번 주) + 그 기간 러닝. 이번 주 이후 주는 넣지 않는다.
