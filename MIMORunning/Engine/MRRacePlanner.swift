@@ -44,6 +44,8 @@ struct MRRacePlan {
     var histMaxWeeklyKm = 0.0
     /// 이 계획이 올리는 주간 거리 상한(mrWeeklyVolumeTarget) — 기간이 길어도 이 이상은 안 올린다.
     var weeklyCapKm = 0.0
+    /// 주간 거리 상한을 한 단계 연 기록(2026-11-21) — 있으면 `fromMonday`부터 새 상한. 설계 2026-11-21-volume-cap-unlock-design.md
+    var volUnlock: MRVolumeUnlock? = nil
     var projectedNow = 0.0
     var projectedFinal = 0.0
     /// 대회 거리 직접 예측 ÷ 하프 등가 환산 — 계획의 모든 예상 기록·대회 페이스에 곱한다(1 = 보정 없음).
@@ -165,6 +167,7 @@ func mrBuildPlan(raceDate: Date,
                  intervalHistory: MRIntervalHistory? = nil,
                  thresholdPace: Double? = nil,
                  nowRefMin: Double? = nil,
+                 volUnlock: MRVolumeUnlock? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -228,6 +231,12 @@ func mrBuildPlan(raceDate: Date,
     //   "주 60km까지"가 필요 기간을 11주로 만들었다.
     let volCap = mrWeeklyVolumeTarget(distanceM: distanceM, currentWeeklyKm: vol,
                                       maxWeekly52w: profile.maxWeeklyKm52w)
+    // 실제로 해냈으면 한 단계 연 상한(2026-11-21) — 상한이 52주 최대에 실제로 걸리는 풀·하프에서만 의미가 있다.
+    // 열기 전 주(`mon < fromMonday`)는 그대로, 그 주부터 새 상한. 필요 기간 역산(simulateNeeded)은 기본 상한 기준 그대로.
+    let volCapRaised: Double = volUnlock.map { u in
+        max(volCap, mrWeeklyVolumeTarget(distanceM: distanceM, currentWeeklyKm: vol, maxWeekly52w: u.raisedCapKm))
+    } ?? volCap
+    let unlockFrom: Date? = volUnlock.map { cal.startOfDay(for: $0.fromMonday) }
 
     // ── 필요 기간 역산 (시뮬레이션) ──────────────────────────────
     // 공식 대신 빌드 루프와 동일 규칙으로 반복. 증가율·회복 주기가 바뀌면 자동으로 맞는다.
@@ -566,7 +575,8 @@ func mrBuildPlan(raceDate: Date,
                     lr = (p.targetLongKm * 0.85).rounded()
                     newMax = false
                 }
-                currentBuildVol = min(currentBuildVol * 1.05, volCap)
+                let capNow = (unlockFrom.map { cal.startOfDay(for: mon) >= $0 } ?? false) ? volCapRaised : volCap
+                currentBuildVol = min(currentBuildVol * 1.05, capNow)
                 wkVol = currentBuildVol
                 peakVol = max(peakVol, wkVol)    // 회복주는 최대치를 낮추지 않는다
                 if tuneKind == 1 {
@@ -745,7 +755,8 @@ func mrBuildPlan(raceDate: Date,
     p.projectionLongKm = max(peakLong, projFloorLong)
     p.projectionWeeklyKm = max(peakVol, projFloorVol)
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
-    p.weeklyCapKm = volCap
+    p.volUnlock = volUnlock
+    p.weeklyCapKm = volUnlock != nil ? volCapRaised : volCap
 
     // 튠업 고지 — 판단이 아니라 결과 전달
     let halfAbsorbed = tuneUps.filter { t in
@@ -772,6 +783,25 @@ func mrBuildPlan(raceDate: Date,
         p.notes.append(String(format: L.s("주간 거리는 지난 1년 최고치(%.0fkm)까지 올립니다. 그 이상은 아직 해보신 적이 없습니다.",
                                           "Weekly distance will reach your 1-yr high (%.0f km). You haven't gone beyond this before.", ja: "週間距離は直近1年の最高値(%.0fkm)まで上げます。それ以上はまだ経験がありません。"),
                              profile.maxWeeklyKm52w))
+        // 상한이 52주 최대에 걸리는 하프 이상 — 열리는 조건과 열린 뒤를 알린다(합쇼체·사실만)
+        if distanceM >= MRDistance.dH {
+            let base = profile.maxWeeklyKm52w
+            if let u = volUnlock {
+                let df = DateFormatter(); df.dateFormat = "M/d"
+                let from = df.string(from: u.fromMonday)
+                p.notes.append(String(format: L.s("%@ 주부터 주 %.0fkm까지 올립니다(최근 4주 중 %d주를 %.0fkm 이상 달렸습니다).",
+                                                  "From the week of %@ weekly distance goes up to %.0f km (you ran %d of the last 4 weeks at %.0f km or more).",
+                                                  ja: "%@の週から週%.0fkmまで上げます(直近4週のうち%d週を%.0fkm以上走りました)。"),
+                                     from, u.raisedCapKm,
+                                     u.windowKm.filter { $0 >= base * MRVolumeUnlockRules.fraction }.count,
+                                     MRVolumeUnlockRules.threshold(base)))
+            } else {
+                p.notes.append(String(format: L.s("최근 4주 중 3주를 %.0fkm 이상 달리면 주 %.0fkm까지 한 단계 열립니다.",
+                                                  "Run %.0f km or more in 3 of the last 4 weeks and the ceiling opens one step, to %.0f km.",
+                                                  ja: "直近4週のうち3週を%.0fkm以上走ると、週%.0fkmまで一段階開きます。"),
+                                     MRVolumeUnlockRules.threshold(base), MRVolumeUnlockRules.raised(base)))
+            }
+        }
     }
     if distanceM >= MRDistance.dF {
         let bResult = bMarathonModel(weeklyKm: p.projectionWeeklyKm, longestKm: p.projectionLongKm,

@@ -1015,6 +1015,22 @@ struct MeView: View {
                 }
             }
 
+            // ── Trigger 6: 주간 거리 상한 열림(2026-11-21) — 이미 시작한 계획은 상향 첫 주부터 미래 주만 ──
+            // 직전 4주를 실제로 달렸을 때만 열린다(MRVolumeUnlock). 지난 주·이번 주는 그대로, 거리가 늘어나는 미래 주만 바꾼다.
+            if let u = check.plan.volUnlock {
+                let r = mrRaiseSnapshotVolume(snapshot: existing.planWeeks, live: check.plan.weeks,
+                                              thisMonday: thisMonday, unlockFrom: u.fromMonday)
+                if r.raised > 0 {
+                    let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                    if let wd = try? enc.encode(r.weeks), let wj = String(data: wd, encoding: .utf8) {
+                        existing.weeksJSON = wj
+                    }
+                    #if DEBUG
+                    print("[스냅샷] 주간 거리 상한 열림 → 미래 \(r.raised)주 상향: \(check.race.name)")
+                    #endif
+                }
+            }
+
             // ── Trigger 1: targetLongKm 규칙 변경 → 미래 주 조정 ──────────────
             // 프로필 변화(더 많이 달림)는 targetLongKm에 영향을 주지 않으므로 갱신 안 함.
             let liveTarget = check.plan.targetLongKm

@@ -296,6 +296,71 @@ final class MREngineStore: ObservableObject {
             .sorted { $0.date < $1.date }
     }
 
+    // MARK: - 주간 거리 상한 열기 (설계 2026-11-21-volume-cap-unlock-design.md)
+
+    /// 대회별 열림 결정 — 시작된 상향은 고정, 시작 전 결정은 조건이 계속 맞을 때만 유지(`MRVolumeUnlockStore.resolve`).
+    private var volumeUnlocks: [String: MRVolumeUnlock] = MRVolumeUnlockStore.load()
+
+    /// 직전 14일 중 아침 판정이 '휴식'인 날 수 — 계획 맥락 없이(HRV·안정시 심박·호흡·손목 온도 등 몸 상태 신호만) 그날 아침을 다시 계산한다.
+    /// 신호가 비어 있으면 판정이 '휴식'이 되지 않아 0 — 건강 자료가 없는 사용자는 이 조건 없이 판정한다(폴백).
+    private var restDayCache: (day: Date, runCount: Int, n: Int)?
+
+    private func restDayCount(asOf now: Date) -> Int {
+        let cal = Calendar.current
+        // 하루·러닝 수가 같으면 다시 계산하지 않는다 — 나 탭을 열 때마다 아침 판정 14번을 돌리지 않게
+        if let c = restDayCache, cal.isDate(c.day, inSameDayAs: now), c.runCount == runs.count { return c.n }
+        var n = 0
+        for back in 1...MRVolumeUnlockRules.restLookbackDays {
+            guard let day = cal.date(byAdding: .day, value: -back, to: cal.startOfDay(for: now)),
+                  let morning = cal.date(byAdding: .hour, value: 7, to: day) else { continue }
+            if let r = mrReadinessAsOf(runs: runs, phys: phys, heatHR: heatHR, hrvNights: hrvNights,
+                                       planPhase: nil, asOf: morning,
+                                       restingHR: rhrSamples, respNights: respNights,
+                                       tempNights: tempNights, sleepNights: sleepNights),
+               r.level == .rest { n += 1 }
+        }
+        restDayCache = (now, runs.count, n)
+        return n
+    }
+
+    /// 하프 이상 대회 계획에 넘길 상한 열림 — 상한이 52주 최대에 실제로 걸릴 때만 판정한다.
+    private func volumeUnlock(for r: MRTargetRace, planProfile: MRProfile, now: Date) -> MRVolumeUnlock? {
+        let cal = Calendar.current
+        let key = mrArchiveKey(raceDate: r.date, distanceM: r.distanceM)
+        let cap = planProfile.maxWeeklyKm52w
+        let base = mrWeeklyVolumeTarget(distanceM: r.distanceM, currentWeeklyKm: max(planProfile.weeklyKm4w, 10),
+                                        maxWeekly52w: cap)
+        let stored = volumeUnlocks[key]
+        guard r.distanceM >= MRDistance.dH, cap > 0, base >= cap - 0.5 else {
+            if stored != nil { volumeUnlocks[key] = nil; MRVolumeUnlockStore.save(volumeUnlocks) }
+            return nil
+        }
+        // 이미 시작된 상향은 다시 판정하지 않는다(무거운 아침 판정 14번을 피한다)
+        let fresh: MRVolumeUnlockDecision
+        if let s = stored, cal.startOfDay(for: s.fromMonday) <= cal.startOfDay(for: now) {
+            fresh = .notYet(reason: "고정")
+        } else {
+            fresh = mrVolumeUnlock(runs: runs, asOf: now, capKm: cap, raceDate: r.date,
+                                   restDays: { restDayCount(asOf: now) })
+        }
+        let result = MRVolumeUnlockStore.resolve(stored: stored, fresh: fresh, today: now)
+        if result != stored {
+            volumeUnlocks[key] = result
+            MRVolumeUnlockStore.save(volumeUnlocks)
+        }
+        #if DEBUG
+        switch (result, fresh) {
+        case (let u?, _): print(String(format: "[상한열기] %@ — %@ 주부터 %.0f → %.0fkm (직전 4주 %@)", r.name,
+                                       { let f = DateFormatter(); f.dateFormat = "M/d"; return f.string(from: u.fromMonday) }(),
+                                       u.baseCapKm, u.raisedCapKm,
+                                       u.windowKm.map { String(format: "%.0f", $0) }.joined(separator: "/")))
+        case (nil, .notYet(let why)): print("[상한열기] \(r.name) — 아직: \(why)")
+        default: break
+        }
+        #endif
+        return result
+    }
+
     // MARK: - 대회 ↔ 계획 짝짓기
     //
     // A 레이스(하프 이상)에만 계획을 만들고, 그 기간 안의 5K·10K(풀 계획 안의 하프)는
@@ -420,6 +485,7 @@ final class MREngineStore: ObservableObject {
                                  intervalHistory: recentIntervals.last,
                                  thresholdPace: thresholdTrend?.current.paceSecPerKm,
                                  nowRefMin: directRefMin(r.distanceM),
+                                 volUnlock: volumeUnlock(for: r, planProfile: planProfile, now: now),
                                  caller: caller, raceName: r.name)
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,
