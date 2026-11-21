@@ -86,6 +86,13 @@ struct MRRaceJourneyShareCard: View {
                                                   ja: "· \(pr.weekNumber)/\(pr.totalWeeks)週目 · \(Self.distanceName(j.distanceM))"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(p.sub)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer(minLength: 6)
+                        // D-N — 거리 오른쪽, 크게(사용자 요청)
+                        Text("D-\(pr.daysLeft)")
+                            .font(.system(size: 26, weight: .black).width(.condensed))
+                            .foregroundStyle(p.text)
                     }
                 } else if let m = j.month {
                     // 월간 — 이번 달 실제 거리를 크게(거리는 기록 시간이 아니라 글자색), 횟수 옆에
@@ -112,6 +119,9 @@ struct MRRaceJourneyShareCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
+                    if let pr = j.progress, pr.goalMin != nil || pr.projectedMin != nil {
+                        progressLine(pr)   // 목표 기록 · 대회 예측 한 줄(세로 폭 줄이기, 2026-11-21)
+                    }
                     ForEach(Array(Self.predictionLines(j).enumerated()), id: \.offset) { _, l in
                         row(l.label, l.value, highlight: l.highlight)
                     }
@@ -155,6 +165,28 @@ struct MRRaceJourneyShareCard: View {
             }
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    /// "목표 기록 4:15:00 · 대회 예측 4:16:38" — 대회 예측만 초록 굵게
+    private func progressLine(_ pr: MRRaceJourney.Progress) -> some View {
+        let L = AppLanguage.shared
+        var v = Text("")
+        if let g = pr.goalMin { v = v + Text(mrFormatDisplay(g)).foregroundColor(p.text) }
+        if let e = pr.projectedMin {
+            if pr.goalMin != nil { v = v + Text(" · ").foregroundColor(p.sub) }
+            v = v + Text(L.s("대회 예측 ", "race-day est. ", ja: "レース予測 ")).foregroundColor(p.sub)
+                + Text(mrFormatDisplay(e)).foregroundColor(p.good).bold()
+        }
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(pr.goalMin != nil ? L.s("목표 기록", "Goal", ja: "目標タイム") : L.s("대회 예측", "Race-day est.", ja: "レース予測"))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(p.sub)
+                .frame(width: 62, alignment: .leading)
+            v.font(.system(size: 11, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
     }
 
@@ -214,8 +246,8 @@ struct MRRaceJourneyShareCard: View {
         let f = DateFormatter()
         f.locale = AppLanguage.shared.locale
         f.dateFormat = "yyyy.MM.dd"
-        if let pr = j.progress {
-            return f.string(from: j.raceDate) + " · D-\(pr.daysLeft)"
+        if j.progress != nil {
+            return f.string(from: j.raceDate)   // D-N은 거리 줄 오른쪽에 크게(2026-11-21)
         }
         if let m = j.month, let last = Calendar.current.date(byAdding: .day, value: -1, to: m.end) {
             let g = DateFormatter(); g.dateFormat = "MM.dd"
@@ -231,21 +263,15 @@ struct MRRaceJourneyShareCard: View {
     static func predictionLines(_ j: MRRaceJourney) -> [(label: String, value: String, highlight: Bool)] {
         let L = AppLanguage.shared
         var out: [(label: String, value: String, highlight: Bool)] = []
-        if let pr = j.progress {
-            if let g = pr.goalMin {
-                out.append((L.s("목표 기록", "Goal", ja: "目標タイム"), mrFormatDisplay(g), false))
-            }
-            if let e = pr.projectedMin {
-                out.append((L.s("대회 예측", "Race-day est.", ja: "レース予測"), mrFormatDisplay(e), true))   // 계획대로면 대회 날(projectedFinal)
-            }
-            return out
-        }
+        if j.progress != nil { return out }   // 진행 중은 progressLine 한 줄
         if let m = j.month {
-            // 목표와 계획 합계만 — 달성률·남은 km는 넣지 않는다(2026-09-22 결정)
+            // 목표와 계획 합계를 한 줄로 — 달성률·남은 km는 넣지 않는다(2026-09-22 결정)
+            let plan = L.s("계획 합계 ", "planned ", ja: "計画の合計 ") + String(format: "%.0fkm", m.planTotalKm)
             if let g = m.goalKm {
-                out.append((L.s("목표", "Goal", ja: "目標"), String(format: "%.0fkm", g), false))
+                out.append((L.s("목표", "Goal", ja: "目標"), String(format: "%.0fkm", g) + " · " + plan, false))
+            } else {
+                out.append((L.s("계획 합계", "Planned", ja: "計画の合計"), String(format: "%.0fkm", m.planTotalKm), false))
             }
-            out.append((L.s("계획 합계", "Planned", ja: "計画の合計"), String(format: "%.0fkm", m.planTotalKm), false))
             return out
         }
         if let s = j.planStartPredMin {
@@ -271,14 +297,15 @@ struct MRRaceJourneyShareCard: View {
         out.append((j.month != nil || j.progress != nil ? L.s("수행", "Logged", ja: "実行") : L.s("준비", "Build-up", ja: "準備"),
                     L.s("\(doneWeeks)주 · \(j.runCount)번 · ", "\(doneWeeks) wks · \(j.runCount) runs · ",
                         ja: "\(doneWeeks)週 · \(j.runCount)回 · ") + mrTotalKm(j.totalKm) + "km"))
-        var t = (j.month != nil ? L.s("최장 ", "Longest ", ja: "最長 ") : L.s("롱런 최장 ", "Longest ", ja: "最長ロング走 "))
+        // 수행 · 훈련을 한 줄로(세로 폭 줄이기, 2026-11-21) — 길면 글자를 줄여 맞춘다
+        var t = (j.month != nil ? L.s("최장 ", "longest ", ja: "最長 ") : L.s("롱런 최장 ", "longest ", ja: "最長ロング走 "))
             + mrRunKm(j.longestKm) + "km"
         if j.hardPlanned > 0 {
             // 실제/계획 나눗셈은 진행률 표기 — 두 값을 따로(아침 계획 줄 "이지 2번 · 계획 3번"과 같은 형식, 2026-11-07)
             t += " · " + L.s("강도 훈련 \(j.hardDone)번 · 계획 \(j.hardPlanned)번", "hard \(j.hardDone) · plan \(j.hardPlanned)",
                              ja: "強度練習\(j.hardDone)回 · 計画\(j.hardPlanned)回")
         }
-        out.append((L.s("훈련", "Training", ja: "練習"), t))
+        out[0].value += " · " + t
         let syms = j.symbolCounts
         if !syms.isEmpty {
             out.append((L.s("계획 수행", "Plan", ja: "計画達成"),

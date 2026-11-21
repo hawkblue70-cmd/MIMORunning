@@ -123,7 +123,7 @@ struct MRRacePlanCard: View {
         guard let snap = snapshot, !snap.planWeeks.isEmpty else { return nil }
         let from = snap.planWeeks.map(\.monday).min() ?? Date()
         return MRRaceJourney.makeInProgress(
-            raceName: RaceDisplayName.short(race.name), raceDate: race.date, distanceM: race.distanceM,
+            raceName: race.name, raceDate: race.date, distanceM: race.distanceM,   // 공식 이름 그대로(연도 포함, 2026-11-21)
             planWeeks: snap.planWeeks, goalMin: check.goalMin, projectedMin: plan.projectedFinal,
             runs: runs,
             types: MRRaceJourney.runTypes(manager: manager, runs: runs, from: from,

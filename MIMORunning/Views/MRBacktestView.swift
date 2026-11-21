@@ -25,7 +25,7 @@ struct MRArchiveDetailView: View {
             return cal.isDate(r.date, inSameDayAs: archive.raceDate) && d > 0 && abs(d - archive.distanceM) / d <= 0.02
         }
         return MRRaceJourney.make(
-            raceName: RaceDisplayName.short(archive.raceName), raceDate: archive.raceDate,
+            raceName: archive.raceName, raceDate: archive.raceDate,   // 공식 이름 그대로(연도 포함, 2026-11-21)
             distanceM: archive.distanceM, actualMin: archive.actualMin,
             planWeeks: snap.planWeeks,
             planStartPredMin: archive.reconstructed ? nil : archive.snapshotProjectedFinalMin,
