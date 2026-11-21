@@ -67,10 +67,22 @@ struct MRRaceJourneyShareCard: View {
                 }
                 .padding(.top, 13)
 
-                Text(Self.dateLine(j))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(p.sub)
-                    .padding(.top, 8)
+                // 날짜 10 → 13pt, 진행 중이면 같은 줄 오른쪽에 '목표 기록 · 대회 예측'(2026-11-21 사용자)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(Self.dateLine(j))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(p.sub)
+                        .fixedSize()
+                    if let pr = j.progress, pr.goalMin != nil || pr.projectedMin != nil {
+                        Spacer(minLength: 0)
+                        progressText(pr)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
+                .padding(.top, 8)
 
                 if let pr = j.progress {
                     // 진행 중 — 지금까지 거리를 크게, 몇 주차인지 옆에
@@ -119,9 +131,6 @@ struct MRRaceJourneyShareCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    if let pr = j.progress, pr.goalMin != nil || pr.projectedMin != nil {
-                        progressLine(pr)   // 목표 기록 · 대회 예측 한 줄(세로 폭 줄이기, 2026-11-21)
-                    }
                     ForEach(Array(Self.predictionLines(j).enumerated()), id: \.offset) { _, l in
                         row(l.label, l.value, highlight: l.highlight)
                     }
@@ -168,8 +177,8 @@ struct MRRaceJourneyShareCard: View {
         }
     }
 
-    /// "목표 기록 4:15:00 · 대회 예측 4:16:38" — 오른쪽 정렬(D-N 아래, 2026-11-21 사용자), 대회 예측 값만 초록 굵게
-    private func progressLine(_ pr: MRRaceJourney.Progress) -> some View {
+    /// "목표 기록 4:15:00 · 대회 예측 4:16:38" — 날짜 줄 오른쪽(2026-11-21 사용자), 대회 예측 값만 초록 굵게
+    private func progressText(_ pr: MRRaceJourney.Progress) -> Text {
         let L = AppLanguage.shared
         var v = Text("")
         if let g = pr.goalMin {
@@ -181,13 +190,7 @@ struct MRRaceJourneyShareCard: View {
             v = v + Text(L.s("대회 예측 ", "race-day est. ", ja: "レース予測 ")).foregroundColor(p.sub)
                 + Text(mrFormatDisplay(e)).foregroundColor(p.good).bold()
         }
-        return HStack {
-            Spacer(minLength: 0)
-            v.font(.system(size: 11, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
+        return v
     }
 
     private func row(_ label: String, _ value: String, highlight: Bool = false) -> some View {
