@@ -306,6 +306,8 @@ struct MRRaceJourneyShareCard: View {
                              ja: "強度練習\(j.hardDone)回 · 計画\(j.hardPlanned)回")
         }
         out[0].value += " · " + t
+        // 진행 중 카드는 수행 요약 줄(N주 · N번 · km · 최장)을 뺀다 — 주차표가 같은 내용(2026-11-21 사용자)
+        if j.progress != nil { out.removeFirst() }
         let syms = j.symbolCounts
         if !syms.isEmpty {
             out.append((L.s("계획 수행", "Plan", ja: "計画達成"),
