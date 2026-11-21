@@ -348,6 +348,14 @@ private struct MRRaceJourneyWeekRows: View {
     var body: some View {
         let maxKm = max(weeks.map { max($0.totalKm, $0.plannedKm) }.max() ?? 1, 1)
         VStack(alignment: .leading, spacing: 4) {
+            // 실제/계획 km 칸 제목(2026-11-21 사용자) — 주별 줄의 km 칸과 같은 폭·오른쪽 정렬
+            HStack {
+                Spacer(minLength: 0)
+                Text(AppLanguage.shared.s("수행", "Done", ja: "実行"))
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(palette.sub)
+                    .frame(width: 46, alignment: .trailing)
+            }
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, w in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
