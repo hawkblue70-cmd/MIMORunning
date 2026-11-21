@@ -384,7 +384,7 @@ private struct MRRaceJourneyWeekRows: View {
                             Text(w.planText.isEmpty ? AppLanguage.shared.s("예정", "Planned", ja: "予定") : w.planText)
                                 .font(.system(size: 9.5, weight: .medium))
                                 .foregroundStyle(palette.text.opacity(0.88))   // 흐린 회색은 안 읽혔다(2026-11-21)
-                                .lineLimit(2)
+                                .lineLimit(nil)   // 잘라내지 않는다 — 3줄이어도 모두(2026-11-21 사용자)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
@@ -423,7 +423,7 @@ private struct MRRaceJourneyWeekRows: View {
                     if !w.isFuture && !w.isDone {
                     detailText(w)
                         .font(.system(size: 9.5, weight: w.isCurrent ? .bold : .medium))
-                        .lineLimit(2)
+                        .lineLimit(nil)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 39)   // 단계 칸부터 — 설명 줄 폭을 넓게
                     }
@@ -433,7 +433,7 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
                             .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(palette.text.opacity(0.85))
-                            .lineLimit(2)
+                            .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 39)
                     }
