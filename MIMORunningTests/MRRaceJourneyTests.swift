@@ -134,6 +134,24 @@ struct MRRaceJourneyTests {
         #expect(after.weeks[0].isDone && after.weeks[0].runs.isEmpty)
         #expect(after.weeks[1].isCurrent && after.weeks[1].runs.count == 1)
     }
+
+    @Test func totalIsSumOfEachRunFlooredToTwoDecimals() throws {
+        // 7.039 · 6.089 · 6.059 → 7.03 + 6.08 + 6.05 = 19.16 (원 거리를 먼저 더하면 19.187 → 19.18, 나열된 러닝과 안 맞았다, 2026-11-21)
+        #expect(mrSumKmFloored([7.039, 6.089, 6.059]) == 19.16)
+        let plan = [5, 12].map { dd in
+            MRPlanWeekSummary(idx: 1, monday: cal.startOfDay(for: d(dd, 0)), phase: "회복", longRunKm: 12, weeklyKm: 40)
+        }
+        let race = cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9))!
+        let j = try #require(MRRaceJourney.makeInProgress(
+            raceName: "x", raceDate: race, distanceM: MRDistance.dH, planWeeks: plan,
+            goalMin: nil, projectedMin: nil, now: d(10),
+            runs: [run(6, km: 7.039), run(8, km: 6.089), run(9, km: 6.059)],
+            types: [:], hardStarts: [], pointTypes: [:]))
+        #expect(j.totalKm == 19.16)
+        #expect(j.weeks[0].detail == "이지 3번 19.16km")      // 종류별 합도 나열된 러닝의 합
+        #expect(j.weeks[0].runs.map(\.km) == [7.03, 6.08, 6.05])
+        #expect(j.longestKm == 7.03)
+    }
 }
 
 private extension MRWorkout {

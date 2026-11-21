@@ -455,8 +455,8 @@ struct MRWeekTable: View {
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return nil }
         let cutoff   = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
         let weekRuns = runs.filter { $0.start >= weekStart && $0.start < cutoff }
-        let long   = weekRuns.compactMap(\.distanceKm).max() ?? 0
-        let weekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+        let long   = mrKmFloor2(weekRuns.compactMap(\.distanceKm).max() ?? 0)
+        let weekly = mrSumKmFloored(weekRuns.compactMap(\.distanceKm))
         return (long, weekly)
     }
 
@@ -471,8 +471,8 @@ struct MRWeekTable: View {
         if isCurrent && !includeCurrent { return nil }
         let cutoff = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
         let weekRuns     = runs.filter { $0.start >= weekStart && $0.start < cutoff }
-        let actualLong   = weekRuns.compactMap(\.distanceKm).max() ?? 0
-        let actualWeekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+        let actualLong   = mrKmFloor2(weekRuns.compactMap(\.distanceKm).max() ?? 0)
+        let actualWeekly = mrSumKmFloored(weekRuns.compactMap(\.distanceKm))
         let sym = weekSymbol(plan: snap, actualLong: actualLong, actualWeekly: actualWeekly)
         if isCurrent { return (sym == symbolBoth || sym == symbolOver) ? sym : nil }
         return sym
@@ -654,8 +654,8 @@ struct MRWeekTable: View {
         guard let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else { return nil }
         let cutoff = min(weekEnd, cal.date(byAdding: .day, value: 1, to: today) ?? weekEnd)
         let weekRuns = runs.filter { $0.start >= weekStart && $0.start < cutoff }
-        let long   = weekRuns.compactMap(\.distanceKm).max() ?? 0
-        let weekly = weekRuns.compactMap(\.distanceKm).reduce(0, +)
+        let long   = mrKmFloor2(weekRuns.compactMap(\.distanceKm).max() ?? 0)
+        let weekly = mrSumKmFloored(weekRuns.compactMap(\.distanceKm))
         return (long, weekly)
     }
 

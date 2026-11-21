@@ -137,8 +137,8 @@ struct MRRaceJourney: Identifiable {
             vo2: vo2?.value,
             vo2PredMin: vo2.flatMap { mrTimeForVDOT($0.value, distanceM: distanceM) },
             weeks: weeks, runCount: span.count,
-            totalKm: span.compactMap(\.distanceKm).reduce(0, +),
-            longestKm: span.filter { $0.start != raceRun }.compactMap(\.distanceKm).max() ?? 0,
+            totalKm: mrSumKmFloored(span.compactMap(\.distanceKm)),
+            longestKm: mrKmFloor2(span.filter { $0.start != raceRun }.compactMap(\.distanceKm).max() ?? 0),
             hardDone: hardDone, hardPlanned: hardPlanned)
     }
 
@@ -167,7 +167,7 @@ struct MRRaceJourney: Identifiable {
             var groups: [(name: String, kind: Kind, n: Int, km: Double)] = []
             var runLines: [RunLine] = []
             for r in ws {
-                let d = r.distanceKm ?? 0
+                let d = mrKmFloor2(r.distanceKm ?? 0)   // 러닝 한 번씩 둘째 자리 버림 — 합계는 이 값들의 합
                 let k: Kind
                 let name: String
                 if r.start == raceRun {
@@ -193,7 +193,8 @@ struct MRRaceJourney: Identifiable {
                 .sorted { ($0.element.kind.rawValue, -$0.offset) > ($1.element.kind.rawValue, -$1.offset) }
                 .map { g in
                     // 러닝 횟수는 "번"(계획 문장과 같은 단위), 거리는 올림 없이 첫째 자리 버림(2026-11-07)
-                    let kmStr = mrPointKmString((g.element.km * 10 + 1e-6).rounded(.down) / 10)
+                    // 둘째 자리(끝의 0만 뺌) — 러닝 한 번씩 버림한 값의 합이라 종류별 합이 그 주 총계와 맞는다(2026-11-21)
+                    let kmStr = mrRunKmInText(g.element.km)
                     return (L.s("\(g.element.name) \(g.element.n)번 \(kmStr)km", "\(g.element.name) ×\(g.element.n) \(kmStr)km",
                                 ja: "\(g.element.name) \(g.element.n)回 \(kmStr)km"), g.element.kind)
                 }
@@ -208,8 +209,8 @@ struct MRRaceJourney: Identifiable {
             }
             let isCurrent = today.map { t in mon <= t && wEnd > t } ?? false
             let keepsDetail = isCurrent || keepMonday.map { cal.isDate($0, inSameDayAs: mon) } ?? false
-            var sym: String? = weekSymbol(plan: w, actualLong: ws.compactMap(\.distanceKm).max() ?? 0,
-                                          actualWeekly: ws.compactMap(\.distanceKm).reduce(0, +))
+            var sym: String? = weekSymbol(plan: w, actualLong: mrKmFloor2(ws.compactMap(\.distanceKm).max() ?? 0),
+                                          actualWeekly: mrSumKmFloored(ws.compactMap(\.distanceKm)))
             // 이번 주는 다 채웠을 때만(●·▲) — 대회 주차표와 같은 규칙
             if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
@@ -263,11 +264,11 @@ struct MRRaceJourney: Identifiable {
             raceName: "", raceDate: monthStart, distanceM: 0, actualMin: 0,
             planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,
             weeks: built.weeks, runCount: span.count,
-            totalKm: span.compactMap(\.distanceKm).reduce(0, +),
-            longestKm: span.compactMap(\.distanceKm).max() ?? 0,
+            totalKm: mrSumKmFloored(span.compactMap(\.distanceKm)),
+            longestKm: mrKmFloor2(span.compactMap(\.distanceKm).max() ?? 0),
             hardDone: built.hardDone, hardPlanned: built.hardPlanned)
         j.month = Month(title: title, start: monthStart, end: monthEnd, goalKm: goalKm, planTotalKm: planTotalKm,
-                        monthKm: inMonth.compactMap(\.distanceKm).reduce(0, +), monthRuns: inMonth.count, bars: bars)
+                        monthKm: mrSumKmFloored(inMonth.compactMap(\.distanceKm)), monthRuns: inMonth.count, bars: bars)
         return j
     }
 
@@ -307,8 +308,8 @@ struct MRRaceJourney: Identifiable {
             raceName: raceName, raceDate: raceDate, distanceM: distanceM, actualMin: 0,
             planStartPredMin: nil, appPredMin: nil, appErrPct: nil, vo2: nil, vo2PredMin: nil,
             weeks: built.weeks, runCount: span.count,
-            totalKm: span.compactMap(\.distanceKm).reduce(0, +),
-            longestKm: span.compactMap(\.distanceKm).max() ?? 0,
+            totalKm: mrSumKmFloored(span.compactMap(\.distanceKm)),
+            longestKm: mrKmFloor2(span.compactMap(\.distanceKm).max() ?? 0),
             hardDone: built.hardDone, hardPlanned: built.hardPlanned)
         j.progress = Progress(
             daysLeft: cal.dateComponents([.day], from: today, to: cal.startOfDay(for: raceDate)).day ?? 0,

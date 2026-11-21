@@ -27,6 +27,10 @@ enum ActivityType: String {
 /// 1e-7: 5052.37처럼 딱 떨어지는 값이 부동소수 오차(505236.99999…)로 5052.36이 되지 않게
 func mrKmFloor2(_ km: Double) -> Double { ((km * 100 + 1e-7).rounded(.down)) / 100 }
 
+/// 러닝 한 번씩 둘째 자리 버림한 값의 **합** — 화면에 나열된 러닝 거리를 그대로 더한 값.
+/// 원 거리를 먼저 더해 버리면 7.03 + 6.08 + 6.05 = 19.16인데 합계가 19.17로 나왔다(2026-11-21 사용자: 훈련일지·내보내기).
+func mrSumKmFloored(_ kms: [Double]) -> Double { mrKmFloor2(kms.map(mrKmFloor2).reduce(0, +)) }
+
 /// 러닝 한 번의 거리 — 거리와 상관없이 소수 둘째 자리, 셋째 자리부터 버림(애플 피트니스와 같은 표기). 10.96km가 "11.0km"로
 /// 뛰지 않은 거리까지 올라가 보이던 것(2026-11-04 앱스토어 리뷰 "소수점 올리지 말고 멈춘 그대로"). km 값을 받아 숫자만 돌려준다.
 func mrRunKm(_ km: Double) -> String { String(format: "%.2f", mrKmFloor2(km)) }
