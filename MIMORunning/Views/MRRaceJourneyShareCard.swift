@@ -354,7 +354,7 @@ private struct MRRaceJourneyWeekRows: View {
             // 실제/계획 km 칸 제목(2026-11-21 사용자) — 주별 줄의 km 칸과 같은 폭·오른쪽 정렬
             HStack {
                 Spacer(minLength: 0)
-                Text(AppLanguage.shared.s("수행", "Done", ja: "実行"))
+                Text(AppLanguage.shared.s("수행/목표", "Done/Plan", ja: "実行/目標"))
                     .font(.system(size: 8.5, weight: .semibold))
                     .foregroundStyle(palette.sub)
                     .frame(width: 46, alignment: .trailing)
@@ -377,6 +377,15 @@ private struct MRRaceJourneyWeekRows: View {
                         Text(w.symbol ?? "")
                             .foregroundStyle(palette.text)
                             .frame(width: 9, alignment: .leading)
+                        if w.isFuture {
+                            // 아직 안 한 주 — 막대 대신 그 주 계획 문구를 단계 옆에(2026-11-21 사용자)
+                            Text(w.planText.isEmpty ? AppLanguage.shared.s("예정", "Planned", ja: "予定") : w.planText)
+                                .font(.system(size: 8.5, weight: .medium))
+                                .foregroundStyle(palette.sub)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
                         GeometryReader { geo in
                             let W = geo.size.width
                             ZStack(alignment: .leading) {
@@ -397,6 +406,7 @@ private struct MRRaceJourneyWeekRows: View {
                             .frame(height: geo.size.height)
                         }
                         .frame(height: Self.barH + 4)
+                        }
                         // 예정 주 — 실제 칸은 "—", 계획 km만
                         Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
                             .foregroundStyle(w.isFuture ? palette.sub : palette.text)
@@ -406,12 +416,14 @@ private struct MRRaceJourneyWeekRows: View {
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .monospacedDigit()
 
-                    // 줄이지 않고 길면 두 줄로 — 주마다 글자 크기 같게
+                    // 줄이지 않고 길면 두 줄로 — 주마다 글자 크기 같게. 예정 주는 위 줄에 계획 문구가 있어 생략
+                    if !w.isFuture {
                     detailText(w)
                         .font(.system(size: 8.5, weight: w.isCurrent ? .bold : .medium))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
+                    }
 
                     // 진행 중 내보내기의 이번 주 — 그 주 목표(예정 주와 같은 문구·색)
                     if !w.planText.isEmpty {

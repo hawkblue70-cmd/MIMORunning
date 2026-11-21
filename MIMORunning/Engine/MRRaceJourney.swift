@@ -192,7 +192,7 @@ struct MRRaceJourney: Identifiable {
                 let plan = Self.planText(w)
                 weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: [:], symbol: nil,
                                   detail: L.s("예정", "Planned", ja: "予定") + (plan.isEmpty ? "" : " · " + plan),
-                                  isFuture: true))
+                                  isFuture: true, planText: plan))
                 continue
             }
             let isCurrent = today.map { t in mon <= t && wEnd > t } ?? false
