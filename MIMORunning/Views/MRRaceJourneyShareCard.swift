@@ -335,7 +335,7 @@ private struct MRRaceJourneyWeekRows: View {
     /// 그 주에 한 것 — 종류마다 막대와 같은 색, 구분점은 흐린 글자. 예정 주·러닝 없음은 한 가지 색.
     private func detailText(_ w: MRRaceJourney.Week) -> Text {
         guard !w.isFuture, !w.parts.isEmpty else {
-            return Text(w.detail).foregroundColor(w.isFuture ? palette.sub : palette.text.opacity(0.80))
+            return Text(w.detail).foregroundColor(w.isFuture ? palette.sub : palette.text.opacity(w.isCurrent ? 1 : 0.80))
         }
         var t = Text("")
         for (i, p) in w.parts.enumerated() {
@@ -359,16 +359,18 @@ private struct MRRaceJourneyWeekRows: View {
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, w in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
+                        // 이번 주는 밝고 굵게(2026-11-21 사용자)
                         Text(MRRaceJourneyShareCard.md(w.monday))
-                            .foregroundStyle(palette.sub)
+                            .foregroundStyle(w.isCurrent ? palette.text : palette.sub)
+                            .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 30, alignment: .leading)
                         // 계획 단계 — 대회 주차표와 같은 이름·글자색(늘리기는 기본 글자색)
                         Text(localizedPhase(w.phase))
                             .foregroundStyle(mrPhaseColor(w.phase) ?? palette.text.opacity(0.85))
-                            .fontWeight(.bold)
+                            .fontWeight(w.isCurrent ? .heavy : .bold)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(width: 44, alignment: .leading)
+                            .fixedSize()   // 줄이지 않는다 — 주마다 글자 크기 같게(2026-11-21 사용자: 11/16 회복이 작게 보임)
+                            .frame(width: 50, alignment: .leading)
                         Text(w.symbol ?? "")
                             .foregroundStyle(palette.text)
                             .frame(width: 9, alignment: .leading)
@@ -395,24 +397,26 @@ private struct MRRaceJourneyWeekRows: View {
                         // 예정 주 — 실제 칸은 "—", 계획 km만
                         Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
                             .foregroundStyle(w.isFuture ? palette.sub : palette.text)
+                            .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 46, alignment: .trailing)
                     }
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .monospacedDigit()
 
+                    // 줄이지 않고 길면 두 줄로 — 주마다 글자 크기 같게
                     detailText(w)
-                        .font(.system(size: 8.5, weight: .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .font(.system(size: 8.5, weight: w.isCurrent ? .bold : .medium))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 35)   // 단계 칸부터 — 설명 줄 폭을 넓게
 
                     // 진행 중 내보내기의 이번 주 — 그 주 목표(예정 주와 같은 문구·색)
                     if !w.planText.isEmpty {
                         Text(AppLanguage.shared.s("목표 · ", "Plan · ", ja: "目標 · ") + w.planText)
-                            .font(.system(size: 8.5, weight: .medium))
-                            .foregroundStyle(palette.sub)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundStyle(palette.text.opacity(0.85))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 35)
                     }
 
@@ -420,18 +424,18 @@ private struct MRRaceJourneyWeekRows: View {
                     ForEach(Array(w.runs.enumerated()), id: \.offset) { _, r in
                         HStack(spacing: 6) {
                             Text(Self.runDay(r.start))
-                                .foregroundStyle(palette.sub)
+                                .foregroundStyle(palette.text.opacity(0.85))
                                 .frame(width: 52, alignment: .leading)
                             Text(String(format: "%.2fkm", mrKmFloor2(r.km)))
                                 .foregroundStyle(palette.color(r.kind))
                                 .frame(width: 46, alignment: .trailing)
                             Text(r.paceSecPerKm.map { mrFormatPace($0) + "/km" } ?? "")
-                                .foregroundStyle(palette.text.opacity(0.80))
+                                .foregroundStyle(palette.text)
                             if !r.label.isEmpty {
-                                Text(r.label).foregroundStyle(palette.sub)
+                                Text(r.label).foregroundStyle(palette.text.opacity(0.85))
                             }
                         }
-                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .padding(.leading, 35)
                     }
