@@ -29,6 +29,8 @@ struct MRRaceJourney: Identifiable {
         /// 진행 중 계획(2026-10-07 사용자: 아직 안 한 주도 예정으로 표시) — 다음 주부터 · 이번 주
         var isFuture: Bool = false
         var isCurrent: Bool = false
+        /// 진행 중(today 있음)일 때 이미 끝난 주 — 카드는 막대만, 한 것 줄은 숨긴다(2026-11-21 사용자: 이번 주 내역만 보이게)
+        var isDone: Bool = false
         /// detail을 종류별로 나눈 조각 — 카드가 막대와 같은 색으로 칠한다(2026-10-07 사용자 요청)
         var parts: [(text: String, kind: Kind)] = []
         /// 진행 중 내보내기의 이번 주 — 러닝 한 번씩(날짜·거리·페이스·종류). 주차표 펼침과 같은 내용(2026-11-18 사용자 요청)
@@ -202,7 +204,7 @@ struct MRRaceJourney: Identifiable {
             if isCurrent && sym != symbolBoth && sym != symbolOver { sym = nil }
             weeks.append(Week(monday: mon, phase: w.phase, plannedKm: w.weeklyKm, km: km, symbol: sym,
                               detail: named.isEmpty ? L.s("러닝 없음", "No runs", ja: "ランなし") : named.joined(separator: " · "),
-                              isCurrent: isCurrent, parts: parts,
+                              isCurrent: isCurrent, isDone: today != nil && !isCurrent, parts: parts,
                               runs: isCurrent ? runLines.sorted { $0.start < $1.start } : [],
                               planText: isCurrent ? Self.planText(w) : ""))
             if w.point != nil {

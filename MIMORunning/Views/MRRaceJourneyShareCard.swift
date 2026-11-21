@@ -137,7 +137,7 @@ struct MRRaceJourneyShareCard: View {
                 }
                 .padding(.top, 4)
 
-                Rectangle().fill(p.divider).frame(height: 0.5).padding(.vertical, 9)
+                Rectangle().fill(p.divider).frame(height: 0.5).padding(.vertical, 5)   // 9 → 5(2026-11-21 사용자)
 
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Array(Self.prepLines(j).enumerated()), id: \.offset) { _, l in
@@ -145,7 +145,7 @@ struct MRRaceJourneyShareCard: View {
                     }
                 }
 
-                legend.padding(.top, 10)
+                legend.padding(.top, 2)
 
                 // 주마다 두 줄 — 가로 막대(종류별 쌓기 + 계획 세로선 + 실제/계획 km) · 그 주에 한 것
                 MRRaceJourneyWeekRows(weeks: j.weeks, palette: p)
@@ -364,7 +364,7 @@ private struct MRRaceJourneyWeekRows: View {
                     HStack(spacing: 5) {
                         // 이번 주는 밝고 굵게(2026-11-21 사용자)
                         Text(MRRaceJourneyShareCard.md(w.monday))
-                            .foregroundStyle(w.isCurrent ? palette.text : palette.sub)
+                            .foregroundStyle(w.isCurrent ? palette.text : palette.text.opacity(0.75))
                             .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 30, alignment: .leading)
                         // 계획 단계 — 대회 주차표와 같은 이름·글자색(늘리기는 기본 글자색)
@@ -381,7 +381,7 @@ private struct MRRaceJourneyWeekRows: View {
                             // 아직 안 한 주 — 막대 대신 그 주 계획 문구를 단계 옆에(2026-11-21 사용자)
                             Text(w.planText.isEmpty ? AppLanguage.shared.s("예정", "Planned", ja: "予定") : w.planText)
                                 .font(.system(size: 8.5, weight: .medium))
-                                .foregroundStyle(palette.sub)
+                                .foregroundStyle(palette.text.opacity(0.88))   // 흐린 회색은 안 읽혔다(2026-11-21)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -409,7 +409,7 @@ private struct MRRaceJourneyWeekRows: View {
                         }
                         // 예정 주 — 실제 칸은 "—", 계획 km만
                         Text(w.isFuture ? String(format: "—/%.0f", w.plannedKm) : mrTotalKm(w.totalKm) + String(format: "/%.0f", w.plannedKm))
-                            .foregroundStyle(w.isFuture ? palette.sub : palette.text)
+                            .foregroundStyle(w.isFuture ? palette.text.opacity(0.88) : palette.text)
                             .fontWeight(w.isCurrent ? .bold : .medium)
                             .frame(width: 46, alignment: .trailing)
                     }
@@ -417,7 +417,8 @@ private struct MRRaceJourneyWeekRows: View {
                     .monospacedDigit()
 
                     // 줄이지 않고 길면 두 줄로 — 주마다 글자 크기 같게. 예정 주는 위 줄에 계획 문구가 있어 생략
-                    if !w.isFuture {
+                    // 진행 중 카드의 지난 주는 막대만 — 이번 주 내역만 보이게(2026-11-21 사용자)
+                    if !w.isFuture && !w.isDone {
                     detailText(w)
                         .font(.system(size: 8.5, weight: w.isCurrent ? .bold : .medium))
                         .lineLimit(2)
