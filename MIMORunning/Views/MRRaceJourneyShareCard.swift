@@ -168,21 +168,21 @@ struct MRRaceJourneyShareCard: View {
         }
     }
 
-    /// "목표 기록 4:15:00 · 대회 예측 4:16:38" — 대회 예측만 초록 굵게
+    /// "목표 기록 4:15:00 · 대회 예측 4:16:38" — 오른쪽 정렬(D-N 아래, 2026-11-21 사용자), 대회 예측 값만 초록 굵게
     private func progressLine(_ pr: MRRaceJourney.Progress) -> some View {
         let L = AppLanguage.shared
         var v = Text("")
-        if let g = pr.goalMin { v = v + Text(mrFormatDisplay(g)).foregroundColor(p.text) }
+        if let g = pr.goalMin {
+            v = v + Text(L.s("목표 기록 ", "Goal ", ja: "目標タイム ")).foregroundColor(p.sub)
+                + Text(mrFormatDisplay(g)).foregroundColor(p.text)
+        }
         if let e = pr.projectedMin {
             if pr.goalMin != nil { v = v + Text(" · ").foregroundColor(p.sub) }
             v = v + Text(L.s("대회 예측 ", "race-day est. ", ja: "レース予測 ")).foregroundColor(p.sub)
                 + Text(mrFormatDisplay(e)).foregroundColor(p.good).bold()
         }
-        return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(pr.goalMin != nil ? L.s("목표 기록", "Goal", ja: "目標タイム") : L.s("대회 예측", "Race-day est.", ja: "レース予測"))
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(p.sub)
-                .frame(width: 62, alignment: .leading)
+        return HStack {
+            Spacer(minLength: 0)
             v.font(.system(size: 11, weight: .medium, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
