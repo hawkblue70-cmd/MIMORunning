@@ -360,13 +360,10 @@ struct SplitsShareCardView: View {
                         if !runMetrics.isEmpty { runMetricsSectionView }
                     }
 
-                    // Branding
+                    // 러닝화 — 오른쪽 아래. 왼쪽 사람 아이콘은 뺐다(2026-11-24 사용자, 세 가지 구간 기록 카드 공통). 러닝화가 없으면 줄째 없음
+                    if let shoe = shoeName {
                     HStack(spacing: 5) {
-                        Image(systemName: "figure.run")
-                            .font(.system(size: 7))
-                            .foregroundStyle(pal.accentBar.opacity(0.45))
                         Spacer()
-                        if let shoe = shoeName {
                             HStack(spacing: 3) {
                                 Image(systemName: "shoe.fill")
                                     .font(.system(size: 6))
@@ -376,10 +373,10 @@ struct SplitsShareCardView: View {
                                     .foregroundStyle(pal.shoe)
                                     .lineLimit(1)
                             }
-                        }
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 2)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 12)
