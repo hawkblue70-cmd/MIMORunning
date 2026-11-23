@@ -500,6 +500,10 @@ final class MREngineStore: ObservableObject {
                                  thresholdPace: thresholdTrend?.current.paceSecPerKm,
                                  nowRefMin: directRefMin(r.distanceM),
                                  volUnlock: volumeUnlock(for: r, planProfile: planProfile, now: now),
+                                 actualWeeklyKm: { [runs] mon in
+                                     let end = cal.date(byAdding: .day, value: 7, to: mon) ?? mon
+                                     return runs.filter { $0.start >= mon && $0.start < end }.compactMap(\.distanceKm).reduce(0, +)
+                                 },
                                  caller: caller, raceName: r.name)
             if let pl {
                 prevPlanInfo = (date: r.date, name: r.name, distanceM: r.distanceM,

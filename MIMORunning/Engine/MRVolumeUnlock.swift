@@ -69,6 +69,32 @@ func mrVolumeUnlock(runs: [MRWorkout], asOf: Date, capKm: Double, raceDate: Date
                                     raisedCapKm: MRVolumeUnlockRules.raised(capKm), windowKm: window))
 }
 
+/// 앞으로 열릴 수 있는가 — 계획대로(남은 주는 계획 거리, 끝난 주는 실제 거리) 달린다고 보고, 오늘 이후 어느 월요일에 판정해도
+/// "직전 4주 중 3주가 95% 이상 + 상향 첫 주 ≤ 대회 5주 전"을 못 채우면 false. 휴식 판정은 미리 알 수 없어 보지 않는다(낙관적).
+/// 불가능하면 카드의 "…달리면 한 단계 열립니다" 문구를 숨긴다(2026-11-23 사용자).
+func mrVolumeUnlockPossible(capKm: Double, raceDate: Date, thisMonday: Date,
+                            plannedKm: [Date: Double], actualKm: (Date) -> Double,
+                            calendar cal: Calendar = .current) -> Bool {
+    guard capKm > 0, let latest = cal.date(byAdding: .day, value: -7 * MRVolumeUnlockRules.minWeeksBeforeRace,
+                                           to: cal.startOfDay(for: raceDate)) else { return false }
+    let cutoff = capKm * MRVolumeUnlockRules.fraction
+    let thisMon = cal.startOfDay(for: thisMonday)
+    let planned = Dictionary(plannedKm.map { (cal.startOfDay(for: $0.key), $0.value) }, uniquingKeysWith: { a, _ in a })
+    var eval = thisMon   // 판정 월요일
+    while let from = cal.date(byAdding: .day, value: 7, to: eval), from <= latest {
+        var met = 0
+        for back in 1...MRVolumeUnlockRules.windowWeeks {
+            guard let mon = cal.date(byAdding: .day, value: -7 * back, to: eval) else { continue }
+            let km = mon < thisMon ? actualKm(mon) : (planned[cal.startOfDay(for: mon)] ?? 0)
+            if km + 1e-9 >= cutoff { met += 1 }
+        }
+        if met >= MRVolumeUnlockRules.needWeeks { return true }
+        guard let next = cal.date(byAdding: .day, value: 7, to: eval) else { break }
+        eval = next
+    }
+    return false
+}
+
 // MARK: - 저장 — 대회별 열림 결정을 유지한다(주마다 판정이 흔들려 계획이 오르내리지 않게)
 
 enum MRVolumeUnlockStore {

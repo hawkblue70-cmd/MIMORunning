@@ -170,6 +170,7 @@ func mrBuildPlan(raceDate: Date,
                  thresholdPace: Double? = nil,
                  nowRefMin: Double? = nil,
                  volUnlock: MRVolumeUnlock? = nil,
+                 actualWeeklyKm: ((Date) -> Double)? = nil,
                  caller: String = "unknown",
                  raceName: String = "") -> MRRacePlan? {
 
@@ -810,10 +811,19 @@ func mrBuildPlan(raceDate: Date,
                                      u.windowKm.filter { $0 >= base * MRVolumeUnlockRules.fraction }.count,
                                      MRVolumeUnlockRules.threshold(base)))
             } else {
-                p.notes.append(String(format: L.s("최근 4주 중 3주를 %.0fkm 이상 달리면 주 %.0fkm까지 한 단계 열립니다.",
-                                                  "Run %.0f km or more in 3 of the last 4 weeks and the ceiling opens one step, to %.0f km.",
-                                                  ja: "直近4週のうち3週を%.0fkm以上走ると、週%.0fkmまで一段階開きます。"),
-                                     MRVolumeUnlockRules.threshold(base), MRVolumeUnlockRules.raised(base)))
+                // 앞으로 열릴 가능성이 없으면(계획대로 달려도 직전 4주 중 3주를 못 채우거나 상향 첫 주 한계가 지남) 문구를 숨긴다
+                let possible = actualWeeklyKm.map { actual in
+                    mrVolumeUnlockPossible(capKm: base, raceDate: raceDate,
+                                           thisMonday: MRPlanGovernance.weekMonday(of: today, calendar: cal),
+                                           plannedKm: Dictionary(p.weeks.map { ($0.monday, $0.weeklyKm) }, uniquingKeysWith: { a, _ in a }),
+                                           actualKm: actual, calendar: cal)
+                } ?? true
+                if possible {
+                    p.notes.append(String(format: L.s("최근 4주 중 3주를 %.0fkm 이상 달리면 주 %.0fkm까지 한 단계 열립니다.",
+                                                      "Run %.0f km or more in 3 of the last 4 weeks and the ceiling opens one step, to %.0f km.",
+                                                      ja: "直近4週のうち3週を%.0fkm以上走ると、週%.0fkmまで一段階開きます。"),
+                                         MRVolumeUnlockRules.threshold(base), MRVolumeUnlockRules.raised(base)))
+                }
             }
         }
     }

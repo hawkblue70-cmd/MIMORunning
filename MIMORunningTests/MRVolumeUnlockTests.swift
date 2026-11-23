@@ -167,4 +167,58 @@ struct MRVolumeUnlockTests {
         }
         #expect(r.weeks.map(\.weeklyKm).max()! > 55.5)
     }
+
+    // MARK: - 열릴 가능성 (문구 숨김)
+
+    private func monday(_ weeksFromThis: Int) -> Date {
+        cal.date(byAdding: .day, value: 7 * weeksFromThis, to: thisMonday)!
+    }
+
+    @Test func possibleWhenPlanReachesCapInTimeWithRoomBeforeTheGate() {
+        // 이번 주(0) 이후 계획 52 · 55 · 55 · 40 · 55 … — 대회 12주 뒤라 판정 시점이 많다
+        let planned: [Date: Double] = Dictionary(uniqueKeysWithValues:
+            [(0, 40.0), (1, 52), (2, 55), (3, 55), (4, 40), (5, 55), (6, 55)].map { (monday($0.0), $0.1) })
+        let race = monday(12)
+        #expect(mrVolumeUnlockPossible(capKm: 55, raceDate: race, thisMonday: thisMonday,
+                                       plannedKm: planned, actualKm: { _ in 30 }))
+    }
+
+    @Test func notPossibleWhenCapIsReachedOnlyAfterTheGate() {
+        // 55km 주가 대회 5주 전을 지나서야 3주 채워진다 — 서울마라톤처럼 재시작이 느린 계획
+        // 계획: 0주=40 · 1~8주 = 40 40 40 40 40 40 50 55, 55, 55 … 대회 11주 뒤 → 한계 = 6주 뒤 월요일
+        var planned: [Date: Double] = [:]
+        for w in 0...10 { planned[monday(w)] = w >= 8 ? 55 : 40 }
+        #expect(!mrVolumeUnlockPossible(capKm: 55, raceDate: monday(11), thisMonday: thisMonday,
+                                        plannedKm: planned, actualKm: { _ in 30 }))
+    }
+
+    @Test func notPossibleWhenRaceIsTooClose() {
+        let planned: [Date: Double] = Dictionary(uniqueKeysWithValues: (0...3).map { (monday($0), 55.0) })
+        #expect(!mrVolumeUnlockPossible(capKm: 55, raceDate: monday(4), thisMonday: thisMonday,
+                                        plannedKm: planned, actualKm: { _ in 55 }))
+    }
+
+    @Test func completedWeeksCountAsActualNotPlanned() {
+        // 직전 4주를 실제로 55 · 55 · 55 · 20 달렸으면 이번 주 월요일에 바로 판정 가능
+        let race = monday(12)
+        let actual: (Date) -> Double = { mon in mon < self.monday(-1) ? 55 : (mon < self.thisMonday ? 20 : 0) }
+        #expect(mrVolumeUnlockPossible(capKm: 55, raceDate: race, thisMonday: thisMonday,
+                                       plannedKm: [:], actualKm: actual))
+    }
+
+    @Test func planNoteIsHiddenWhenNotPossibleAndShownWhenPossible() throws {
+        // 노트: 계획 거리가 상한에 닿지 못하는 가정(actual 0)이면 숨기고, 닿을 수 있으면 보인다
+        let race = cal.date(from: DateComponents(year: 2027, month: 3, day: 21))!
+        func plan(actual: @escaping (Date) -> Double, today: Date) -> MRRacePlan? {
+            mrBuildPlan(raceDate: race, distanceM: MRDistance.dF, today: today,
+                        profile: profile(), halfEquivMin: 118, easyPaceSecPerKm: 400, heat: MRHeatModel(),
+                        raceTempC: 15, runsPerWeek: 4, forcedMonday: thisMonday, actualWeeklyKm: actual)
+        }
+        let marker = "한 단계 열립니다"
+        let early = try #require(plan(actual: { _ in 55 }, today: thisMonday))     // 11/16, 직전 4주를 모두 55 달렸다면 이번 주 월요일에 바로 판정 가능
+        #expect(early.notes.contains { $0.contains(marker) })
+        let late = cal.date(from: DateComponents(year: 2027, month: 2, day: 22))!      // 대회 4주 전 — 상향 첫 주 한계(대회 5주 전)가 이미 지남
+        let tooLate = try #require(plan(actual: { _ in 55 }, today: late))
+        #expect(!tooLate.notes.contains { $0.contains(marker) })
+    }
 }
