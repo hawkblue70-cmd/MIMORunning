@@ -1015,6 +1015,29 @@ struct MeView: View {
                 }
             }
 
+            // ── Trigger 7: 앞 대회 뒤 재개 보정(2026-11-23) — 한 번만 ──
+            // 하프 다음 주에 시작한 풀 계획이 대회가 끝난 뒤 회복 블록을 잃고 회복 주(12.6km) 다음 주 롱런 26km로 굳었다.
+            // 플래너가 고쳐져 라이브 계획이 회복 블록에서 이어지면, 이번 주 이후 주를 라이브로 한 번 바꾼다. 지난 주는 그대로.
+            if check.plan.priorRecoveryWeeks > 0, existing.planWeeks.first?.phase == "회복", !MRPriorResumeStore.isDone(key) {
+                let liveByMon = Dictionary(check.plan.weeks.map { (cal.startOfDay(for: $0.monday), $0) }, uniquingKeysWith: { a, _ in a })
+                let big = existing.planWeeks.contains { s in
+                    let m = cal.startOfDay(for: s.monday)
+                    guard m >= thisMonday, let l = liveByMon[m] else { return false }
+                    return abs(s.longRunKm - l.longRunKm) > 2
+                }
+                if big {
+                    let r = mrResumeFutureWeeks(snapshot: existing.planWeeks, live: check.plan.weeks, thisMonday: thisMonday)
+                    let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+                    if r.changed > 0, let wd = try? enc.encode(r.weeks), let wj = String(data: wd, encoding: .utf8) {
+                        existing.weeksJSON = wj
+                        #if DEBUG
+                        print("[스냅샷] 앞 대회 뒤 재개 보정 → 이번 주 이후 \(r.changed)주: \(check.race.name)")
+                        #endif
+                    }
+                }
+                MRPriorResumeStore.markDone(key)
+            }
+
             // ── Trigger 6: 주간 거리 상한 열림(2026-11-21) — 이미 시작한 계획은 상향 첫 주부터 미래 주만 ──
             // 직전 4주를 실제로 달렸을 때만 열린다(MRVolumeUnlock). 지난 주·이번 주는 그대로, 거리가 늘어나는 미래 주만 바꾼다.
             if let u = check.plan.volUnlock {

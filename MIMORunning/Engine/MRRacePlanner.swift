@@ -46,6 +46,8 @@ struct MRRacePlan {
     var weeklyCapKm = 0.0
     /// 주간 거리 상한을 한 단계 연 기록(2026-11-21) — 있으면 `fromMonday`부터 새 상한. 설계 2026-11-21-volume-cap-unlock-design.md
     var volUnlock: MRVolumeUnlock? = nil
+    /// 앞 대회 뒤 회복 블록 주 수(0 = 없음) — 스냅샷 보정(트리거 7)이 "앞 대회 뒤에 시작한 계획"인지 알아본다.
+    var priorRecoveryWeeks = 0
     var projectedNow = 0.0
     var projectedFinal = 0.0
     /// 대회 거리 직접 예측 ÷ 하프 등가 환산 — 계획의 모든 예상 기록·대회 페이스에 곱한다(1 = 보정 없음).
@@ -252,7 +254,9 @@ func mrBuildPlan(raceDate: Date,
         return 60  // 60주 안에 못 닿는 경우 — 실사용에서는 거의 발생하지 않는다
     }
 
-    let simStartLong = max(profile.longestRun16wKm, 5.0)
+    // 롱런 출발점 — 최근 16주 최장 러닝에서 대회 러닝을 뺀 값(2026-11-23). 하프 대회 거리(21.3km)를 롱런으로 쳐서
+    // 회복 주 다음 주에 26km가 나왔다. 대회 정보가 없으면(nil) 예전처럼 최장 러닝 그대로.
+    let simStartLong = max(profile.longestNonRaceRun16wKm ?? profile.longestRun16wKm, 5.0)
     let simStartVol  = vol
     // 하프 튠업 하나당 롱런 진행이 2주(대회 주 + 회복 주) 멈춘다 — 필요 기간에 더한다.
     // 앞선 A 대회(priorRace) 이전의 후보는 그 계획이 맡으므로 세지 않는다.
@@ -327,8 +331,14 @@ func mrBuildPlan(raceDate: Date,
     }
     // 앞 대회는 '날짜'로 본다 — 예전엔 시각(prior.date > today)으로 봐서, 하프 대회 당일 오전 9시(UTC 자정으로 저장된 날짜)가 지나자
     // 앞 대회가 빠지고 풀 계획이 "8주짜리 · 1월 시작"으로 통째로 다시 짜였다(2026-11-15). 대회가 끝난 뒤에도 이 계획 시작 월요일까지는 유지.
+    // 앞 대회가 이미 끝났어도 이 계획이 바로 그 다음 주(앵커 = priorNext)에 시작했으면 회복 블록·60% 재시작을 계속 쓴다 —
+    // 안 그러면 대회 다음 주부터 계획이 하프 거리에서 +10%로 다시 계산돼 회복 주 다음 주 롱런이 26km로 뛰었다(2026-11-23).
+    let continuesAfterPrior: Bool = {
+        guard let f = forcedMonday, let pn = priorNextMonday else { return false }
+        return cal.startOfDay(for: f) == pn
+    }()
     if let prior = priorRace, priorRecoveryWeeks > 0, let priorNext = priorNextMonday,
-       priorNext >= cal.startOfDay(for: today),
+       priorNext >= cal.startOfDay(for: today) || continuesAfterPrior,
        cal.startOfDay(for: prior.date) < cal.startOfDay(for: raceDate) {
         // 앞 대회 당일이 속한 주를 건너뛰고 그 다음 주 월요일부터 시작
         let pLong     = max(prior.peakLong, simStartLong)
@@ -349,14 +359,17 @@ func mrBuildPlan(raceDate: Date,
         let priorLabel = mrLabelFor(distanceM: prior.distanceM)
         let priorWeekMon = cal.date(byAdding: .day, value: -7, to: priorNext) ?? priorNext
         let dayBeforePriorWeek = cal.date(byAdding: .day, value: -1, to: priorWeekMon) ?? priorWeekMon
-        p.bridgeRows = [
-            ("\(sfmt(today)) ~ \(sfmt(dayBeforePriorWeek))",
-             L.s("「\(prior.name)」 계획을 따릅니다", "Follow the \(prior.name) plan", ja: "「\(prior.name)」の計画に従います")),
-            ("\(sfmt(priorWeekMon)) ~ \(sfmt(prior.date))",
-             L.s("대회 주 — \(priorLabel) 대회 \(prior.name)", "Race week — \(priorLabel) \(prior.name)", ja: "レース週 — \(priorLabel)レース \(prior.name)")),
-            ("\(sfmt(planToday)) ~",
-             L.s("이 계획 시작 · 회복 \(priorRecoveryWeeks)주", "Plan starts · \(priorRecoveryWeeks)-wk recovery", ja: "この計画の開始 · 回復\(priorRecoveryWeeks)週"))
-        ]
+        // 오늘이 이미 계획 시작 뒤면(앞 대회가 끝난 뒤) 오늘 ~ 앞 대회 전날 타임라인은 의미가 없다
+        if priorNext >= cal.startOfDay(for: today) {
+            p.bridgeRows = [
+                ("\(sfmt(today)) ~ \(sfmt(dayBeforePriorWeek))",
+                 L.s("「\(prior.name)」 계획을 따릅니다", "Follow the \(prior.name) plan", ja: "「\(prior.name)」の計画に従います")),
+                ("\(sfmt(priorWeekMon)) ~ \(sfmt(prior.date))",
+                 L.s("대회 주 — \(priorLabel) 대회 \(prior.name)", "Race week — \(priorLabel) \(prior.name)", ja: "レース週 — \(priorLabel)レース \(prior.name)")),
+                ("\(sfmt(planToday)) ~",
+                 L.s("이 계획 시작 · 회복 \(priorRecoveryWeeks)주", "Plan starts · \(priorRecoveryWeeks)-wk recovery", ja: "この計画の開始 · 回復\(priorRecoveryWeeks)週"))
+            ]
+        }
         #if DEBUG
         dbgStartNote = "앞선 대회「\(prior.name)」 다음 주"
         #endif
@@ -756,6 +769,7 @@ func mrBuildPlan(raceDate: Date,
     p.projectionWeeklyKm = max(peakVol, projFloorVol)
     p.histMaxWeeklyKm = profile.maxWeeklyKm52w
     p.volUnlock = volUnlock
+    p.priorRecoveryWeeks = recoveryWeekCount
     p.weeklyCapKm = volUnlock != nil ? volCapRaised : volCap
 
     // 튠업 고지 — 판단이 아니라 결과 전달

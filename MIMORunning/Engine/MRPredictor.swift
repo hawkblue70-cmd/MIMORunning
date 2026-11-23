@@ -178,6 +178,10 @@ struct MRProfile {
     var weeklyKm4w = 0.0
     var longestRun30d = 0.0     // 최근 30일 최장 런 — 플래너 입문 가드용
     var longestRun16wKm = 0.0
+    /// 최근 16주 최장 러닝에서 **대회 러닝을 뺀 값** — 계획의 롱런 출발점에 쓴다(2026-11-23).
+    /// 하프 대회(21.3km)를 롱런 기준으로 삼아 회복 주 다음 주에 26km가 나왔다. nil = 대회 정보를 못 받아 계산하지 않음(longestRun16wKm 그대로).
+    /// 예측(지구력)에는 대회 러닝도 체력의 증거라 `longestRun16wKm`를 그대로 쓴다.
+    var longestNonRaceRun16wKm: Double? = nil
     var marathonFinishes = 0
     /// 최근 4주 주당 러닝 횟수. 지시가 아니라 **관찰값**이다.
     var runsPerWeek = 0.0
@@ -190,7 +194,8 @@ struct MRProfile {
     var sigma8BSE: Double = 0  // SE(b): b 추정 표준오차
 }
 
-func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0, asOf: Date) -> MRProfile {
+func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0, asOf: Date,
+               raceRunStarts: Set<Date> = [], raceDays: [(date: Date, distanceM: Double)] = []) -> MRProfile {
     var p = MRProfile()
     let cal = Calendar.current
     func days(_ d: Date) -> Int {
@@ -206,6 +211,17 @@ func mrProfile(runs: [MRWorkout], efforts: [MRRaceEffort], sigmaObs: Double = 0,
 
     let last16w = runs.filter { let d = days($0.date); return d >= 0 && d < 112 }
     p.longestRun16wKm = last16w.compactMap(\.distanceKm).max() ?? 0
+    // 대회 러닝 제외 — 앱이 대회로 분류한 러닝, 또는 등록·끝난 대회와 같은 날이고 거리가 대회 거리의 ±10% 안인 러닝
+    if !raceRunStarts.isEmpty || !raceDays.isEmpty {
+        func isRaceRun(_ r: MRWorkout) -> Bool {
+            if raceRunStarts.contains(r.start) { return true }
+            guard let km = r.distanceKm, km > 0 else { return false }
+            return raceDays.contains { d in
+                d.distanceM > 0 && cal.isDate(d.date, inSameDayAs: r.start) && abs(km * 1000 - d.distanceM) / d.distanceM <= 0.10
+            }
+        }
+        p.longestNonRaceRun16wKm = last16w.filter { !isRaceRun($0) }.compactMap(\.distanceKm).max() ?? 0
+    }
 
     p.marathonFinishes = efforts.filter { $0.distanceM >= 40_000 }.count
 

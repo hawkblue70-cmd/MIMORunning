@@ -296,6 +296,13 @@ final class MREngineStore: ObservableObject {
             .sorted { $0.date < $1.date }
     }
 
+    /// 계획의 롱런 출발점에서 뺄 대회 러닝 — 앱이 '대회'로 분류한 러닝 + 등록·끝난 대회 날짜·거리(`mrProfile`이 같은 날·±10%로 맞춘다).
+    private func planRaceExclusions() -> (starts: Set<Date>, days: [(date: Date, distanceM: Double)]) {
+        let starts = Set(pointRunTypes.filter { $0.value == .race }.keys)
+        let days = (userInput.races + storedFinishedRaces).map { (date: $0.date, distanceM: $0.distanceM) }
+        return (starts, days)
+    }
+
     // MARK: - 주간 거리 상한 열기 (설계 2026-11-21-volume-cap-unlock-design.md)
 
     /// 대회별 열림 결정 — 시작된 상향은 고정, 시작 전 결정은 조건이 계속 맞을 때만 유지(`MRVolumeUnlockStore.resolve`).
@@ -439,10 +446,17 @@ final class MREngineStore: ObservableObject {
             let prior = prevPlanInfo.flatMap { p in
                 cal.startOfDay(for: p.date) < cal.startOfDay(for: r.date) ? p : nil
             } ?? storedFinishedRaces
-                .filter { $0.distanceM >= MRDistance.dH && $0.distanceM < r.distanceM + 1
-                          && cal.startOfDay(for: $0.date) < cal.startOfDay(for: now)
-                          && cal.startOfDay(for: $0.date) < cal.startOfDay(for: r.date)
-                          && (cal.dateComponents([.day], from: cal.startOfDay(for: $0.date), to: cal.startOfDay(for: now)).day ?? 99) <= 7 }
+                .filter { f in
+                    guard f.distanceM >= MRDistance.dH, f.distanceM < r.distanceM + 1,
+                          cal.startOfDay(for: f.date) < cal.startOfDay(for: now),
+                          cal.startOfDay(for: f.date) < cal.startOfDay(for: r.date) else { return false }
+                    let since = cal.dateComponents([.day], from: cal.startOfDay(for: f.date), to: cal.startOfDay(for: now)).day ?? 99
+                    if since <= 7 { return true }
+                    // 이 계획이 바로 그 대회 다음 주에 시작했으면 시작 뒤에도 회복 블록·60% 재시작을 계속 쓴다(2026-11-23)
+                    guard let anchor = anchors[key],
+                          let nextMon = cal.date(byAdding: .day, value: 7, to: MRPlanGovernance.weekMonday(of: f.date)) else { return false }
+                    return cal.startOfDay(for: anchor) == cal.startOfDay(for: nextMon)
+                }
                 .max { $0.date < $1.date }
                 .flatMap { f -> (date: Date, name: String, distanceM: Double, peakLong: Double, peakVol: Double)? in
                     let snap = storedSnapshotWeeks[mrArchiveKey(raceDate: f.date, distanceM: f.distanceM)] ?? []
@@ -800,7 +814,9 @@ final class MREngineStore: ObservableObject {
             //   1초 빼면 startOfDay(asOf) = 일요일 → 이번 주 런 전체가 제외된다.
             return mondayStart.addingTimeInterval(-1)
         }()
-        let planProfile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: planCutoff)
+        let raceEx = planRaceExclusions()
+        let planProfile = mrProfile(runs: fetched, efforts: efforts, sigmaObs: sigmaObs, asOf: planCutoff,
+                                    raceRunStarts: raceEx.starts, raceDays: raceEx.days)
 
         predictions = mrPredict(efforts: efforts, fit: fit, profile: profile,
                                 heat: heat, asOf: now, anchorPool: anchorPool)
@@ -1894,7 +1910,9 @@ final class MREngineStore: ObservableObject {
         }()
         // ⚠ σ_obs(지난 대회 예측 오차)를 꼭 넘긴다 — 빠지면 예측 폭에서 대회 날 흔들림(a)이 0이 되어
         //   풀코스 범위가 좁게 나왔다(2026-11-21 실기기: a=0 → ±6.2%, 넣으면 약 ±8%).
-        let planProfile2 = mrProfile(runs: runs, efforts: efforts, sigmaObs: storedSigmaObs, asOf: planCutoff2)
+        let raceEx2 = planRaceExclusions()
+        let planProfile2 = mrProfile(runs: runs, efforts: efforts, sigmaObs: storedSigmaObs, asOf: planCutoff2,
+                                     raceRunStarts: raceEx2.starts, raceDays: raceEx2.days)
         let he = halfEquivMin
         let upcoming = userInput.upcomingRaces(asOf: now)
         let raceTempByID = Dictionary(upcoming.map { r in
